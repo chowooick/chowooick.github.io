@@ -295,3 +295,23 @@ git push && glab ci list --per-page 1                          # 원격 파이�
 
 **주의:** `--protected` 변수는 보호 브랜치에서만 주입된다. main이 보호돼 있는지
 `protected_branches` API로 먼저 확인한다. 아니면 두 번째 실패를 같은 증상으로 겪는다.
+
+## AGT-016 — 이미지 빌드 안의 `go test`는 병렬 티켓을 서로 묶는다
+
+`측정 2026-09-06 · Docker · Go · Claude Code 병렬 세션`
+
+**증상:** 티켓 B의 스모크가 `docker compose up --build`에서 죽는다. 원인은 B의 코드가 아니라
+같은 작업 트리에서 진행 중인 티켓 A의 아직 빨간 테스트다.
+```
+--- FAIL: TestOnlineSecondsOnlyCountsOneLiveSocket/... OnlineSeconds = 28800, want 0
+```
+Dockerfile 빌드 스테이지가 `go vet ./... && go test ./...`를 돌리므로, 트리의 어느 패키지든
+빨간불이면 **모든** 티켓의 스택이 안 뜬다. 테스트를 먼저 쓰는(TDD) 세션은 작업 중 항상 빨간 구간이 있다.
+한 트리에서 세션 여럿이 touch list로 격리해 일하는 방식과 정면으로 충돌한다.
+
+**해결:** 빌드 스테이지에서는 `go vet`만 돌리고 `go test`는 뺀다. 테스트는 CI 잡과 로컬 CI
+스크립트가 **같은 빌더 이미지**로 따로 돌리므로 잃는 것이 없다. 격리 단위(touch list)와
+결합 단위(이미지 빌드)가 어긋나면 격리는 무의미하다 — 빌드는 "컴파일된다"만 보증하게 둔다.
+
+**주의:** 한 사람이 순차로 일할 때는 이 결합이 안전장치처럼 보인다. 병렬로 바꾸는 순간
+결합점(이미지 빌드·공용 스크립트·공용 config)을 전부 다시 본다.
