@@ -312,3 +312,33 @@ volume="myapp-config-${TAG}-${SLOT}-$$"
 **같이 볼 것:** 마운트하는 볼륨 이름도 같은 규칙을 따라야 한다. 프로젝트만 분리하고 config
 볼륨을 슬롯으로만 지으면, 한쪽이 쓴 설정을 다른 쪽이 읽는다. OPS-016과 같은 계열 —
 조용한 성공이 조용한 실패보다 오래 숨는다.
+
+## OPS-018 — `docker ps --filter ancestor=<image>`는 CI 잡 컨테이너까지 잡는다
+
+`측정 2026-09-06 · gitlab-runner 19.3.0 · docker 27 · Ubuntu 24.04`
+
+**증상:** 러너가 도는 호스트에서 임시 컨테이너를 정리하려고
+
+```bash
+docker rm -f $(docker ps -q --filter ancestor=docker:27-cli)
+```
+
+를 돌렸더니, 도중이던 GitLab 잡이 **`ERROR: Job failed: exit code 137`**(SIGKILL)로 죽었다.
+잡 로그는 명령 한가운데서 끊기고 실패 사유가 아무 데도 없다 — 러너도 GitLab도 "누가 밖에서
+컨테이너를 지웠다"는 말을 하지 않으므로, 코드 문제로 오진하기 쉽다.
+
+GitLab docker executor의 잡 컨테이너는 `.gitlab-ci.yml`의 `image:`를 그대로 쓴다. 그래서
+`image: docker:27-cli`인 잡이 도는 동안 이 필터는 내 임시 컨테이너와 잡 컨테이너를
+구분하지 못한다. 이름(`runner-<토큰>-project-<id>-concurrent-<n>-...-build`)만이 둘을 가른다.
+
+**해결:** 러너 호스트에서는 ancestor·image로 일괄 삭제하지 않는다. 이름으로 지운다.
+
+```bash
+docker rm -f $(docker ps -q --filter name=^/my-drill-)      # 내가 붙인 접두사
+docker ps -q --filter ancestor=X --filter name=runner-      # 지우기 전에 뭐가 걸리는지 먼저 본다
+```
+
+임시 컨테이너는 처음부터 `--name my-drill-$$`로 띄워 이름으로 지울 수 있게 한다.
+
+**같이 볼 것:** SIGKILL은 트랩이 안 돌아, 잡 스크립트가 `trap ... EXIT`로 지우던 보조
+컨테이너가 호스트에 남는다. 잡을 밖에서 죽였다면 그 고아도 같이 찾아 지운다.
