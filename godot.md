@@ -302,3 +302,122 @@ WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")" && pwd -P)"
 `SceneTreeTimer`(벽시계)로 예약하면 프레임 속도와 무관하게 뜨므로, 셸은 **출력된
 로그 줄과 파일 존재**로 단언하고 `timeout`에 의한 kill(124·143)을 허용한다.
 스스로 `get_tree().quit()`을 부르는 실행만 종료 코드를 엄격하게 본다.
+
+---
+
+## GDT-018 — `gui/theme/default_font_size`는 Godot 4에 없다. 써도 조용히 무시된다
+
+`측정 2026-09-06 · Godot 4.7.2`
+
+**증상:** `project.godot`에 `theme/default_font_size=44`를 넣고 익스포트해도 글자
+크기가 그대로다. 경고도 오류도 없다. 설정이 안 먹는 게 아니라 **이름 자체가 없다**.
+Godot은 모르는 프로젝트 설정을 오류 없이 받아 저장하기 때문에, 오타와 존재하지 않는
+설정과 정상 설정이 파일에서 똑같이 생겼다.
+
+```
+strings <Godot 바이너리> | grep -x 'gui/theme/[a-z_/]*'
+→ custom, custom_font, default_font_antialiasing, default_font_generate_mipmaps,
+  default_font_hinting, default_font_multichannel_signed_distance_field,
+  default_font_subpixel_positioning, default_theme_scale, lcd_subpixel_layout
+```
+
+`default_font_size`는 없다. Godot 3의 기억이거나 LLM이 지어낸 이름이다.
+
+**해결:** 기본 테마 전체를 키우는 **`gui/theme/default_theme_scale`**(float, 기본 1.0)
+을 쓴다. 폰트뿐 아니라 여백·간격·아이콘까지 같은 비율로 커져서 버튼이 글자보다
+작아지는 일이 없다. 폰트만 따로 키우려면 `Theme` 리소스를 만들어
+`gui/theme/custom`에 물린다.
+
+**존재 여부를 확인하는 법:** 위 `strings` 한 줄. 설정 이름은 바이너리에 그대로 박혀
+있다.
+
+---
+
+## GDT-019 — `display/window/handheld/orientation`은 문자열이 아니라 정수다
+
+`측정 2026-09-06 · Godot 4.7.2 · Android`
+
+**증상:** `window/handheld/orientation="portrait"`를 넣었는데 앱이 여전히 가로로 뜬다.
+설정을 아예 안 넣은 것과 화면이 똑같다.
+
+Godot 4에서 이 값은 **enum 인덱스**다.
+
+```
+0 Landscape · 1 Portrait · 2 Reverse Landscape · 3 Reverse Portrait
+4 Sensor Landscape · 5 Sensor Portrait · 6 Sensor
+```
+
+문자열 `"portrait"`는 int로 캐스팅되며 **0(Landscape)**이 된다. Godot 3은 문자열이었다.
+
+**확인:** 익스포트한 apk의 매니페스트를 본다. 여기서 확정된다.
+
+```
+aapt2 dump xmltree --file AndroidManifest.xml app.apk | grep screenOrientation
+→ android:screenOrientation(0x0101001e)=1
+```
+
+**해결:** `window/handheld/orientation=1`.
+
+---
+
+## GDT-020 — Android 익스포트가 자기 출력을 리소스로 다시 담아, 8번째 실행에서 죽는다
+
+`측정 2026-09-06 · Godot 4.7.2 · Android · gradle build`
+
+**증상:** 같은 프로젝트를 반복 익스포트하다 갑자기 죽는다. 코드 변경과 무관하다.
+
+```
+Execution failed for task ':packageStandardDebug'.
+> Too many zip entries 92677 (MAX=65535)
+```
+
+`use_gradle_build=true`면 Godot이 익스포트 산출물을
+`<project>/android/build/src/main/assets/`에 쓴다. 이 경로는 **`res://` 안**이다.
+`export_filter="all_resources"`는 `res://` 전체를 담으므로, 다음 익스포트가 직전
+익스포트의 assets를 리소스로 집어넣는다. 실행마다 한 겹씩 중첩된다.
+
+```
+assets/android/build/src/main/assets/android/build/src/main/assets/core/net/nakama_client.gdc
+```
+
+중간 단계에서는 이런 줄만 나오고 익스포트는 성공해서, 죽기 전까지 몇 번은 그냥 된다.
+
+```
+ERROR: Can't open file from path 'res://android/build/src/main/assets/android/build/src/main/assets/...gdc'
+```
+
+**해결:** 익스포트 프리셋에서 제외한다. 게임이 로드하지 않는 파일이고 Gradle은
+디스크에서 읽으므로 pck에 들어갈 이유가 없다.
+
+```
+exclude_filter="android/*"
+```
+
+이미 쌓였으면 `exclude_filter`만으로는 안 풀린다. Gradle이 스테이징 디렉터리에 남은
+것을 그대로 담기 때문이다. 한 번 비운다.
+
+```
+rm -rf client/android/build/src/main/assets client/android/build/build
+```
+
+---
+
+## GDT-021 — ScrollContainer의 가로 스크롤을 끄면 컨테이너가 자식 크기로 커진다
+
+`측정 2026-09-06 · Godot 4.7.2`
+
+**증상:** 좁은 화면에서 내용이 오른쪽으로 넘치기에 `horizontal_scroll_mode`를
+`SCROLL_MODE_DISABLED`(0)로 바꿨더니, 내용이 줄지 않고 패널 전체가 화면보다 커져
+**좌우 양쪽이** 잘렸다.
+
+`ScrollContainer::get_minimum_size()`는 그 축의 스크롤이 **DISABLED일 때만** 자식의
+최소 너비를 자기 최소 크기에 더한다. 그리고 Control의 크기는 앵커가 아니라 최소
+크기가 이긴다. 그래서 앵커로 화면에 꽉 채운 ScrollContainer라도 자식이 요구하는
+너비만큼 커지고, 부모 안에서 가운데 정렬되어 양쪽으로 삐져나온다.
+
+`SCROLL_MODE_SHOW_NEVER`(3)는 더 나쁘다. 자식은 여전히 자기 최소 너비를 받고
+스크롤바만 숨어서, 잘린다는 신호까지 사라진다.
+
+**해결:** 스크롤 모드로 내용을 줄일 수 없다. 자식의 **최소 너비 자체를** 줄여야 한다
+— 긴 `Label`에 `autowrap_mode`나 `text_overrun_behavior`를 준다. 진단할 때는 기본값
+`SCROLL_MODE_AUTO`로 두는 편이 낫다. 가로 스크롤바가 뜨면 그게 넘친다는 증거다.
