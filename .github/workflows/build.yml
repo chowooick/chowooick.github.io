@@ -1,0 +1,28 @@
+name: build llms-full.txt
+
+on:
+  push:
+    branches: [main]
+    paths: ['*.md', 'build.sh']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: generate
+        run: ./build.sh
+      - name: commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet llms-full.txt; then
+            git add llms-full.txt
+            git commit -m "build: llms-full.txt 재생성 [skip ci]"
+            git push
+          else
+            echo "변경 없음"
+          fi
