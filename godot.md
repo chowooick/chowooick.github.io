@@ -132,3 +132,79 @@ dummy 드라이버를 쓴다. 스크립트로 렌더 결과가 필요하면 창 
 한 번에 받다가 끊기면 처음부터다. `curl -C -`로 이어받는다.
 
 설치 경로(macOS): `~/Library/Application Support/Godot/export_templates/4.7.2.stable`
+
+---
+
+## GDT-012 — Android 플러그인은 익스포트 프리셋에서 켜야 한다. 안 켜면 조용히 빠진다
+
+`측정 2026-09-06 · Godot 4.7.2 · Android`
+
+**증상:** 없다. 그게 문제다. 익스포트 성공, APK 서명 통과, 설치 성공, 앱 실행 성공.
+그런데 `Engine.has_singleton("<Name>")`이 false다. 오류 0줄, 경고 0줄, 로그 0줄.
+
+Godot은 `res://android/plugins/`에서 찾은 플러그인마다 익스포트 옵션을 하나씩
+만드는데 **기본값이 off**다. `export_presets.cfg`의 `[preset.N.options]`에
+`plugins/<Name>=true`가 없으면 AAR을 병합하지 않는다.
+
+**해결:** 프리셋에 한 줄 넣는다. 그리고 빌드된 APK를 직접 검증한다 —
+익스포트가 성공했다는 사실은 플러그인이 들어갔다는 증거가 아니다.
+
+```
+aapt2 dump xmltree --file AndroidManifest.xml app.apk | grep 'org.godotengine.plugin.v2.<Name>'
+```
+
+덧: `export_presets.cfg`는 릴리스 키스토어 비밀번호를 담을 수 있어 보통 `.gitignore`에
+있다. 그러면 fresh clone에서 이 줄이 사라진다. 템플릿 파일을 커밋하고 빌드
+스크립트가 복원하게 한다.
+
+---
+
+## GDT-013 — 런처 액티비티는 `GodotApp`이 아니라 `GodotAppLauncher`다
+
+`측정 2026-09-06 · Godot 4.7.2 · Android 15`
+
+**증상:**
+
+```
+adb shell am start -n <pkg>/com.godot.game.GodotApp
+→ java.lang.SecurityException: Permission Denial: starting Intent ... not exported from uid 10207
+```
+
+서명이나 권한 문제로 읽히지만 아니다. `GodotApp`은 exported=false이고
+런처는 `com.godot.game.GodotAppLauncher`다.
+
+**해결:** 이름을 외우지 말고 물어본다.
+
+```
+adb shell cmd package resolve-activity --brief <pkg> | tail -1
+```
+
+---
+
+## GDT-014 — Godot 4.7.2에서 FCM 푸시는 된다. 자체 Kotlin 플러그인 120줄
+
+`측정 2026-09-06 · Godot 4.7.2 · firebase-messaging 24.1.0 · Android 15 에뮬레이터(Play 이미지)`
+
+공식 Firebase 플러그인은 없지만 커뮤니티 플러그인을 벤더링할 필요도 없다.
+Android 플러그인 **v2** 방식 — AAR 매니페스트에
+`<meta-data android:name="org.godotengine.plugin.v2.<Name>" android:value="<FQCN>">` —
+으로 `GodotPlugin` 서브클래스 하나면 된다. 토큰 발급과 포그라운드 수신까지 120줄.
+
+**앱 프로세스가 죽은 상태의 알림 수신에는 우리 코드가 관여하지 않는다.**
+FCM `notification` 메시지는 Firebase SDK가 직접 시스템 트레이에 그린다.
+`data` 메시지만 앱의 `FirebaseMessagingService`를 깨운다. 스파이크에서 제일 어려워
+보였던 항목이 실제로는 의존성과 매니페스트의 속성이었다.
+
+함께 필요한 것:
+
+- `google-services` Gradle 플러그인 없이도 된다. `google_app_id`
+  `gcm_defaultSenderId` `google_api_key` `project_id` 문자열 리소스를 AAR에 넣으면
+  `FirebaseApp.initializeApp(context)`가 읽는다. Godot 빌드 템플릿을 무수정으로 둘 수 있다
+- Android 13+는 `POST_NOTIFICATIONS` 없으면 배달된 푸시를 **아무 데도 안 그린다.**
+  FCM이 깨진 것과 구분이 안 된다. 헤드리스 검증은 `adb shell pm grant`
+- 에뮬레이터는 `google_apis_playstore` 이미지여야 한다. `google_apis`에는 전송 계층이 없다
+- 종료 상태 검증은 `am kill`로 한다. `am force-stop`은 패키지를 stopped 상태로 만들어
+  사람이 다시 실행할 때까지 FCM을 포함한 모든 브로드캐스트가 차단된다 —
+  "닫힌 앱은 푸시를 못 받는다"는 거짓 결론이 나온다
+
+미검증: 실기기. 위는 전부 에뮬레이터 실측이다.
