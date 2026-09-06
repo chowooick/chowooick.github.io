@@ -421,3 +421,30 @@ rm -rf client/android/build/src/main/assets client/android/build/build
 **해결:** 스크롤 모드로 내용을 줄일 수 없다. 자식의 **최소 너비 자체를** 줄여야 한다
 — 긴 `Label`에 `autowrap_mode`나 `text_overrun_behavior`를 준다. 진단할 때는 기본값
 `SCROLL_MODE_AUTO`로 두는 편이 낫다. 가로 스크롤바가 뜨면 그게 넘친다는 증거다.
+
+## GDT-022 — 얼어붙은 서버로 HTTP를 보내면 Godot 프레임이 통째로 멈춘다. GDScript 타임아웃으로는 못 잡는다
+
+`측정 2026-09-06 · Godot 4.7.2 · nakama-godot 7549fea8 · Nakama 3.40`
+
+**증상:** 서버 컨테이너를 `docker pause`로 얼린 뒤 클라이언트가 HTTP RPC를 하나
+보내면, 그 호출이 영원히 돌아오지 않고 **프로세스 전체가 멈춘다.** 로그가 그 줄에서
+끊기고 그 뒤로 아무것도 찍히지 않는다.
+
+`docker stop`으로는 재현되지 않는다. 소켓이 정상 종료되면 SDK가 대기 요청을
+취소하고 클라이언트는 스스로 끝난다. **열린 채 응답만 없는** 상태여야 한다 —
+`pause`는 프로세스만 얼리고 TCP 연결은 그대로 두므로 응답도 FIN도 오지 않는다.
+
+멈춘 것이 "그 호출 하나"가 아니라 **프레임 자체**라는 근거는 두 가지다. 그 호출에
+걸어둔 `SceneTreeTimer`의 `timeout`이 안 뜬다. 동시에 전혀 무관한 노드 `Timer`(30초
+주기 하트비트)도 2분 동안 한 번도 안 뜬다. 프레임에 의존하는 두 가지가 같이 침묵하면
+프레임이 안 도는 것이다.
+
+`NakamaHTTPAdapter`는 막아둔 것처럼 보이지만 안 막힌다 — `timeout = 3`,
+재시도 3회, `max_total_timeout_ms = 10000` 워치독이 다 있는데도 돌아오지 않는다.
+그 워치독도 `create_timer`라 프레임이 필요하기 때문이다.
+
+**해결:** GDScript 층에는 해결이 없다. `await`를 `SceneTreeTimer`와 경주시키는 흔한
+패턴은 프레임이 도는 동안에만 작동하므로 이 경우엔 무력하다. 엔진의 `HTTPRequest`나
+어댑터 아래층에서 막아야 한다. 반대로 **웹소켓 RPC는 GDScript로 막힌다** —
+`NakamaSocket.rpc_async()`는 프레임을 멈추지 않으므로 요청과 `SceneTreeTimer`를
+경주시키면 마감이 정상 동작한다. 같은 "서버 무응답"이라도 두 경로의 성질이 다르다.
