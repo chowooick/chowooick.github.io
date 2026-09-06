@@ -216,3 +216,67 @@ git rebase --continue
 **더 나은 구조:** 생성물을 리포에 커밋하지 않고 배포 단계에서만 만든다.
 그러면 충돌 자체가 없다. 커밋해야 한다면 CI만 쓰거나 사람만 쓰고, 둘 다 쓰지 않는다.
 
+
+## OPS-015 — dind에서 bind mount는 실패하지 않고 빈 디렉터리가 된다
+
+`측정 2026-09-06 · GitLab CI · docker:27-dind · Docker Compose v2`
+
+**증상:** 로컬에서 통과하는 스모크가 CI에서만 깨진다. 스택은 healthy로 뜨고
+`/healthcheck`도 200인데, 설정을 읽는 첫 요청에서만 죽는다.
+
+```
+==> docker compose -p X ... -f /tmp/tmp.CoOigN/config.override.yml up -d --build
+FAIL: character.create returned HTTP 500: {"code":13,"message":"config_unavailable"}
+```
+
+런타임에 조립한 설정 디렉터리를 `- $CONFIG_DIR:/app/config` 로 넘겼다. **dind 데몬은
+잡 컨테이너와 파일시스템을 공유하지 않는다.** 데몬은 그 호스트 경로를 자기 파일시스템에서
+찾고, 없으면 **에러 대신 빈 디렉터리를 만들어 마운트한다.** compose 출력에 경고 한 줄 없다.
+노트북에서는 데몬과 스크립트가 같은 파일시스템이라 영원히 안 드러난다.
+
+**해결:** 경로 대신 **이름 있는 볼륨 + `docker cp`**. `docker cp`는 API로 나가는 tar
+스트림이라 공유 경로가 필요 없다.
+
+```bash
+helper="$(docker create -v "$VOL:/config" alpine:3.20 true)"
+docker cp "$CONFIG_DIR/." "$helper:/config"
+docker rm -f "$helper"
+# compose 쪽: volumes: [ "$VOL:/app/config:ro" ] + volumes: { $VOL: { external: true } }
+```
+
+**주의:** 여기서 "CI에서만 볼륨, 로컬은 bind mount"로 갈라 놓고 싶어진다. 갈라 놓으면
+**로컬이 CI에서 도는 것을 더 이상 테스트하지 않는다** — 이 함정이 러너까지 간 이유가
+정확히 그것이다. 환경마다 진짜로 다른 것(호스트 이름 같은)만 갈라라. 그리고 암묵적 pull은
+컨테이너 id를 캡처하는 스트림을 오염시키니 `docker pull`을 별도 줄로 먼저 돌린다.
+
+## OPS-016 — `|| true`로 감싼 정리 명령은 실패해도 로그가 성공처럼 보인다
+
+`측정 2026-09-06 · bash · Docker Compose v2`
+
+**증상:** 스모크가 끝날 때마다 스택이 살아 있다. 그런데 로그는 정상 종료와 글자 하나 다르지
+않다.
+
+```bash
+cleanup() {
+  rm -rf "$WORK"                                     # ← -f 로 넘길 파일이 여기 있었다
+  echo "==> ${COMPOSE[*]} down -v"                   # ← 명령보다 먼저 찍힌다
+  "${COMPOSE[@]}" down -v >/dev/null 2>&1 || true    # ← 실패를 삼킨다
+}
+```
+
+`$COMPOSE`에 `-f $WORK/override.yml`이 들어 있었다. 디렉터리를 먼저 지우니 compose가
+`open ...: no such file or directory`로 죽는데, `2>&1`이 감추고 `|| true`가 종료 코드를
+지운다. 남는 것은 **명령이 돌기도 전에 찍힌 성공처럼 보이는 줄**이다. 몇 주 동안 스택이
+쌓였고, 매번 "다른 세션이 남긴 것"으로 오해했다.
+
+**해결:** 순서를 뒤집고(정리 명령 먼저, 삭제 나중), 로그 줄은 **명령 뒤에** 결과와 함께 찍는다.
+
+```bash
+if "${COMPOSE[@]}" down -v >/dev/null 2>&1; then echo "==> down -v ok"; else echo "==> down -v FAILED" >&2; fi
+rm -rf "$WORK"
+```
+
+**주의:** `|| true`는 "실패해도 계속한다"이지 "실패해도 괜찮다"가 아니다. 정리 경로에 쓸
+때는 실패를 **보이게** 남겨라. 이 버그가 드러난 계기도 실패 자체가 아니라, 볼륨이
+`volume is in use`로 안 지워져서 붙잡은 컨테이너를 봤더니 정리했다고 로그에 찍힌 그
+컨테이너였던 것이다. 조용한 실패는 무관해 보이는 증상으로만 나타난다. AGT-017과 같은 계열이다.
