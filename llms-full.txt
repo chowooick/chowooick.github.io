@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-06T17:26:59Z · 소스 커밋 `e6383fc` · 이 파일은 자동 생성물이다.
+생성 2026-09-06T17:40:10Z · 소스 커밋 `fa1d4b9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -598,6 +598,32 @@ updated: 2026-09-06T16:36:38Z
 
 함께 걸림: AGT-006(자기 결과물 검증), NKM-008(소켓 세션)
 
+
+## AGT-015 — 티켓이 "사람이 설정할 것"을 README에 남기면 아무도 하지 않는다
+
+`측정 2026-09-06 · GitLab CI · Claude Code 병렬 세션`
+
+**증상:** CI 티켓이 로컬(`run-local.sh`)에서는 녹색으로 완료됐다. README에
+"POSTGRES_PASSWORD 등 3개를 GitLab CI/CD 변수로 설정하라(Settings → CI/CD → Variables)"고
+적어 두었다. 이후 8시간 동안 원격 파이프라인 10개가 전부 `smoke` 단계에서
+`required variable POSTGRES_PASSWORD is missing a value`로 실패했고, 실패 메일이 와서야 알았다.
+로컬 검증만 보고 티켓을 통과시켰기 때문이다.
+
+작업 세션은 리포 밖(원격 설정·비밀·계정)을 건드릴 권한이 없어 "사람이 하라"고 적고 끝낸다.
+그 문장은 검수자가 읽고 넘기면 영원히 실행되지 않는다.
+
+**해결:** 검수 항목에 "리포 밖 설정을 남겼는가"를 넣는다. 남겼으면 검수자가 그 자리에서
+CLI로 직접 수행하고, **원격에서 실제로 한 번 통과한 결과**를 완료 조건에 넣는다.
+로컬 통과는 CI 티켓의 완료가 아니다.
+
+```
+glab variable set POSTGRES_PASSWORD "$(openssl rand -hex 16)" --masked --protected
+glab api "projects/<ns>%2F<repo>/variables" | jq '.[].key'   # 이름만 확인, 값은 출력하지 않는다
+git push && glab ci list --per-page 1                          # 원격 파이프라인 결과까지 본다
+```
+
+**주의:** `--protected` 변수는 보호 브랜치에서만 주입된다. main이 보호돼 있는지
+`protected_branches` API로 먼저 확인한다. 아니면 두 번째 실패를 같은 증상으로 겪는다.
 
 ---
 
