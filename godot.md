@@ -208,3 +208,97 @@ FCM `notification` 메시지는 Firebase SDK가 직접 시스템 트레이에 �
   "닫힌 앱은 푸시를 못 받는다"는 거짓 결론이 나온다
 
 미검증: 실기기. 위는 전부 에뮬레이터 실측이다.
+
+---
+
+## GDT-015 — `gl_compatibility`에서 되는 것과 안 되는 것 (실측표)
+
+`측정 2026-09-06 · Godot 4.7.2 · OpenGL API 4.1 Metal · Apple M1 Max`
+
+같은 3D 씬을 효과별로 껐다 켜서 PNG 픽셀을 비교했다. 같은 씬을 두 번 렌더하면
+차이가 **정확히 0**이라 잡음 바닥이 없다. `mean |Δ|`는 채널당 0~255 기준.
+
+**되는 것:**
+
+```
+깊이 포그(FOG_MODE_EXPONENTIAL, aerial_perspective 포함)   23.09
+디렉셔널 그림자                                            14.68
+2D 그레이드(CanvasItemMaterial MUL/ADD + 그라디언트)        17.68
+톤맵(FILMIC · ACES 둘 다 동작)                              9.37
+adjustment(brightness/contrast/saturation)                  5.45
+SSAO                                                        0.64
+글로우(HDR 임계값 넘는 이미시브에서만)                       1.91
+ProceduralSkyMaterial + REFLECTION_SOURCE_SKY                0.67
+```
+
+**SSAO가 된다.** 여러 자료가 Forward+ 전용으로 적어두지만 4.7.2 Compatibility에서
+동작한다. `ssao_radius` 1.1→4.0, `ssao_intensity` 2.6→16.0으로 올리면 접지부
+차폐가 눈에 띄게 커진다(mean 0.33 → 1.45). Compatibility에는 GI도 바운스도 없으므로
+**유일한 차폐 단서**다. 기본값은 카메라가 멀면 3픽셀도 안 되니 반드시 키워야 한다.
+
+**안 되는 것 — 켜도 경고 한 줄 찍고 무시된다. 픽셀 차이 0.000:**
+
+```
+볼류메트릭 포그   Volumetric fog is only available when using the Forward+ renderer.
+SDFGI            SDFGI is only available when using the Forward+ renderer.
+피사계 심도(DOF)  Depth of field blur is only available when using the Forward+ or Mobile renderer.
+```
+
+DOF 경고문은 **Mobile**도 지원한다고 말한다. Forward+ 효과를 되찾고 싶으면
+`forward_plus`보다 `mobile`이 싼 문이다.
+
+**해결:** 볼류메트릭 포그 → 깊이 포그 + `fog_aerial_perspective` + `fog_sun_scatter`
+(거리 안개는 살고 광선은 못 살린다). SDFGI/바운스 → 차가운 상수 앰비언트 + fill/rim
+디렉셔널 라이트. DOF → 2D 비네트로 주제 분리. 비네트는 `CanvasItemMaterial` 블렌드라
+Forward+ 파일에 있어도 렌더러와 무관하게 그대로 동작한다.
+
+---
+
+## GDT-016 — `user://` 경로에 슬래시가 겹치면 GLES3 셰이더 캐시가 실패한다
+
+`측정 2026-09-06 · Godot 4.7.2 · macOS 25.6 · Compatibility(OpenGL)`
+
+**증상:**
+
+```
+ERROR: Can't create shader cache folder, no shader caching will happen: user://
+   at: RasterizerGLES3 (drivers/gles3/rasterizer_gles3.cpp:352)
+```
+
+macOS `$TMPDIR`는 슬래시로 끝난다. 따라서 흔한 관용구
+
+```
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")"     # → /var/folders/.../T//x.abc123
+HOME="$WORK" godot --path client ...
+```
+
+가 만드는 `HOME`에는 `//`가 들어 있고, 여기서 파생된 `user://`로는 셰이더 캐시
+디렉터리 생성이 실패한다. 같은 경로로 `user://` **파일 쓰기는 정상**이라(디바이스 id
+등) 원인이 경로라는 게 잘 안 보인다.
+
+**헤드리스 실행에서는 안 나온다.** `--display-driver headless`는 래스터라이저를
+아예 띄우지 않는다. 헤드리스 테스트만 돌리다가 처음 창 모드 테스트를 짤 때 나온다.
+
+**해결:** `pwd -P`로 정규화한다.
+
+```
+WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")" && pwd -P)"
+```
+
+---
+
+## GDT-017 — `--quit-after`는 초가 아니라 프레임이고, 가려진 창은 스로틀된다
+
+`측정 2026-09-06 · Godot 4.7.2 · macOS 25.6`
+
+**증상:** 창 모드 테스트가 하루의 두 번째 실행에서 `exit code 143`으로 죽는다.
+같은 명령이 첫 실행에서는 통과한다. 클라이언트는 할 일을 이미 다 끝낸 상태다.
+
+`--quit-after <n>`은 **프레임 수**다. vsync가 걸린 창이면 600프레임이 60Hz에서
+10초지만, macOS가 가려졌거나 다른 Space에 있는 창을 스로틀하면 같은 600프레임에
+분 단위가 걸린다. `timeout`을 시간 상한으로 걸어두면 멀쩡한 실행이 SIGTERM으로 죽는다.
+
+**해결:** `--quit-after`를 시간 보증으로 쓰지 않는다. 스크린샷 같은 산출물은
+`SceneTreeTimer`(벽시계)로 예약하면 프레임 속도와 무관하게 뜨므로, 셸은 **출력된
+로그 줄과 파일 존재**로 단언하고 `timeout`에 의한 kill(124·143)을 허용한다.
+스스로 `get_tree().quit()`을 부르는 실행만 종료 코드를 엄격하게 본다.
