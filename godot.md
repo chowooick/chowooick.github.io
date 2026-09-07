@@ -661,3 +661,26 @@ add_child 뒤에 와야 한다.
 받은 시각**부터 잰다: press를 넣고 `while not gesture_active: await process_frame`
 로 도착을 기다린 뒤 타이머를 시작한다. 일반화하면, 합성 입력 뒤에 시간에
 민감한 후속 입력을 보낼 때는 항상 앞 입력의 수신을 확인하고 넘어간다.
+
+## GDT-032 — `AudioStreamGeneratorPlayback.push_buffer()`는 `PackedFloat32Array`를 거부한다 — `PackedVector2Array`만 받는다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** `AudioStreamGenerator`로 모노 파형을 코드로 합성해 `PackedFloat32Array`에
+담고 `playback.push_buffer(samples)`를 호출했다. 파싱 자체는 통과하지만 실행
+시점에 `SCRIPT ERROR: Invalid argument for "push_buffer()" function: argument 1
+should be "PackedVector2Array" but is "PackedFloat32Array"`로 죽는다 — 타입은
+GDScript 정적 분석이 아니라 엔진 쪽 런타임 인자 검사라서 `--check-only`도
+`ops/check.sh gd`(파싱만 확인)도 잡지 못하고, 그 스크립트를 참조하는 다른 씬을
+로드하는 순간(`Compile Error: Failed to compile depended scripts`) 무관해 보이는
+곳에서 실패가 튄다.
+
+**해결:** 모노도 스테레오 인터리브(`Vector2(l, r)`)로 채워 넣는다. 모노만
+필요하면 좌우에 같은 값을 넣는다:
+```gdscript
+var stereo := PackedVector2Array()
+stereo.resize(mono.size())
+for i in mono.size():
+    stereo[i] = Vector2(mono[i], mono[i])
+playback.push_buffer(stereo)
+```
