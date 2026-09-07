@@ -253,3 +253,53 @@ warn으로만 남긴다면 그 로그를 스모크가 `grep -c 42P10` 같은 형
 필요하고, 이 결함은 스모크의 경합 검사에서만 드러났다. (2) 멱등 래퍼가 `*sql.DB`를 직접
 받으면 유닛에서 "키가 이미 있는 상태"를 만들 수 없다. 래퍼를 함수 타입으로 주입받게 바꿔야
 유닛이 성립하고, 그 유닛은 수정 전 코드에서 실제로 FAIL하는지 반드시 확인한다.
+
+## NKM-017 — Nakama가 postgres 커넥션을 다 먹으면 락 대기 0인데 지연만 4배가 된다
+
+`측정 2026-09-07 · Nakama 3.40.0 · postgres 16.8-alpine`
+
+**증상:** 동시접속 300에서 DB를 지나는 RPC의 p95가 4배(13→56ms), p99는 348ms로 튄다. 그런데
+`pg_locks`에는 미승인 락이 **0건**이고 `pg_stat_activity`의 대기 이벤트도 비어 있다. 동시접속
+30·100에서는 같은 코드가 13·14ms로 멀쩡하다 — 부하에 비례해 나빠지는 것이 아니라 어느
+지점에서 갑자기 무너진다.
+
+부하 중 `psql`로 스냅샷을 뜨려 하면 여기서 정체가 드러난다:
+
+```
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed:
+FATAL:  sorry, too many clients already
+```
+
+`postgres:16-alpine`의 기본값은 `max_connections=100`,
+`superuser_reserved_connections=3`이다. Nakama의 커넥션 풀이 그 100을 다 쥐면 예약 3슬롯도
+남지 않아 **슈퍼유저로 붙는 psql조차 거부된다.** 그 뒤 애플리케이션 요청은 Go
+`database/sql`이 빈 커넥션을 내줄 때까지 기다리는데, 이 대기는 postgres 안에서 일어나지
+않으므로 `pg_locks`·`pg_stat_activity`·`pg_stat_statements` 어디에도 안 나온다. 세 뷰를 다
+봐도 "DB는 한가한데 느리다"로 보인다.
+
+꼬리가 먼저 무너지는 것도 이 모양의 특징이다. 큐잉은 평균보다 p99를 먼저 망가뜨린다.
+
+**해결:** 락과 쿼리를 의심하기 전에 커넥션 수를 센다. `SELECT count(*) FROM pg_stat_activity`를
+부하 중에 찍어 `max_connections`에 붙는지 보고, 붙으면 `--database.max_open_conns`(Nakama)와
+`max_connections`(postgres)를 같이 맞춘다. 진단용 psql이 붙지 못하는 상황 자체가 증거이므로,
+부하 측정 스크립트는 스냅샷 실패를 조용히 삼키지 말고 그대로 남겨야 한다.
+
+## NKM-018 — pg_stat_statements의 mean_exec_time은 플래닝을 빼고 센다
+
+`측정 2026-09-07 · postgres 16.8 · Nakama 3.40.0`
+
+**증상:** `pg_stat_statements` 상위 쿼리를 다 더해도 RPC 지연이 설명되지 않는다. RPC 한 번이
+문장 15개를 내고 표에 찍힌 `mean_exec_time` 합이 0.60ms인데, 클라이언트가 재는 왕복은 4.4ms다.
+"DB가 아니라 앱이 느리다"는 결론으로 새기 쉽다.
+
+`track_planning`은 기본이 `off`이고, 꺼져 있으면 `mean_plan_time`은 0으로 보인다. 켜고 다시
+재면 같은 15문장의 플래닝 합이 0.77ms로, **실행 시간(0.60ms)보다 크다.** Nakama는 런타임
+모듈이 내는 문장을 준비된 구문으로 재사용하지 않으므로 매번 파싱·플래닝한다. `EXPLAIN
+ANALYZE` 한 줄에서도 같은 비율이 보인다 — 단순 인덱스 조회 하나가 Planning 0.354ms /
+Execution 0.045ms다.
+
+**해결:** 문장 단위 비용을 논거로 쓸 때는 `-c pg_stat_statements.track_planning=on`으로 재고,
+`total_plan_time + total_exec_time`으로 정렬한다. 오버헤드가 있으니 상시로 켜 두지는 않는다.
+따라오는 결론이 뒤집힌다: 비용이 플래닝에 있으면 레버는 쿼리 최적화가 아니라 **문장 개수**다.
+같은 행을 세 문장으로 나눠 묻던 것을 조인 하나로 합치는 편이, 그 세 문장을 각각 빠르게 만드는
+것보다 크게 듣는다.
