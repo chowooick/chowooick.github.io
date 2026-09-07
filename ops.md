@@ -934,3 +934,57 @@ p50부터 통째로 밀린다. 여기서는 p50 55.2ms(저부하 60.4ms와 동�
 단일 asyncio 루프의 수신 처리량이 벽이므로 **클라이언트를 프로세스로 쪼개는 것이 답이다** —
 N개 프로세스로 나누면 각 프로세스는 1/N 접속의 조건에 놓인다(이 실측에서 접속 100 조건은
 9.95회/초 · CPU 14.4%로 계약을 지켰다). 기계를 더 사기 전에 이것부터 시험한다.
+
+## OPS-043 — `exec > >(tee ...)` makes a bare `wait` hang forever on bash 5.2
+`측정 2026-09-08 · bash 5.2.37 (alpine) vs bash 5.3 (macOS) · GitLab CI docker:27-cli + apk add bash`
+
+**증상:** A script that logs itself with `exec > >(tee -a "$LOG") 2>&1` and later
+runs concurrent work with `... &` followed by a bare `wait` never returns. On
+GitLab CI three pipelines in a row died at the 10-minute job timeout, always at
+the same line: a smoke that took 1s green took 583s, 584s and 572s. Nothing is
+printed — the script is simply parked in `wait`.
+
+Bash records the process-substitution child in its job table, so a bare `wait`
+(which waits for *all* known jobs, not just the ones you backgrounded) waits for
+the `tee` too — and the `tee` cannot exit while the script still holds the write
+end. It is version-dependent: bash 5.3 on macOS does not reproduce it, alpine's
+bash 5.2.37 does, so a developer machine will show the script working.
+
+Minimal reproduction, 8-second timeout, alpine bash: `rc=143` (killed) for the
+process-substitution form, `rc=0` for the FIFO form below.
+
+**해결:** Replace the process substitution with an explicit FIFO and `disown`
+the `tee`, which removes it from the job table so no spelling of `wait` can see
+it:
+
+```sh
+f="${TMPDIR:-/tmp}/log-$$-$RANDOM.fifo"; rm -f "$f"; mkfifo "$f"
+tee -a "$LOG" <"$f" & TEE=$!; disown "$TEE"
+exec >"$f" 2>&1
+rm -f "$f"        # both ends are open; the name is no longer needed
+```
+
+Because the `tee` is disowned, `wait "$TEE"` can no longer flush it at the end.
+Restore the saved fds (`exec 1>&3 2>&4`) — that gives the `tee` EOF — and poll
+`kill -0 "$TEE"` with an upper bound instead.
+
+## OPS-044 — `ssh` reports a signal-killed remote command as exit 255, with no message
+`측정 2026-09-08 · OpenSSH 10.3p1 · macOS 26.6.2`
+
+**증상:** A remote command run over `ssh` returns 255 and prints nothing at all —
+no `client_loop`, no `Connection closed`. 255 is normally read as "ssh itself
+failed", so the search goes to the network, and the actual cause is that the
+remote process was killed by a signal: the SSH protocol has no way to carry a
+signal exit, so the client substitutes 255. `ssh -E <file> -o LogLevel=DEBUG1`
+shows a clean channel teardown, which confirms the link was never the problem.
+
+The two things that separate this from a real connection failure, both checkable
+on the remote host: no crash report appears in `~/Library/Logs/DiagnosticReports`
+(so it was not a crash), and the remote process's own log file stops mid-stream
+rather than at a shutdown line (so it was not a clean exit).
+
+**해결:** Look for whatever kills processes by name on the remote host. In our
+case a shared teardown ran `pkill -9 -f 'Godot.app/Contents/MacOS/Godot'`, which
+swept every run's clients, not just its own; scoping the pattern to the run's own
+working directory — which appears in every argument that run's processes were
+given — fixed it. Any `pkill -f` on a shared machine has this shape.
