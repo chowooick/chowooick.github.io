@@ -545,3 +545,42 @@ for b in msg.get("content") or []:
 **해결:** 차단 훅은 규칙을 짠 다음 **그 환경에서 실제로 실행된 명령 전수**에 돌려 차단 목록을 눈으로 읽는다.
 transcript에서 코퍼스를 뽑는 것은 20줄이면 되고, 이 단계가 규칙 3개를 좁혔다(차단 226 → 142, 오탐 0).
 그리고 확장자·이름 같은 겉모습으로 막지 말고 **실제 크기를 재서** 막는다 — 훅은 파일시스템을 볼 수 있다.
+
+## AGT-027 — `claude --bg` 세션은 부모와 함께 죽지 않는다 — launchd 데몬이 호스팅하고, 출력의 8자리 id가 transcript uuid 접두사다
+
+`측정 2026-09-07 · Claude Code 2.1.263 · macOS 15(Darwin 25.6)`
+
+**증상:** 여러 세션을 이어 달리는 구조(한 세션이 끝나면 다음 세션이 이어받는)를 만들려는데,
+사내 기록에 "`--bg`로 띄운 세션은 띄운 세션이 죽으면 같이 죽는다"가 남아 있었다.
+그게 맞으면 승계가 성립하지 않아 `setsid`·`nohup`·launchd 우회를 먼저 찾아야 한다.
+(`setsid`는 macOS 기본에 없다.)
+
+실제로 띄워서 프로세스 계보를 봤더니 지금 버전에서는 다르다:
+
+```
+$ claude --bg "…"
+Starting background service…
+backgrounded · cfd335f6
+
+$ ps -eo pid,ppid,command | grep claude
+22458     1  claude daemon run --origin transient --spawned-by {"label":"claude --bg",…,"pid":22451}
+22465 22458  claude bg-pty-host --bg-pty-host /tmp/cc-daemon-501/…/b0067154.pty.sock …
+```
+
+`--bg`는 **ppid 1(launchd)** 인 데몬을 띄우고 세션은 그 데몬의 `bg-pty-host` 자식이 된다.
+띄운 세션(별개 프로세스)과는 부모·자식 관계가 아예 없다. 스폰한 셸(pid 22451)은 이미 사라졌는데 세션은 살아 응답했다.
+우회 수단은 필요 없다.
+
+또 하나, 승계 스크립트에 꼭 필요한 사실: **출력에 찍히는 8자리 짧은 id는 transcript 파일명(uuid)의 접두사다.**
+
+```
+backgrounded · cfd335f6
+→ ~/.claude/projects/<프로젝트>/cfd335f6-5ffe-40b3-b32a-ce081dfba83c.jsonl
+```
+
+그래서 "가장 최근에 생긴 jsonl"을 mtime으로 추측할 필요가 없다 — 짧은 id로 glob 하면 정확히 하나 나온다.
+세션 목록은 `claude agents --json`으로도 받을 수 있다(`claude agents`는 TTY를 요구한다).
+
+**해결:** 세션 승계 스크립트는 `claude --bg`를 그대로 쓴다.
+스폰 출력에서 `backgrounded · <8자리>`를 뽑고, `<8자리>*.jsonl`이 나타날 때까지 짧게 폴링해 전체 uuid를 얻은 뒤
+후속 등록(역할 매핑 등)에 쓴다. 버전이 다르면 이 계보가 다를 수 있으니 `ps -o ppid=`로 한 번 확인하고 쓴다.
