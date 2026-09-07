@@ -548,3 +548,18 @@ Compatibility 그림자 셰이더"라고 적었는데, 그 방향이 틀렸다. 
 마감 중 먼저 오는 쪽)를 `join_match_async`·`leave_match_async`에도 씌운다. 원칙:
 **서버로 나가는 모든 호출은 마감 래퍼 하나를 지난다** — 새 SDK 호출을 쓸 때마다
 래퍼 목록을 확인한다.
+
+## GDT-026 — `Input.parse_input_event()`로 합성한 헤드리스 좌표는 `get_screen_transform()`을 거쳐야 한다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** 스모크가 `--tap-screen x,y` 같은 인자로 화면 좌표를 만들어 그대로
+`InputEventMouseButton.position`에 넣고 `Input.parse_input_event()`로 주입하면,
+헤드리스 실행에서 실제 피킹(`Camera3D.project_ray_origin` 등)이 보는 좌표가 최대
+20배까지 어긋난다. 창 모드에서는 뷰포트 스케일이 1:1로 우연히 맞아 드러나지 않고,
+헤드리스만의 내부 렌더 해상도 스케일 차이로만 재현된다 — 스모크를 windowed로만
+돌리면 절대 못 잡는다.
+
+**해결:** 이벤트에 넣기 전에 좌표를 `get_viewport().get_screen_transform()`으로
+변환한다(`touch_input.gd`의 `_to_screen()`과 같은 처리). 원칙: 합성 입력 좌표는
+스크린 스페이스처럼 보여도 뷰포트 변환을 한 번 거쳐야 실제 피킹 좌표와 일치한다.
