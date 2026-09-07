@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-07T22:56:42Z · 소스 커밋 `baf0308` · 이 파일은 자동 생성물이다.
+생성 2026-09-07T23:06:09Z · 소스 커밋 `8c468b2` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2797,4 +2797,74 @@ case a shared teardown ran `pkill -9 -f 'Godot.app/Contents/MacOS/Godot'`, which
 swept every run's clients, not just its own; scoping the pattern to the run's own
 working directory — which appears in every argument that run's processes were
 given — fixed it. Any `pkill -f` on a shared machine has this shape.
+
+## OPS-045 — uv가 관리하는 파이썬에는 pip install이 거부된다
+`측정 2026-09-08 · uv 0.12.10 · CPython 3.12.14 · macOS 15`
+
+**증상:** `uv python install 3.12`로 인터프리터를 깔고 거기에 패키지를 넣으려 하면
+거부된다. 가상환경 얘기가 아니라 그 인터프리터 자체다.
+
+```
+uv pip install --python "$(uv python find 3.12)" websockets
+error: The interpreter at /Users/x/.local/share/uv/python/cpython-3.12.14-macos-aarch64-none
+is externally managed, and indicates the following:
+  This Python installation is managed by uv and should not be modified.
+hint: Consider creating a virtual environment, e.g., with `uv venv`
+```
+
+uv가 관리 인터프리터에 `EXTERNALLY-MANAGED` 마커(PEP 668)를 심어 둔다. 힌트는
+venv를 권하지만, `python3`를 그냥 부르는 기존 스크립트에 PATH로만 끼어들려는
+경우에는 venv가 오히려 층을 하나 더 만든다.
+
+**해결:** `--break-system-packages`를 붙이면 관리 인터프리터에 그대로 들어간다.
+
+```
+uv pip install --break-system-packages --python "$(uv python find 3.12)" websockets
+```
+
+uv 관리 인터프리터의 `bin/`에는 `python3`·`python` 심볼릭 링크가 `python3.12`와
+함께 들어 있다. 그래서 그 디렉터리를 PATH 앞에 붙이는 것만으로 스크립트의 맨
+`python3` 호출이 전부 그쪽으로 간다 — 스크립트는 한 줄도 안 고친다.
+
+주의: uv가 인터프리터를 재설치·업그레이드하면 이렇게 넣은 패키지는 사라진다.
+재현이 필요한 환경이면 설치 명령을 리포의 설치 문서에 남겨 둔다.
+
+## OPS-046 — 파이썬 의존성을 `grep '^import'`로 세면 조건부 import를 통째로 놓친다
+`측정 2026-09-08 · CPython 3.9.6 / 3.12.14`
+
+**증상:** 인터프리터를 바꾸기 전에 "3rd-party 의존이 있나"를 확인하려고
+`grep -hn '^import \|^from ' **/*.py`를 돌렸다. 결과가 전부 표준 라이브러리라
+의존이 없다고 판단했는데, 실제로는 `websockets` 패키지가 필수였다. 그 패키지가
+없는 인터프리터로 바꿨으면 소켓을 쓰는 스크립트 8개가 전부 죽었다.
+
+`try`/`except ImportError` 안의 import는 들여쓰기가 있어 `^import`에 안 걸린다.
+이 형태는 "친절한 에러 메시지를 주려는" 코드에서 특히 흔하다 — 즉 **가장 중요한
+의존일수록 이 패턴으로 숨는다.**
+
+```python
+try:
+    import websockets
+except ImportError:
+    sys.stderr.write("needs the websockets package: pip3 install websockets\n")
+    sys.exit(2)
+```
+
+**해결:** 정규식 대신 AST로 센다. `ast.walk`는 위치와 무관하게 전부 잡는다.
+
+```python
+import ast, pathlib
+mods = set()
+for f in pathlib.Path('.').rglob('*.py'):
+    for n in ast.walk(ast.parse(f.read_text())):
+        if isinstance(n, ast.Import):
+            mods |= {a.name.split('.')[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+            mods.add(n.module.split('.')[0])
+```
+
+venv·`site-packages`를 `rglob`가 같이 훑으면 표준 라이브러리와 남의 의존까지
+섞여 목록이 수백 개가 되고 쓸모가 없어진다. 스캔 경로에서 먼저 제외한다.
+
+더 확실한 답은 바꿀 인터프리터로 실제 진입점을 돌려 보는 것이다. 정적 분석은
+`importlib.util.spec_from_file_location`으로 동적 로드하는 코드를 못 따라간다.
 
