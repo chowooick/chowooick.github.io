@@ -708,3 +708,41 @@ if [ "$flag" = "1" ]; then exit 1; fi
 ```
 이렇게 하면 `if` 블록 자체가 정상 종료(exit 0)로 끝나 트랩의 최종 exit status에 영향을 주지
 않는다. `[ cond ] && exit N` 관용구는 함수·트랩의 **마지막 줄이 아닐 때만** 안전하다.
+
+## OPS-033 — `pg_stat_statements`는 락 문장을 호출자별로 못 나누고 보유 시간도 못 준다 — 문장 로그로 PID별 트랜잭션을 복원해야 진짜 병목이 보인다
+
+`측정 2026-09-07 · PostgreSQL 16.8 · Nakama 3.40(pgx) · CCU 100 부하`
+
+**증상:** 부하 조사에서 `SELECT 1 FROM channel_locks WHERE channel_id=$1 FOR UPDATE`가
+평균 8.8ms·최대 79ms로 대기 1위로 잡혀, 그 락을 쓰는 "입장(channel.join) 임계 구간"을
+줄이는 티켓이 나왔다. 실측해 보니 그 문장을 부르는 트랜잭션은 **두 종류**였다 —
+입장(join)과 캐릭터 생성(create, 같은 테이블의 다른 행 `@assign`을 잠근다) — 그리고
+`pg_stat_statements`는 문장 텍스트가 같으면 한 행으로 합친다. 실제로는:
+
+| 트랜잭션 | 락 안 문장 수 | 보유 평균/p95 | 대기 평균/p95/max |
+|---|---:|---:|---:|
+| character.create | 13 | 4.2 / 9.0 ms | **39 / 92 / 110 ms** |
+| channel.join | 4 | 1.9 / 3.0 ms | 0.03 / 0.06 / 0.11 ms |
+
+8.8ms의 정체는 create였고 join은 사실상 경합이 없었다(봇이 50ms 간격으로 입장). 또
+`pg_stat_statements`의 `mean_exec_time`은 **문장 실행 시간**이라, 락 안 4문장의 exec 합이
+0.1ms인데 실제 보유는 1.9ms였다 — 나머지는 왕복(문장당 ~0.3ms)과 커밋이다. 문장을
+줄여도 exec 합은 거의 안 변하고 왕복 수만 줄어든다. 두 사실 모두 `pg_stat_statements`
+만 보면 절대 안 보인다.
+
+**해결:** 트랜잭션 단위로 복원한다. postgres가 healthy가 된 직후(nakama가 마이그레이션을
+도는 동안, 재시작 없이) 켠다:
+```
+ALTER SYSTEM SET log_min_duration_statement = 0;   -- 모든 문장을 끝난 시점에 duration과 함께
+ALTER SYSTEM SET log_lock_waits = on;  ALTER SYSTEM SET deadlock_timeout = '1ms';
+SELECT pg_reload_conf();
+```
+그 뒤 `docker logs <postgres>`를 PID별로 훑는다: `FOR UPDATE` 줄의 타임스탬프 = 락 획득,
+그 줄의 duration = **대기**, 이후 `commit` 줄까지 = **보유**, 사이의 줄 수 = 락 안 왕복 수.
+트랜잭션 안에 어떤 문장이 있는지로 호출자를 가른다(`FROM channels c`면 create, `INSERT
+INTO channel_seats`면 join). 파싱 함정 둘: pgx는 `execute stmtcache_<hash>: ` 뒤 **다음 줄**
+(탭 들여쓰기)에 SQL을 쓰므로 연속 줄을 앞 LOG 줄에 붙여야 하고, `bind` 줄도 duration을
+달고 오지만 실행이 아니니 버린다. `%m`은 ms 해상도라 1ms 근처 보유 시간은 양자화된다 —
+평균은 쓸 수 있고 개별 값은 못 믿는다. `pg_locks`를 0.2초마다 찍는 방식은 이 부하에서
+800 샘플 중 대기자 0을 냈다 — 대기가 수십 ms 이하면 폴링으로는 못 잡는다;
+`log_lock_waits`가 이벤트마다 남긴다.
