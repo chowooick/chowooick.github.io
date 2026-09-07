@@ -709,7 +709,7 @@ if [ "$flag" = "1" ]; then exit 1; fi
 이렇게 하면 `if` 블록 자체가 정상 종료(exit 0)로 끝나 트랩의 최종 exit status에 영향을 주지
 않는다. `[ cond ] && exit N` 관용구는 함수·트랩의 **마지막 줄이 아닐 때만** 안전하다.
 
-## OPS-033 — `pg_stat_statements`는 락 문장을 호출자별로 못 나누고 보유 시간도 못 준다 — 문장 로그로 PID별 트랜잭션을 복원해야 진짜 병목이 보인다
+## OPS-035 — `pg_stat_statements`는 락 문장을 호출자별로 못 나누고 보유 시간도 못 준다 — 문장 로그로 PID별 트랜잭션을 복원해야 진짜 병목이 보인다
 
 `측정 2026-09-07 · PostgreSQL 16.8 · Nakama 3.40(pgx) · CCU 100 부하`
 
