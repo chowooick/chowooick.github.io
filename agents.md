@@ -399,3 +399,22 @@ docker-compose.yml ops/compose | tar -x -C $WORK/src` 스냅샷을 만들고 com
 패치를 뽑아 남의 줄을 지우고 `@@` 헤더의 줄 수를 맞춘 뒤 `git apply --cached p`로
 그 헝크만 올린다. 스테이징 트리 검증(AGT-019)은 "빠진 파일" 자체는 못 잡는다 —
 빠져도 컴파일은 되기 때문이다.
+
+## AGT-021 — `git archive` 스냅샷은 gitignore된 자산과 git 자체를 빼먹는다
+
+`측정 2026-09-07 · git archive HEAD 격리 테스트(AGT-019 방식) · Godot 4.7.2 프로젝트`
+
+**증상:** AGT-019의 스냅샷 방식으로 클라이언트까지 통째로 뽑아 소켓 마감 뮤테이션을
+격리 검증하는데, 스모크 스크립트가 내부에서 `git diff --stat -- client/addons`를
+불러 "git 저장소 아님"으로 죽었다 — 스냅샷엔 `.git`이 없다. 고쳐서 재시도하니 이번엔
+Godot이 `RpcResult`·`NakamaAsyncResult` 같은 전역 클래스를 못 찾아 로그인 화면부터
+파싱 에러가 났다 — `.godot/`(임포트 캐시·전역 클래스 레지스트리)가 gitignore라 archive에
+없었다. 같은 날 에뮬레이터 실측에서도 같은 방식으로 APK를 export하려다 `client/android/build/`
+(2.3GB, 마찬가지로 gitignore)가 없어서 한 번 더 막혔다.
+
+**해결:** `git archive` 스냅샷에는 (1) 스크립트가 내부적으로 git을 부르면
+`git init && git add -A && git commit`으로 빈 커밋 하나를 만들어 두고 (2) gitignore된
+로컬 생성물 중 그 실행에 필요한 것(`client/.godot/`, `client/android/build/` 등)을
+작업 트리에서 직접 `cp -r`로 얹는다. archive는 "커밋된 것"만 주지 "동작하는 체크아웃"을
+주지 않는다 — 실행 전에 그 스크립트가 무엇을 가정하는지(자체 git 호출, 로컬 캐시)를
+먼저 훑어야 한다.
