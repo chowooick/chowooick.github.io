@@ -201,3 +201,29 @@ Nakama에 스트림 상한 API가 없다. `StreamUserList`로 세고 `StreamUser
 관측할 수 없다). `last_seen_at` 조작 → 재입장 → 좌석만 반납 → 상대가 RPC 1회 →
 `member_left(reason=offline)`이 본인에게 도달하고 그 뒤 수신 0. 이 순서가 아니면
 "유령을 되살리지 않는다"는 명제는 검증 불가다.
+
+## NKM-015 — UNIQUE 제약을 부분 유니크 인덱스로 바꾸면 기존 `ON CONFLICT (col)`이 전부 42P10으로 죽는다. 배경 틱은 경고 한 줄만 남기고 조용히 멈춘다
+
+`측정 2026-09-07 · PostgreSQL 16 · Nakama 3.40 Go 런타임`
+
+**증상:** 마이그레이션이 `ALTER TABLE characters DROP CONSTRAINT characters_user_id_key`로
+컬럼 UNIQUE를 떼고 `CREATE UNIQUE INDEX ... ON characters (user_id) WHERE died_at IS NULL
+OR revived_at IS NOT NULL`(부분 인덱스)로 바꿨다. 그 컬럼에 `ON CONFLICT (user_id) DO
+NOTHING`을 쓰던 기존 INSERT가 전부 실패한다:
+
+```
+ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification (SQLSTATE 42P10)
+```
+
+부분 인덱스는 술어를 같이 주지 않으면 conflict 대상으로 **추론되지 않는다**. 마이그레이션은
+성공하고, 컴파일도 되고, 그 INSERT를 부르지 않는 테스트는 전부 통과한다. 이 서버에서는
+1분마다 도는 배경 틱이 그 INSERT를 부르고 있었고, 틱은 오류를 삼켜
+`warn: tick failed: storage_error` 한 줄만 남긴다 — 기능(상시 매수자)이 커밋 시점부터
+전역에서 죽어 있었는데 아무도 몰랐고, 무관한 티켓의 스모크 1단계에서야 드러났다.
+
+**해결:** 부분 유니크 인덱스를 만들면 그 컬럼을 conflict 대상으로 쓰는 모든 INSERT에
+**술어를 글자 단위로 같게** 붙인다 — `ON CONFLICT (user_id) WHERE died_at IS NULL OR
+revived_at IS NOT NULL DO NOTHING`. 제약을 떼는 마이그레이션을 쓸 때는 같은 저장 단위로
+`grep -rn "ON CONFLICT (<컬럼>" `를 돌려 호출부를 전부 훑는다. 그리고 배경 루프가 오류를
+warn으로만 남긴다면 그 로그를 스모크가 `grep -c 42P10` 같은 형태로 직접 검사해야 한다 —
+조용히 죽는 루프는 테스트가 화면으로 볼 수 없다.
