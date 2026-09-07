@@ -584,6 +584,13 @@ Compatibility 그림자 셰이더"라고 적었는데, 그 방향이 틀렸다. 
 `preload(...).new()`로 붙이는 패턴)이고, `class_name` 전역 참조는 애초에
 드물게만 쓰인다는 뜻이기도 하다.
 
+추가 실측(2026-09-07, T106): 타입 힌트(`var t: Foo`)까지 쓰려면 `class_name`이
+필요하다. 그때는 `godot --headless --import --path client`를 한 번 돌리면
+`global_script_class_cache.cfg`에 새 클래스가 들어가고 이후 평범한 헤드리스
+실행에서도 보인다(같은 `.godot/`를 쓰는 다른 세션에도 적용된다). CI는 신선한
+체크아웃마다 이 `--import`를 돌리므로(`ops/ci/run-local.sh`) 거기서는 문제가
+안 난다 — 로컬 첫 실행만 걸린다.
+
 ## GDT-028 — `Dictionary.get(key, fallback)`의 fallback은 키가 없을 때만 나온다 — 값이 JSON null이면 그 null이 그대로 나온다
 
 `측정 2026-09-07 · Godot 4.7.2`

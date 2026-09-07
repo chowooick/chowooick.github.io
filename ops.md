@@ -617,3 +617,31 @@ gRPC non-OK를 그대로 "오류"로 집계하는 부하 도구는 전부 이 �
 p99는 101 → 348ms, 최대 863ms였다. **꼬리가 갈라지는 것이 큐가 생기는
 신호**이고 p95는 그것을 끝까지 안 보여준다. 부하표에는 p95와 p99를 같이
 싣는다.
+
+## OPS-032 — `godot --check-only --quit`에 `--script`를 안 주면 아무 스크립트도 검사하지 않는다 — 깨진 트리가 "parse ok"로 통과한다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** 편집 뒤 게이트로 쓰던 `godot --headless --path client --check-only --quit`
+(`ops/check.sh gd`)가 `godot parse ok`를 냈는데, 같은 트리에서 헤드리스 플레이
+실행은 첫 씬 로드에서 죽었다:
+```
+SCRIPT ERROR: Parse Error: Cannot find member "STRIDE_M" in base "res://features/world/player.gd".
+SCRIPT ERROR: Parse Error: Assigned value for constant "CLIP_SPECS" isn't a constant expression.
+ERROR: Failed to load script "res://features/world/world.gd" with error "Compilation failed".
+```
+다른 세션이 `player.gd`의 상수를 지웠고 `sync.gd`가 그것을 `PlayerScript.STRIDE_M`
+으로 참조하는 상태였다. `--check-only`의 출력에는 프로젝트 설정 로드 한 줄
+(`[config] root=...`)뿐이고 exit 0. 같은 명령에 `--script res://features/world/sync.gd`
+를 붙이자 위 `SCRIPT ERROR`가 그대로 나왔다. 즉 `--check-only`는 **`--script`로
+지정한 파일 하나**를 검사하는 옵션이고, 없으면 프로젝트만 열고 종료한다 —
+"프로젝트 전체 파싱"이 아니다.
+
+**해결:** 게이트는 둘 중 하나로 만든다. (1) `git ls-files 'client/**/*.gd'`를 돌며
+파일마다 `--check-only --script res://<path>`를 부른다 — 파일 수만큼 프로세스가
+뜨지만 크로스파일 상수·타입 오류까지 잡힌다. (2) 실제 진입 씬을
+`--headless --quit-after 2`로 로드해 `SCRIPT ERROR|Failed to load script`를 grep
+한다 — 한 번에 끝나고 씬이 실제로 끄는 스크립트만 검사한다(도달 불가 파일은
+빠진다). 새 `class_name`은 어느 쪽이든 `.godot/global_script_class_cache.cfg`에
+있어야 보인다(GDT-027) — 세션에서 처음 추가했으면 `godot --headless --import
+--path client`를 한 번 돌린다.
