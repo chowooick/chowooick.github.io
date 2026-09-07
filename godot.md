@@ -448,3 +448,42 @@ rm -rf client/android/build/src/main/assets client/android/build/build
 어댑터 아래층에서 막아야 한다. 반대로 **웹소켓 RPC는 GDScript로 막힌다** —
 `NakamaSocket.rpc_async()`는 프레임을 멈추지 않으므로 요청과 `SceneTreeTimer`를
 경주시키면 마감이 정상 동작한다. 같은 "서버 무응답"이라도 두 경로의 성질이 다르다.
+
+---
+
+## GDT-023 — `gl_compatibility`에서 넓은 지형이 원거리 비탈에 사각 패치를 낸다. 방향광 그림자를 끄는 것 말고는 무엇도 듣지 않는다
+
+`측정 2026-09-06 · Godot 4.7.2 · gl_compatibility · Apple M1 Max`
+
+**증상:** 200×200 m 코드 생성 지형(`SurfaceTool` 플랫 셰이딩, 4×4 청크, 셀 1.56 m)을
+지상 4~7 m의 3인칭 카메라로 보면, **카메라에서 50 m 이상 떨어진 비탈**에 월드 축에
+정렬된 사각 패치가 밝기 차이로 드러난다. 태양을 스치듯 받는 면(크레이터 안쪽 벽)에서
+가장 심하다. 패치 한 변은 화면상 30~60 px이고 지형 셀 크기와 무관하다.
+
+**유일한 소거 조건은 방향광(키 라이트)의 `shadow_enabled = false`다.** 끄면 완전히
+사라진다. 그런데 그 위치에는 그림자를 드리울 물체가 없고, 지형 자체는
+`SHADOW_CASTING_SETTING_OFF`라 자기 그림자도 못 만든다.
+
+**효과가 없음을 확인한 것** — 전부 같은 카메라·같은 프레임을 렌더해 PNG를 비교했다:
+
+| 분류 | 시험한 것 |
+|---|---|
+| Environment | `ssao_enabled` off · `glow_enabled` off · `fog_enabled` off · `background_mode = BG_COLOR` |
+| 그림자 파라미터 | `shadow_bias` 0.035→0.005 · `shadow_normal_bias` 1.4→0.05 · `shadow_blur` 1.4→0 · `light_angular_distance` 1.6→0 · `directional_shadow_max_distance` 60→25 및 →200 · `PARALLEL_2_SPLITS`→`ORTHOGONAL` · `blend_splits` off |
+| 지오메트리 | 테셀레이션 128→256 셀 · 청크 4×4→8×8 · 삼각형 대각선 선택을 슬로프 추종에서 고정으로 |
+| 머티리얼 | albedo·roughness 텍스처 제거 · `SPECULAR_DISABLED`→활성 |
+| 캐스터 | 바위 139개 전부 제거 · 원거리 메사 18개 전부 제거 · 바위 `cast_shadow` off |
+
+**테셀레이션을 2배로 해도 패치 크기가 변하지 않는다**는 것이 지오메트리가 원인이
+아니라는 증거다. `directional_shadow_max_distance`를 25로 줄여 문제 구간을 그림자
+사거리 밖으로 빼도 그대로라는 것은 그림자 맵의 커버리지 문제도 아니라는 뜻이다.
+
+**반례:** 같은 아트 킷·같은 `Environment`·같은 3점 조명으로 **30 m 프레임**(고정
+아이소메트릭 카메라, 건물 위주)을 렌더하면 나타나지 않는다. 카메라가 보는 거리와
+지형 면적의 문제다. GDT-015의 실측표는 30 m 프레임에서 잰 것이라 이 조건을 담고 있지
+않다.
+
+**해결:** 없다. 원인을 특정하지 못했다. 그림자를 끄면 지면에 캐릭터 그림자가 사라져
+받아들이기 어려우므로 회피책도 되지 못한다. 이 항목의 값어치는 위 표다 — 같은 증상을
+만나면 저 15가지는 다시 시험하지 않아도 된다. 남은 방향은 엔진 소스의
+Compatibility 그림자 셰이더이지 노출된 속성이 아니다.
