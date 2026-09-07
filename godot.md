@@ -684,3 +684,37 @@ for i in mono.size():
     stereo[i] = Vector2(mono[i], mono[i])
 playback.push_buffer(stereo)
 ```
+
+## GDT-033 — `--script X.gd`(SceneTree 대체) 모드는 `_init()`에서 오토로드가 아직 없다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** 헤드리스 검사용으로 `extends SceneTree`인 스크립트를 `--script`로 돌리면서
+시작 로직을 생성자 `_init()`에 넣으면, `project.godot`의 오토로드(예: `MarsNet`)를
+참조하는 스크립트를 `load()`할 때마다 `SCRIPT ERROR: Compile Error: Identifier not
+found: MarsNet`로 깨진다. 같은 프로젝트를 `--check-only`(일반 기동 경로)로 검사하면
+멀쩡히 통과한다 — 오토로드가 문제가 아니라 **`_init()`이 엔진의 오토로드 등록보다
+먼저 실행된다**는 것이 문제다. 커스텀 메인루프가 엔진 자체 시작 절차를 대체하기
+때문에, 오토로드는 여전히 나중에 등록되지만 그 시점을 `_init()`이 이미 지나쳐
+버린다.
+
+**해결:** 시작 로직을 `_init()`이 아니라 `_initialize()`(엔진이 오토로드까지 끝낸
+뒤 호출하는 가상 함수)에 넣는다. `_initialize()`로 옮기기만 하면 같은 스크립트가
+같은 씬을 오류 없이 로드한다.
+
+## GDT-034 — `git archive HEAD` 스냅샷은 `.godot/` 캐시가 없어 첫 헤드리스 실행이 전역 클래스를 못 찾는다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** `git archive HEAD | tar -x`로 만든 스냅샷 위에서 바로
+`--headless --path client --check-only`(또는 다른 헤드리스 검사)를 돌리면
+`class_name`으로 선언한 전역 클래스(`NakamaLogger`·`MarsConfig` 등)를 "Identifier
+not found"·"Could not find type"로 못 찾는다. 원인은 `.godot/`(임포트·전역 클래스
+캐시)가 `.gitignore` 대상이라 아카이브에 없다는 것 — 오래 써 온 실제 작업 트리에는
+이 캐시가 이미 있어서 같은 증상이 재현되지 않는다.
+
+**해결:** 검사를 돌리기 전에 헤드리스 임포트를 한 번 먼저 실행해 캐시를 만든다:
+```
+"$GODOT" --headless --path <snapshot>/client --import --quit
+```
+이후 같은 스냅샷에서 돌리는 모든 헤드리스 검사가 정상 동작한다.
