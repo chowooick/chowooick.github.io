@@ -736,3 +736,30 @@ not found"·"Could not find type"로 못 찾는다. 원인은 `.godot/`(임포�
 전체 임포트 스캔이 돌면서 캐시에 항목이 들어가고 그 뒤로는 정상이다.
 다른 스크립트에서 그 타입을 참조해야 할 이유가 없다면 `preload("res://...")`로 받는 편이
 캐시 상태와 무관하게 동작한다.
+
+## GDT-036 — 콜드 `.godot`은 빈 캐시가 아니라 깨진 프로젝트다 — `class_name` 타입이 전부 미해결이 되고 오토로드가 안 뜬다
+
+`측정 2026-09-08 · Godot 4.7.2 · macOS 26.3`
+
+**증상:** `.godot`을 제외하고 프로젝트를 새 기계로 복사한 뒤 첫 `--headless --path client --quit`이
+이렇게 죽는다. 파일은 전부 멀쩡하고 같은 트리가 원래 기계에서는 통과한다.
+
+```
+SCRIPT ERROR: Parse Error: Could not find type "RpcResult" in the current scope.
+SCRIPT ERROR: Parse Error: Could not resolve external class member "rpc_async".
+ERROR: Failed to instantiate an autoload, script 'res://core/net/nakama_client.gd' does not inherit from 'Node'
+WARNING: ext_resource, invalid UID: uid://ch6vw6uy3oac3 - using text path instead
+```
+
+`class_name`으로 선언한 전역 타입은 소스가 아니라 `.godot/global_script_class_cache.cfg`에서
+해석된다. 그 파일이 없으면 **모든** `class_name` 타입이 미해결이고, 그래서 오토로드가 `Node`를
+상속하지 않는다는 엉뚱한 말이 나온다. 실행 중에 저절로 복구되지 않는다 — 캐시는 임포트 단계에서만 쓰인다.
+
+**해결:** 실행 전에 임포트를 한 번 돌린다. 3.2초, 기계당 1회다(캐시가 남으므로).
+
+```sh
+[ -f client/.godot/global_script_class_cache.cfg ] || godot --headless --path client --import
+```
+
+rsync로 트리를 보낼 때 `--exclude .godot`을 걸어도 캐시는 안전하다 — rsync는 제외한 경로를
+`--delete` 후보로 삼지 않으므로 한 번 만들어지면 이후 증분 동기화에서 살아남는다.

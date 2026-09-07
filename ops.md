@@ -859,3 +859,45 @@ sysctl: unknown oid 'machdep.xcpm.cpu_thermal_level'      # Intel 전용
 한 기계에서 같은 조건으로 5회 찍어 편차를 먼저 확인한다(여기서는 ±5%). 그보다 큰 변동이
 측정 사이에 생기면 그것이 신호다. 실제로 이 프로브가 기준선의 1.57배(350→549ms)까지 흔들리는
 동안 대상 지표는 2ms 안에 머물러, "열 때문"이라는 가설을 반증하는 증거가 됐다.
+
+## OPS-038 — Docker Desktop(macOS)은 루프백보다 LAN 바인딩을 늦게 연다 — `/healthcheck` 200을 믿고 다른 기계에서 접속하면 5초를 진다
+
+`측정 2026-09-08 · Docker Desktop(macOS 26.3, Apple Silicon) · Nakama 3.40`
+
+**증상:** `compose up -d` 뒤 `curl http://127.0.0.1:17350/healthcheck`가 2초 만에 200을 준다.
+같은 순간 **다른 기계**에서 `http://<맥 LAN IP>:17350/healthcheck`를 치면 `curl` exit 7(연결 거부),
+`%{http_code}`는 `000`이다. 200으로 바뀌기까지 5초가 더 걸렸다(1초 간격 프로브 5회 연속 000).
+포트 발행은 `- "17350:7350"`으로 바인드 주소가 없어 0.0.0.0이고, 방화벽·경로 문제가 아니다 —
+포워더가 루프백 리스너를 먼저 열고 LAN 리스너를 나중에 여는 것뿐이다.
+
+증상이 접속 실패로 나타나지 않는 것이 함정이다. 원격 클라이언트는 TCP 실패를 3회 재시도한 뒤
+`HTTPRequest failed` 하나만 남기고 로그인 없이 계속 진행하므로, 터지는 것은 한참 뒤의
+**엉뚱한 기능 단언**이다(실측: "no swing clip played" — 스윙 애니메이션과 아무 상관이 없었다).
+
+**해결:** 준비 판정을 **접속할 기계에서** 한다. 컨테이너를 띄운 기계의 루프백 healthcheck는
+"컨테이너가 살아 있다"까지만 증명한다.
+
+```sh
+for i in $(seq 1 60); do
+  code=$(ssh "$CLIENT_HOST_SSH" "curl -s -o /dev/null -w %{http_code} --max-time 3 http://$LAN_IP:$PORT/healthcheck")
+  [ "$code" = 200 ] && break; sleep 1
+done
+```
+
+## OPS-039 — macOS에서 창 모드 GPU 앱을 ssh로 띄울 수 있다 — ssh 사용자가 콘솔 사용자와 같으면 `launchctl asuser`가 필요 없다
+
+`측정 2026-09-08 · macOS 26.3 · Apple Silicon · Godot 4.7.2`
+
+**증상:** "GUI 앱은 ssh 세션에서 WindowServer에 붙지 못하므로 `launchctl asuser $(id -u) ...`로
+콘솔 세션에 부트스트랩해야 한다"가 통설이다. 실측은 다르다. `stat -f "%Su" /dev/console`이
+ssh 로그인 사용자와 같으면(둘 다 uid 501) 순수 `ssh host 'app ...'`으로 창이 뜨고 **렌더링까지 된다** —
+`--headless` 없이 실행해 `draw_calls=192 triangles=79868`, 뷰포트 캡처 `save_png` `err=0`,
+720x1280 PNG 621KB. 화면이 잠겨 있어도 된다. `launchctl asuser`는 콘솔 사용자가 **다를** 때 필요한 것이다.
+
+같이 걸리는 것 둘: macOS에는 `timeout`이 없고(coreutils 미설치 기본), 원격 로그인 셸이 zsh라
+`${PIPESTATUS[0]}`가 빈 문자열로 나온다. 원격 명령을 `ssh host 'bash -s' <<'EOF'`로 표준입력에
+넣으면 인용 지옥과 이 둘을 한 번에 피한다.
+
+**해결:** 먼저 `stat -f "%Su" /dev/console`과 `id -un`을 비교한다. 같으면 그냥 실행한다.
+타임아웃은 원격이 아니라 **로컬에서** ssh를 감싸고, 원격에는 `trap 'kill 0' EXIT HUP TERM INT`를
+둔다 — ssh는 시그널을 전달하지 않으므로 로컬 `timeout`이 죽여도 원격 프로세스는 살아남는다.
