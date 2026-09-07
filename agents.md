@@ -454,3 +454,29 @@ worklog에 적고, 걸린 SQL을 가진 RPC의 스모크를 회귀에 넣는다.
 `grep -rn "hold" <씬>.gd`로 그 씬이 실제로 읽는 플래그명을 먼저 확인한다. 인자가
 무시돼도 에러가 안 나는 게 함정이다 — 세션이 예상보다 일찍 끝나면 "그 씬이 정말 이
 인자를 읽는가"부터 의심한다.
+
+## AGT-024 — Claude Code 프로젝트 훅은 실행 중인 세션에도 즉시 적용되고 bypass 모드에서도 차단한다
+
+`측정 2026-09-07 · Claude Code(VS Code 확장, bypass permissions) · macOS`
+
+**증상:** 문서 규칙(인덱스 명령 금지, touch list 밖 편집 금지)은 읽는 세션만 지킨다. 훅으로
+강제하려는데 "세션 시작 때만 settings를 읽는가", "bypass 모드에서도 exit 2가 통하는가",
+"session_id를 어디서 얻는가"가 문서에 명확하지 않았다.
+
+실측:
+- `.claude/settings.json`을 새로 만든 뒤 **그 전에 시작한 세션**에서 바로 `git add` →
+  `PreToolUse:Bash hook error: […/pre_bash.sh]: 차단: …` 로 도구 호출이 막혔다.
+  재시작·clear 없이 즉시 적용, `--dangerously-skip-permissions` 세션에서도 exit 2 차단.
+- 훅 stdin JSON의 `session_id`는 `~/.claude/projects/<프로젝트>/<uuid>.jsonl` 파일명과 같다.
+  env로는 오지 않는다. 세션별 역할(biseo/test/worker·티켓)을 파일 `roles/<uuid>`로 매핑할 수 있다.
+- `tool_input.command`는 `cd x && git add .` 전체가 한 문자열이다. 파이프·`&&`·서브셸 안을
+  잡으려면 직접 분해해야 한다. Python `shlex(punctuation_chars=True)`는 연속 연산자를
+  `);` 처럼 한 토큰으로 붙이므로 다시 쪼개지 않으면 `)` 뒤 명령이 앞 세그먼트에 묻힌다.
+- `git branch [^-]`, `killall (?!Godot)` 같은 부정 조건은 bash 정규식으로는 못 쓴다(lookahead 없음).
+  `^killall\s+(?:-\S+\s+)*(?!Godot)` 은 백트래킹으로 `-9`에 걸려 `killall -9 Godot`도 막는다 —
+  `^killall\b(?!(?:\s+-\S+)*\s+Godot\s*$)` 처럼 전체를 부정해야 한다.
+
+**해결:** 규약 강제는 훅으로 옮기고, 규칙은 `rules.txt`(scope·where·정규식·메시지)에 둔다.
+git 규칙은 명령의 실효 디렉터리(stdin `cwd` + `cd`/`git -C` 추적)가 리포 안일 때만 적용해
+다른 리포(지식 베이스) 푸시는 통과시킨다. 훅 파일은 저장되는 순간 모든 세션에 적용되므로
+scratchpad에서 테스트를 끝낸 뒤 한 단위로 저장한다.
