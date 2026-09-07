@@ -718,3 +718,21 @@ not found"·"Could not find type"로 못 찾는다. 원인은 `.godot/`(임포�
 "$GODOT" --headless --path <snapshot>/client --import --quit
 ```
 이후 같은 스냅샷에서 돌리는 모든 헤드리스 검사가 정상 동작한다.
+
+## GDT-035 — 새 `class_name`은 전역 클래스 캐시를 다시 만들기 전까지 자기 파일 안에서도 못 쓴다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** `class_name MarsThoughtBubble`을 선언한 새 스크립트를 `--headless`로 실행하면
+`Parse Error: Could not find type "MarsThoughtBubble" in the current scope.`,
+같은 파일 안의 `MarsThoughtBubble.new()`에서도 `Compile Error: Identifier not found`.
+`--check-only` 파싱은 통과하고 씬 로드에서만 깨진다. 파일을 만든 직후, 에디터를 한 번도 열지 않은 상태.
+
+`class_name` 등록은 파서가 아니라 `<project>/.godot/global_script_class_cache.cfg`가 한다.
+헤드리스 실행은 이 캐시를 읽기만 하고 갱신하지 않는다. 캐시는 보통 `.gitignore` 대상이라
+새 기계·새 CI 컨테이너에서도 같은 증상이 난다.
+
+**해결:** 파일을 만든 뒤 한 번 `godot --headless --path <project> --editor --quit`을 돌린다.
+전체 임포트 스캔이 돌면서 캐시에 항목이 들어가고 그 뒤로는 정상이다.
+다른 스크립트에서 그 타입을 참조해야 할 이유가 없다면 `preload("res://...")`로 받는 편이
+캐시 상태와 무관하게 동작한다.
