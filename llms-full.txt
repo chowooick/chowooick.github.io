@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-07T18:27:07Z · 소스 커밋 `0a10404` · 이 파일은 자동 생성물이다.
+생성 2026-09-07T18:41:44Z · 소스 커밋 `a9bdcd6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -902,6 +902,41 @@ static func _opt_str(dict: Dictionary, key: String, fallback := "") -> String:
 트리에 넣고 나서** 그 초기화 함수(`setup()` 등)를 부른다. 시그널 연결은
 add_child 전후 어느 쪽이든 상관없지만, `get_tree()`를 부르는 코드는 반드시
 add_child 뒤에 와야 한다.
+
+## GDT-030 — 터치 한 번은 `_unhandled_input`에 두 번 온다: 터치 이벤트와 `DEVICE_ID_EMULATION` 마우스 이벤트
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** 화면 탭/드래그를 판정하는 노드에 `InputEventScreenTouch`와
+`InputEventMouseButton`을 둘 다 받게 해 두었더니(PC·폰 한 코드), 합성 터치
+드래그 400px 한 번에 카메라가 172도 돌았다 — 기대는 72도. 터치 오버레이가
+`look_by()`로 72도를 돌리고, 같은 손가락이 **마우스 클릭으로 한 번 더** 들어와
+두 번째 판정기가 100도(마우스 감도)를 더 돌린 것. 프로젝트 기본값
+`input_devices/pointing/emulate_mouse_from_touch = true`가 모든 터치를 마우스
+이벤트로 복제하기 때문이다. `set_input_as_handled()`는 도움이 안 된다 —
+복제된 마우스 이벤트는 원본 터치와 별개의 이벤트로 따로 전달된다.
+
+**해결:** 마우스 이벤트를 받는 자리에서 `event.device == InputEvent.DEVICE_ID_EMULATION`
+(-1)이면 무시한다. 복제된 마우스 이벤트만 이 device id를 달고 오고, 실제
+마우스와 `Input.parse_input_event()`로 넣은 합성 마우스는 0이다. 헤드리스에도
+복제가 켜져 있으므로 스모크에서 그대로 재현·검증된다.
+
+## GDT-031 — `Input.parse_input_event()`로 넣은 누름은 즉시 전달되지 않는다 — 창 모드 첫 프레임에서 265ms 늦게 도착해 "길게 누름"이 탭이 됐다
+
+`측정 2026-09-07 · Godot 4.7.2`
+
+**증상:** 길게 누름(0.4초)을 합성하려고 press 이벤트를 넣고 `create_timer(0.55)`
+뒤 release를 넣었다. 헤드리스에서는 링 메뉴가 열렸는데 창 모드(720x1280)에서는
+같은 코드가 탭으로 판정됐다. 판정기에 찍어 보니 `_unhandled_input`이 press를
+받은 시각 기준으로 release까지 **285ms** — 타이머는 550ms를 기다렸는데 press
+자체가 265ms 늦게 처리됐다. `parse_input_event()`는 큐에 넣을 뿐이고 실제
+전달은 다음 입력 플러시(프레임)인데, 창 모드 첫 프레임들은 셰이더 컴파일로
+수백 ms가 걸린다. 헤드리스는 그 스톨이 없어 재현되지 않는다.
+
+**해결:** 합성 "누르고 있기"는 press를 넣은 시각이 아니라 **판정기가 press를
+받은 시각**부터 잰다: press를 넣고 `while not gesture_active: await process_frame`
+로 도착을 기다린 뒤 타이머를 시작한다. 일반화하면, 합성 입력 뒤에 시간에
+민감한 후속 입력을 보낼 때는 항상 앞 입력의 수신을 확인하고 넘어간다.
 
 ---
 
