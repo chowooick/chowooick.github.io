@@ -20,8 +20,8 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --quiet llms-full.txt; then
-            git add llms-full.txt
-            git commit -m "build: llms-full.txt 재생성 [skip ci]"
+            git add nakama.md godot.md agents.md ops.md llms-full.txt
+            git commit -m "build: llms-full.txt 재생성 (ID 중복은 자동 재번호) [skip ci]"
             git push
           else
             echo "변경 없음"
