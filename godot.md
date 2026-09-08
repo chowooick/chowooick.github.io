@@ -804,3 +804,46 @@ iOS는 별도 플러그인이 있어야 한다. nakama-godot는 이것을 제공
 띄워 영수증을 얻는 네이티브 플러그인(직접 빌드 또는 외부 도입), (2) 그 영수증을
 `validate_subscription_*_async`로 서버에 넘기기. (2)만 보고 일정을 잡으면
 실제 작업량을 놓친다. 검증·저장은 서버가 하므로(NKM-022) 남는 위험은 전부 (1)이다.
+
+## GDT-039 — Play Billing 구독은 3일 안에 acknowledge하지 않으면 Google이 자동 환불한다 — Nakama 검증은 이것을 하지 않는다
+
+`측정 2026-09-08 · Play Billing Library 7.1.1 · Nakama 3.40`
+
+**증상:** 구독 결제가 성공하고 서버 검증(`validateSubscriptionGoogle`)도 통과했는데
+3일 뒤 결제가 조용히 환불된다. 로그에는 아무 에러도 없다. 구매 시점에는 정상으로
+보이므로 테스트에서 잡히지 않고, 라이선스 테스터 계정은 갱신 주기가 짧아 더 안 보인다.
+
+Play Billing은 구매를 앱이 **명시적으로 인수(acknowledge)** 해야 확정한다. 구독·비소모성
+상품 모두 대상이고, 유예는 3일이다. 그 안에 `BillingClient.acknowledgePurchase`가
+호출되지 않으면 Google이 자동으로 환불하고 구독을 취소한다.
+
+**Nakama의 `validateSubscriptionGoogle`은 acknowledge를 하지 않는다.** 서버는 Google
+Play Developer API로 영수증을 조회해 판정만 하고, 인수는 클라이언트 SDK 몫으로 남긴다.
+서버 검증을 붙였다는 것과 결제가 확정됐다는 것은 별개다.
+
+구독은 `consumeAsync` 대상이 **아니다**. 소모성 결제 예제를 그대로 따라 쓰면 여기서
+틀린다 — 구독에 필요한 것은 consume이 아니라 acknowledge 한 번이다.
+
+**해결:** 서버 검증이 성공한 **뒤에만** `acknowledgePurchase(purchaseToken)`을 부른다.
+순서가 반대면 서버가 거부한 영수증을 앱이 인수했다고 스토어에 알리게 된다.
+인수 실패는 반드시 에러 레벨로 남긴다 — 조용히 실패하면 3일 뒤 환불로만 드러난다.
+
+## GDT-040 — Play Billing 8.0이 queryProductDetailsAsync 콜백 시그니처를 바꿨다 — 7.x에 고정한다
+
+`측정 2026-09-08 · Play Billing Library 7.1.1 / 8.0.0 · Kotlin 2.1.21 · AGP 8.6.1`
+
+**증상:** 버전을 최신으로 올리면 플러그인이 컴파일되지 않는다. 에러는 콜백 람다의
+인자 개수 불일치로 나와서 Kotlin 문제처럼 읽힌다.
+
+7.x의 `queryProductDetailsAsync`는 `(BillingResult, List<ProductDetails>)`를 주는
+`ProductDetailsResponseListener`를 받는다. 8.0은 그 두 번째 인자를
+`QueryProductDetailsResult` 한 객체로 바꿨다. 라이브러리 버전만 올려도 호출부가 깨진다.
+
+7.0부터 인자 없는 `enablePendingPurchases()`도 폐기됐다. `PendingPurchasesParams`를
+넘겨야 하고, 구독 선불 요금제를 받으려면 `enablePrepaidPlans()`가 필요하다. 빠뜨리면
+컴파일이 아니라 **런타임에 빌더가 던진다**.
+
+**해결:** `gradle.properties`에 버전을 한 곳으로 적고(`billingVersion=7.1.1`) `.gdap`의
+`remote=` 항목과 같은 값을 쓴다. 플러그인은 그 버전으로 컴파일되고 앱은 그 버전을
+Maven에서 받으므로, 둘이 어긋나면 "플러그인이 로드되지 않는다"로만 보인다.
+버전을 올릴 때는 위 두 호출부를 같이 고친다.
