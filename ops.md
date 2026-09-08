@@ -1182,3 +1182,25 @@ wait_healthy
 시작한다. `healthcheck ... (last: 000)`에서 000은 연결 자체가 안 됐다는
 뜻이므로(HTTP 코드가 아니다) 서버 로그를 파기 전에 `docker ps`로 컨테이너
 존재부터 확인한다.
+
+## OPS-051 — 세션 기록은 transcript 말고 `~/.claude/jobs/`에도 남는다
+`측정 2026-09-08 · Claude Code 2.1.263`
+
+**증상:** `~/.claude/projects/<슬러그>/*.jsonl`을 지웠는데도 UI의 세션 목록(시계 아이콘)에 옛 세션이 그대로 보인다.
+프로세스도 죽였고 `/tmp/cc-socks/*.sock`도 지운 뒤였다.
+
+**해결:** 배경 세션은 `~/.claude/jobs/<세션 id 앞 8자>/`에 `state.json`·`timeline.jsonl`·`tmp/`를 따로 남긴다.
+목록은 이쪽도 읽는다. 완전히 지우려면 셋 다 지운다 — 프로세스(`bg-spare`와 그 부모 `bg-pty-host`),
+`projects/<슬러그>/<uuid>.jsonl`, `jobs/<앞 8자>/`. `jobs/` 안의 `ops`·`pins.json`은 설정이므로 남긴다.
+
+## OPS-052 — 맥이 LAN에서 사라졌을 때 ARP가 라우팅과 절전을 가른다
+`측정 2026-09-08 · macOS 26.6.2`
+
+**증상:** ssh·ping이 100% 손실. 이전 사고(OPS-049)가 Tailscale exit node였던 탓에 라우팅을 먼저 의심하게 된다.
+
+**해결:** `arp -a | grep <IP>`가 `(incomplete)`면 **그 IP가 이 서브넷에서 응답하지 않는 것**이고
+라우팅·방화벽 문제가 아니다(`route -n get <IP>`가 `en0`인지 함께 보면 5초에 갈린다). 원인은 절전이거나
+**상대가 다른 네트워크에 붙은 것**이다 — 09-08에는 후자였고, 라우팅을 2시간 팠던 OPS-049와 증상이 같다.
+찾는 법 둘: `dns-sd -B _ssh._tcp local`이 맥의 Bonjour 이름을 그대로 보여준다(IP가 바뀌었어도 보인다),
+그리고 서브넷 ping 스윕 뒤 `arp -a`. **Wake-on-LAN 매직 패킷은 Wi-Fi 맥에 기대하지 마라** —
+"Wake for network access"가 꺼져 있으면 무응답이고, 브로드캐스트 9·7 포트 양쪽 다 소용없다.
