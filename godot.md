@@ -863,6 +863,24 @@ base 'CylinderMesh'`)를 찍고 **null을 돌려주며 실행은 계속된다.**
 그대로 포맷 키가 된다. 병합 뒤 `RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME`이 전후로 같은지 반드시 본다 —
 드로우콜만 보면 형상이 사라진 것이 개선으로 보인다.
 
+## GDT-043 — 한두 프레임만 떠 있는 오버레이는 "다 끝나고 N프레임 뒤에 찍는" 스크린샷 훅으로는 안 찍힌다
+`측정 2026-09-08 · Godot 4.7.2 · gl_compatibility · 창 720x1280`
+
+**증상:** 씬에 범용 `--shot <path>` 훅이 있고(큐에 쌓인 합성 입력을 다 실행한 뒤 여섯 프레임 기다렸다가
+`get_viewport().get_texture().get_image()`), 드래그처럼 **두 프레임만 존재하는** 오버레이를 찍으면
+배경만 나온다. `Input.parse_input_event`로 합성한 드래그는 begin → `await get_tree().process_frame`
+→ release라서, 훅이 깨어날 때는 오버레이가 이미 사라진 뒤다. 에러도 경고도 없고 PNG는 정상 크기로
+저장되므로, 파일이 생겼다는 것만 보면 통과로 오해한다.
+
+**해결:** 찍는 주체를 훅이 아니라 **그리는 노드 자신**으로 옮기고, 그 노드가 `queue_redraw()`를 부른
+바로 그 자리에서 `await RenderingServer.frame_post_draw`를 기다린다. 한 프레임 안의 순서가
+idle(`process_frame`) → draw → `frame_post_draw`이므로, idle 중에 `queue_redraw()`한 것은 **같은
+프레임의 `frame_post_draw`에서 읽힌다** — 다음 `process_frame`(= 합성 release가 오는 시점)보다 앞선다.
+읽어내는 동안 노드가 숨겨지지 않도록 가시성을 잡아 두면 경합이 남지 않는다. 이렇게 찍은 결과가
+`720x1280 err=0`, 613KB(빈 프레임은 그보다 훨씬 작다). 판정은 **파일 존재가 아니라 최소 바이트 수**로
+건다 — 배경만 든 PNG도 err=0으로 저장되기 때문이다.
+`--headless`에서는 3D가 렌더되지 않으므로 이 촬영은 창 모드 전용이다.
+
 ## GDT-042 — 드로우콜은 메시 1개당 1, 그림자를 켜면 2다
 `측정 2026-09-08 · Godot 4.7.2 · gl_compatibility · DirectionalLight3D 1개`
 
