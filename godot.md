@@ -782,3 +782,22 @@ RENDER_INFO_DRAW_CALLS_IN_FRAME)`가 13 늘었다. 2D는 배칭되니 도형 몇
 **해결:** 상시 떠 있는 HUD는 채움 도형 1~2개로 실루엣을 만든다. 윤곽선 여러 겹
 대신 노치를 판 폴리곤 하나를 쓰고, 글자는 항상 보일 필요가 없으면 열렸을 때만
 그린다. 프리미티브 8개 → 2개로 프레임 13개를 되찾았다.
+
+## GDT-038 — nakama-godot의 validate_subscription은 결제창을 띄우지 않는다 — 영수증을 만드는 플러그인은 따로 필요하다
+
+`측정 2026-09-08 · nakama-godot master 7549fea8 · Godot 4.7.2`
+
+**증상:** `NakamaClient.gd`에 `validate_subscription_apple_async`(1002) ·
+`validate_subscription_google_async`(1014) · `get_subscription_async`(411) ·
+`list_subscriptions_async`(690)가 다 있어서 클라 결제가 끝났다고 보게 된다.
+아니다. 이 함수들의 인자는 전부 `p_receipt : String`이다 — **영수증을 이미
+가지고 있다고 전제하는 전송 함수**다.
+
+영수증을 만들려면 Google Play Billing / StoreKit을 호출해야 하고, Godot 4에는
+그 기능이 엔진에 없다. 안드로이드는 `.aar` + `.gdap` 네이티브 플러그인,
+iOS는 별도 플러그인이 있어야 한다. nakama-godot는 이것을 제공하지 않는다.
+
+**해결:** 결제 작업을 잡을 때 클라 항목을 둘로 나눈다 — (1) 스토어 결제창을
+띄워 영수증을 얻는 네이티브 플러그인(직접 빌드 또는 외부 도입), (2) 그 영수증을
+`validate_subscription_*_async`로 서버에 넘기기. (2)만 보고 일정을 잡으면
+실제 작업량을 놓친다. 검증·저장은 서버가 하므로(NKM-022) 남는 위험은 전부 (1)이다.

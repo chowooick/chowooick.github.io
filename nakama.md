@@ -374,3 +374,54 @@ race_same_key <rpc> <payload> 10 <token>   # 부수 효과 1회
 ```
 버스트가 쓰는 소켓은 보통 헬퍼가 따로 여는 것이므로, 순차 재요청에는 소켓이
 필요한 RPC라면 소켓을 다시 열어 줘야 한다.
+
+## NKM-021 — Nakama 3.40에 Steam 결제 검증은 없다 — IAP 스토어는 5개뿐이고 Steam은 인증 전용이다
+
+`측정 2026-09-08 · Nakama 3.40.0+d4d92f9 · nakama-common v1.47.0`
+
+**증상:** Steam 출시를 계획하며 "Nakama가 IAP를 내장 검증한다"는 문장을 근거로
+Steam 결제도 런타임이 처리한다고 전제했다. 실제로는 없다.
+
+`runtime/config.go`의 `IAPConfig`가 노출하는 스토어는 **Apple · Google · Huawei ·
+FacebookInstant · Samsung 5개뿐**이다. 실행 중인 서버의 플래그도 같다:
+
+```
+$ docker exec <nakama> /nakama/nakama --help | grep -i "iap\|steam"
+-iap.apple.shared_password / -iap.google.client_email / -iap.huawei.* / -iap.samsung.*
+-social.steam.app_id          Steam App ID.
+-social.steam.publisher_key   Steam Publisher Key value.
+```
+
+`-iap.steam.*`는 존재하지 않는다. Steam 관련 런타임 심볼은
+`AuthenticateSteam` · `LinkSteam` · `UnlinkSteam` · `ImportSteamFriends`로
+**전부 인증·소셜**이고 결제는 하나도 없다.
+
+**해결:** Steam 결제는 Go 런타임에서 Steamworks Web API를 직접 호출해 구현한다.
+검증 결과를 Nakama 내부 `purchase`/`subscription` 테이블에 넣을 방법도 없으므로
+(내부 테이블은 수정 금지) 자체 테이블을 쓴다. Steam은 자동 갱신 구독 상품도
+지원하지 않아 기간제 아이템 반복 구매로 대체하게 된다.
+
+## NKM-022 — 구독 통지는 스토어별로 분기할 필요가 없다 — 런타임이 5값으로 정규화해 준다
+
+`측정 2026-09-08 · nakama-common v1.47.0`
+
+**증상:** Apple App Store Server Notifications V2와 Google RTDN은 통지 종류가
+전혀 다르다(Google은 `GoogleSubscriptionNotificationType` 14값, Apple은
+`AppleSubscriptionStatus` 5값 + `AppleExpirationIntent`). 게임 코드가 양쪽을
+따로 다뤄야 한다고 보고 분기 설계를 시작하게 된다.
+
+`RegisterSubscriptionNotificationApple` / `...Google`(runtime.go:379·385)의 콜백은
+**둘 다 같은 `runtime.NotificationType`을 첫 인자로 받는다**(runtime.go:1856):
+
+```go
+IAPNotificationSubscribed = 1   IAPNotificationRenewed  = 2
+IAPNotificationExpired    = 3   IAPNotificationCancelled = 4
+IAPNotificationRefunded   = 5
+```
+
+원본 스토어 페이로드는 마지막 인자(`*AppleNotificationData` /
+`*SubscriptionV2GoogleResponse`)로 따로 온다.
+
+**해결:** 혜택 on/off 로직은 5값만 다루고 두 훅이 같은 함수를 부르게 한다.
+스토어별 페이로드는 감사 로그로만 남긴다. 단, 이 정규화는 Apple·Google에만
+적용된다 — Steam은 통지 자체가 없어(NKM-021) 만료를 서버 시계로 판정해야 한다.
