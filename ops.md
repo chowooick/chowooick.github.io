@@ -1204,3 +1204,20 @@ wait_healthy
 찾는 법 둘: `dns-sd -B _ssh._tcp local`이 맥의 Bonjour 이름을 그대로 보여준다(IP가 바뀌었어도 보인다),
 그리고 서브넷 ping 스윕 뒤 `arp -a`. **Wake-on-LAN 매직 패킷은 Wi-Fi 맥에 기대하지 마라** —
 "Wake for network access"가 꺼져 있으면 무응답이고, 브로드캐스트 9·7 포트 양쪽 다 소용없다.
+
+## OPS-053 — 원격 스모크는 남이 추가한 `class_name`에서 통째로 깨진다
+`측정 2026-09-08 · Godot 4.7.2 · rsync 원격 실행`
+
+**증상:** 에어에서 도는 클라 스모크 전부가 갑자기 빨개진다. 로그는
+`Parse Error: Could not find type "MarsSubscriptionTerminal"` →
+`Failed to load script ... with error "Parse error"` →
+`Invalid call. Nonexistent function 'new' in base 'GDScript'`. 그 타입을 선언한 파일은
+로컬에도 원격에도 **분명히 있고** rsync도 보냈다. 내 변경과 무관한 세션이 원인이라 각자 자기 코드를 판다.
+
+**해결:** 범인은 소스가 아니라 원격의 `client/.godot/global_script_class_cache.cfg`다.
+동기화 스크립트는 임포트 캐시를 살리려고 `.godot`을 rsync 제외에 두고, **캐시 파일이 아예 없을 때만**
+`--headless --import`를 한 번 돌린다. 그래서 새 `class_name`이 생기면 원격 캐시는 낡은 채로 남고
+그 타입을 쓰는 모든 씬이 파싱에서 죽는다. 파일이 하나라도 새 `class_name`을 들고 오면
+`ssh <원격> "cd <루트> && \$HOME/<godot> --headless --path client --import"`를 한 번 돌려 캐시를 다시 만든다
+(3초). 판정 전에 로그의 첫 `SCRIPT ERROR`가 **내 파일인지**부터 본다 — 남의 미커밋 `class_name` 하나가
+내 스모크를 빨갛게 만든다.

@@ -847,3 +847,31 @@ Play Developer API로 영수증을 조회해 판정만 하고, 인수는 클라�
 `remote=` 항목과 같은 값을 쓴다. 플러그인은 그 버전으로 컴파일되고 앱은 그 버전을
 Maven에서 받으므로, 둘이 어긋나면 "플러그인이 로드되지 않는다"로만 보인다.
 버전을 올릴 때는 위 두 호출부를 같이 고친다.
+
+## GDT-041 — `PrimitiveMesh`에는 `surface_get_format`이 없고, 실패가 조용히 형상을 먹는다
+`측정 2026-09-08 · Godot 4.7.2 · gl_compatibility`
+
+**증상:** `SurfaceTool.append_from`으로 메시를 병합해 드로우콜을 줄였는데 삼각형 수가 같이 줄었다
+(86650 → 85844). 화면은 얼추 비슷해서 눈으로는 못 잡는다. 병합 대상을 `surface_get_format(0)`으로
+묶어 포맷이 섞이지 않게 했는데도 그렇다.
+
+**해결:** `surface_get_format`은 `ArrayMesh`의 메서드다. `CylinderMesh`·`SphereMesh` 같은
+`PrimitiveMesh`에 부르면 런타임 에러(`Invalid call. Nonexistent function 'surface_get_format' in
+base 'CylinderMesh'`)를 찍고 **null을 돌려주며 실행은 계속된다.** `int(null)`은 0이라 모든 프리미티브가
+같은 키로 묶이고, UV 있는 면과 없는 면이 한 `SurfaceTool`에 들어가 `append_from`이 서피스를 **말없이
+버린다.** `Mesh.surface_get_arrays(0)`은 두 종류 모두에서 되고, 슬롯이 null인지 아닌지의 비트열이
+그대로 포맷 키가 된다. 병합 뒤 `RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME`이 전후로 같은지 반드시 본다 —
+드로우콜만 보면 형상이 사라진 것이 개선으로 보인다.
+
+## GDT-042 — 드로우콜은 메시 1개당 1, 그림자를 켜면 2다
+`측정 2026-09-08 · Godot 4.7.2 · gl_compatibility · DirectionalLight3D 1개`
+
+**증상:** 예산을 짤 때 "메시를 줄이면 얼마나 주는가"를 추정으로 잡게 된다.
+
+**해결:** 그룹별로 `visible`을 껐다 켜며 잰 결과가 정확히 1:1이다 — 그림자를 끈 그룹은 메시 수와
+드로우콜이 같고(`link` 10메시 10콜, `clutter` 10/10, `masts` 6/6), 그림자를 켠 그룹은 두 배다
+(`warehouse` 10메시 20콜, `dome` 7/14). 그래서 **감축은 메시 개수 산수**로 계산할 수 있다.
+같은 머티리얼끼리 묶어 100메시를 66으로 줄이자 콜로니 몫이 175 → 137로 떨어졌다.
+주의: `RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME`을 `visible` 토글 직후 **한 프레임만** 읽으면
+그림자 캐스케이드가 dirty해진 프레임을 잡아 값이 부풀고, 그룹 델타의 합이 프레임 총합을 넘긴다
+(332 대 252). 5프레임을 읽어 **최솟값**을 쓰면 합이 맞는다.
