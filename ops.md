@@ -1154,3 +1154,31 @@ GUI는 메뉴바 아이콘 → Exit Node → "Allow Local Network Access".
 `en0`인지 `utun*`인지 본다 — 이것 하나로 끝난다 ② 상대 기기에서 `netstat -s -p icmp`의 echo request
 카운터를 본다 ③ 제3의 기기에서 상대로 ping해 본다. **양쪽 방화벽부터 뒤지면 시간을 버린다**(이 건에서
 방화벽·MAC·라우터 격리를 차례로 의심하다 약 2시간을 썼고 셋 다 무관했다).
+
+## OPS-050 — `smoke_stack_up`은 스택을 띄우지 않는다 (COMPOSE 배열만 만든다)
+
+`측정 2026-09-08 · mars ops/smoke/lib/smoke.sh`
+
+**증상:** 새 스모크 스크립트가 `smoke_stack_up` → `wait_healthy` 순으로만
+쓰면 90초를 기다린 뒤 `FAIL: healthcheck never returned 200 (last: 000)`으로
+끝난다. 컨테이너가 하나도 안 떠 있는데 로그에는 실패 줄 하나뿐이라 원인이
+플러그인 빌드 오류나 마이그레이션 실패처럼 보인다 — 진단이 통째로 헛다리다.
+
+이름과 달리 `smoke_stack_up`이 하는 일은 슬롯 락 획득과 `COMPOSE=(docker
+compose -p ... -f ...)` 배열 조립까지다. `up -d --build`는 **호출자가 직접**
+한다. 기존 스크립트가 전부 그 블록을 각자 갖고 있어서, 하나를 베끼지 않고
+헬퍼 이름만 보고 쓰면 정확히 이 자리에서 빠진다.
+
+```bash
+if [ "${SMOKE_SKIP_UP:-0}" != "1" ]; then
+  step "${COMPOSE[*]} up -d --build"
+  "${COMPOSE[@]}" up -d --build >"$WORK/compose.log" 2>&1 \
+    || { tail -40 "$WORK/compose.log" >&2; fail "compose up failed"; }
+fi
+wait_healthy
+```
+
+**해결:** 새 스모크는 헬퍼 목록이 아니라 **기존 스크립트 한 개를 베껴서**
+시작한다. `healthcheck ... (last: 000)`에서 000은 연결 자체가 안 됐다는
+뜻이므로(HTTP 코드가 아니다) 서버 로그를 파기 전에 `docker ps`로 컨테이너
+존재부터 확인한다.

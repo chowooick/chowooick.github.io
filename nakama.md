@@ -425,3 +425,36 @@ IAPNotificationRefunded   = 5
 **해결:** 혜택 on/off 로직은 5값만 다루고 두 훅이 같은 함수를 부르게 한다.
 스토어별 페이로드는 감사 로그로만 남긴다. 단, 이 정규화는 Apple·Google에만
 적용된다 — Steam은 통지 자체가 없어(NKM-021) 만료를 서버 시계로 판정해야 한다.
+
+## NKM-023 — `ValidatedSubscription.RefundTime`은 환불이 없어도 에포크로 채워져 온다
+
+`측정 2026-09-08 · Nakama 3.40.0+d4d92f9 · nakama-common v1.47.0`
+
+**증상:** 환불된 적 없는 구독을 `refund_time != nil`로 판정하면 전부 환불로
+분류된다. `api.ValidatedSubscription`의 `RefundTime`은 `*timestamppb.Timestamp`
+인데, 환불이 없는 구독에서도 nil이 아니라 **에포크(1970-01-01)** 를 담고 온다.
+Nakama 내부 `subscription` 테이블의 `refund_time` 컬럼이 `DEFAULT epoch`이고
+그 값이 그대로 실려 나온다.
+
+두 번 속는다. 설정되지 않은 protobuf 타임스탬프 필드는 **타입 있는 nil**이라
+인터페이스로 받으면 `== nil`이 false고, 그 위에서 `AsTime()`을 부르면 에러가
+아니라 에포크를 돌려준다. 그래서 `if ts == nil` 검사와 `AsTime()` 결과 검사가
+둘 다 통과하고, 만료 시각이 1970으로 기록된다.
+
+```go
+// 안 됨 — 환불이 없는 구독도 전부 환불로 잡힌다
+if v.RefundTime != nil { status = refunded }
+
+// 됨 — 에포크를 "설정되지 않음"으로 접는다
+func tsOrZero(ts interface{ AsTime() time.Time }) time.Time {
+    if ts == nil { return time.Time{} }
+    t := ts.AsTime().UTC()
+    if !t.After(time.Unix(0, 0).UTC()) { return time.Time{} }
+    return t
+}
+```
+
+**해결:** protobuf 타임스탬프를 Go 시각으로 바꾸는 함수 **한 개**를 두고 거기서
+에포크를 제로 타임으로 접는다. 호출부는 `IsZero()`만 묻는다 — 에포크 비교를
+네 곳에 흩어 두면 언젠가 한 곳을 빠뜨린다. `ExpiryTime`도 같은 함정이고, 이쪽은
+에포크 만료가 곧 만료된 구독이라 결과가 우연히 맞아 더 늦게 발견된다.
