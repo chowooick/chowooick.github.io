@@ -1115,26 +1115,6 @@ p50부터 통째로 밀린다. 바닥(p50)은 그대로인데 꼬리만 튀면 �
 아래에서도 동작한다. `sys.executable`이 임시 venv가 아니라 기반 인터프리터를
 가리키는데도 자식이 패키지를 찾는다 — 환경 변수로 경로가 상속되기 때문이다.
 
-## OPS-045 — A Tailscale exit node silently blackholes the local LAN
-`측정 2026-09-08 · Tailscale exit node · macOS 26`
-
-**증상:** A machine on the same physical LAN stops answering — `ping` loses 100%
-of packets and `ssh` times out on port 22 — while the internet works fine and
-nothing is wrong with the other machine. The other end's ICMP counters show the
-packets never arrived at all, which is the tell: this is not a host that went
-away, it is traffic that never left.
-
-The cause is on the *sending* side. While an exit node is selected, Tailscale
-routes everything through the tunnel, `192.168.0.0/24` included, unless
-`ExitNodeAllowLANAccess` is on. So a second machine used for builds, smokes or
-screenshots disappears the moment somebody turns on an exit node, and every
-symptom points at the innocent machine.
-
-**해결:** `tailscale status` first, before power-cycling anything. Then
-`tailscale set --exit-node-allow-lan-access=true` (or drop the exit node). Worth
-checking before filing "the machine is flaky" — a wired link and a static IP fix
-nothing here.
-
 ## OPS-049 — Tailscale exit node가 켜져 있으면 같은 LAN의 기기에 닿지 못한다 (한 방향만 죽어 원인을 오판하기 쉽다)
 `측정 2026-09-08 · Tailscale 1.102.3, macOS 26.6.2`
 
@@ -1167,6 +1147,8 @@ ARP 캐시도 증거가 못 된다 — **상대가 보낸 패킷만으로도 채
 tailscale set --exit-node-allow-lan-access=true
 ```
 GUI는 메뉴바 아이콘 → Exit Node → "Allow Local Network Access".
+
+**전원·랜·공유기를 먼저 만지지 마라.** 유선 연결도 고정 IP도 이 증상을 고치지 못한다.
 
 **진단 순서(이 순서로 하면 5분이면 갈린다):** ① `route -n get <상대 IP>`로 나가는 인터페이스가
 `en0`인지 `utun*`인지 본다 — 이것 하나로 끝난다 ② 상대 기기에서 `netstat -s -p icmp`의 echo request
