@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-08T00:06:29Z · 소스 커밋 `fd2e87d` · 이 파일은 자동 생성물이다.
+생성 2026-09-08T00:30:18Z · 소스 커밋 `507f0d3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2993,4 +2993,44 @@ p50부터 통째로 밀린다. 바닥(p50)은 그대로인데 꼬리만 튀면 �
 아울러, 자식을 `sys.executable`로 다시 띄우는 방식은 `uv run --with <pkg>`
 아래에서도 동작한다. `sys.executable`이 임시 venv가 아니라 기반 인터프리터를
 가리키는데도 자식이 패키지를 찾는다 — 환경 변수로 경로가 상속되기 때문이다.
+
+## OPS-049 — Tailscale exit node가 켜져 있으면 같은 LAN의 기기에 닿지 못한다 (한 방향만 죽어 원인을 오판하기 쉽다)
+`측정 2026-09-08 · Tailscale 1.102.3, macOS 26.6.2`
+
+**증상:** 같은 Wi-Fi의 맥 A(192.168.0.109)에서 맥 B(192.168.0.123)로 `ping`도 `ssh`도 전부 timeout.
+그런데 **B → A 방향은 살아 있다**(`ssh`가 `Connection refused`를 돌려준다 = 패킷이 도달했다는 뜻).
+A의 ARP 캐시에는 B의 MAC이 정상으로 들어 있고, 그 값은 B의 실제 Wi-Fi 주소와 일치한다.
+A에서 게이트웨이(192.168.0.1) ping은 성공한다. B의 방화벽·pf·sshd·라우팅은 전부 정상이다.
+
+**함정:** 위 증거들이 전부 "B가 인바운드를 막는다"를 가리키는 것처럼 보인다. 실제로는 반대로
+**A에서 나가는 패킷이 LAN에 도달조차 하지 않는다.** B에서 `netstat -s -p icmp`를 보면 Input
+histogram의 `echo request`가 부팅 이후 **0건**이다(`echo reply`만 쌓인다). 이 카운터가 방향을
+가르는 결정적 증거다.
+
+**원인:** A가 Tailscale **exit node**를 쓰는 상태에서 `ExitNodeAllowLANAccess`가 꺼져 있었다.
+그러면 `192.168.0.0/24` 전체가 터널 인터페이스로 라우팅된다:
+```
+$ route -n get 192.168.0.123
+  interface: utun7          # en0가 아니다
+$ tailscale debug prefs | grep -E 'ExitNode|RouteAll'
+  "RouteAll": true,
+  "ExitNodeID": "...",
+  "ExitNodeAllowLANAccess": false
+```
+게이트웨이와 **이미 통신하던 호스트**는 `/32` 경로가 en0에 남아 있어 계속 통한다. 그래서 "게이트웨이는
+되니까 네트워크는 정상"이라는 오판이 나온다. 새로 접속하려는 호스트만 터널로 새서 조용히 사라진다.
+ARP 캐시도 증거가 못 된다 — **상대가 보낸 패킷만으로도 채워지기 때문이다.**
+
+**해결:** exit node는 그대로 두고 LAN 접근만 연다.
+```
+tailscale set --exit-node-allow-lan-access=true
+```
+GUI는 메뉴바 아이콘 → Exit Node → "Allow Local Network Access".
+
+**전원·랜·공유기를 먼저 만지지 마라.** 유선 연결도 고정 IP도 이 증상을 고치지 못한다.
+
+**진단 순서(이 순서로 하면 5분이면 갈린다):** ① `route -n get <상대 IP>`로 나가는 인터페이스가
+`en0`인지 `utun*`인지 본다 — 이것 하나로 끝난다 ② 상대 기기에서 `netstat -s -p icmp`의 echo request
+카운터를 본다 ③ 제3의 기기에서 상대로 ping해 본다. **양쪽 방화벽부터 뒤지면 시간을 버린다**(이 건에서
+방화벽·MAC·라우터 격리를 차례로 의심하다 약 2시간을 썼고 셋 다 무관했다).
 
