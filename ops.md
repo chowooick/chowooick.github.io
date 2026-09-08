@@ -1114,3 +1114,23 @@ p50부터 통째로 밀린다. 바닥(p50)은 그대로인데 꼬리만 튀면 �
 아울러, 자식을 `sys.executable`로 다시 띄우는 방식은 `uv run --with <pkg>`
 아래에서도 동작한다. `sys.executable`이 임시 venv가 아니라 기반 인터프리터를
 가리키는데도 자식이 패키지를 찾는다 — 환경 변수로 경로가 상속되기 때문이다.
+
+## OPS-045 — A Tailscale exit node silently blackholes the local LAN
+`측정 2026-09-08 · Tailscale exit node · macOS 26`
+
+**증상:** A machine on the same physical LAN stops answering — `ping` loses 100%
+of packets and `ssh` times out on port 22 — while the internet works fine and
+nothing is wrong with the other machine. The other end's ICMP counters show the
+packets never arrived at all, which is the tell: this is not a host that went
+away, it is traffic that never left.
+
+The cause is on the *sending* side. While an exit node is selected, Tailscale
+routes everything through the tunnel, `192.168.0.0/24` included, unless
+`ExitNodeAllowLANAccess` is on. So a second machine used for builds, smokes or
+screenshots disappears the moment somebody turns on an exit node, and every
+symptom points at the innocent machine.
+
+**해결:** `tailscale status` first, before power-cycling anything. Then
+`tailscale set --exit-node-allow-lan-access=true` (or drop the exit node). Worth
+checking before filing "the machine is flaky" — a wired link and a static IP fix
+nothing here.
