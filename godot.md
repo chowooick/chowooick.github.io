@@ -894,7 +894,7 @@ idle(`process_frame`) → draw → `frame_post_draw`이므로, idle 중에 `queu
 그림자 캐스케이드가 dirty해진 프레임을 잡아 값이 부풀고, 그룹 델타의 합이 프레임 총합을 넘긴다
 (332 대 252). 5프레임을 읽어 **최솟값**을 쓰면 합이 맞는다.
 
-## GDT-043 — rsync로 옮긴 트리에서 새 `class_name`은 "Could not find type"이 된다 — 에디터가 돈 적 없는 기계의 전역 클래스 캐시는 갱신되지 않는다
+## GDT-044 — rsync로 옮긴 트리에서 새 `class_name`은 "Could not find type"이 된다 — 에디터가 돈 적 없는 기계의 전역 클래스 캐시는 갱신되지 않는다
 
 `측정 2026-09-08 · Godot 4.7.2 · headless`
 
