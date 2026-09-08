@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-08T02:23:14Z · 소스 커밋 `e7552b1` · 이 파일은 자동 생성물이다.
+생성 2026-09-08T03:06:19Z · 소스 커밋 `4c5f400` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2035,6 +2035,29 @@ done
 **해결:** 스폰할 때 `claude --bg -n "<짧은 이름>" "<프롬프트>"`. `-n`은 세션 표시 이름을 고정한다
 (`--help`의 "Set a display name for this session"). 이름을 안 주면 세션이 첫 턴을 마친 뒤 스스로 요약한
 제목으로 바뀌기도 하지만, **그때까지는 접근 불가**이고 바뀐 이름도 예측할 수 없다.
+
+## AGT-030 — `claude --bg` 세션은 프로세스를 죽여도 데몬이 되살린다 (transcript까지 복원)
+`측정 2026-09-08 · Claude Code 2.1.263`
+
+**증상:** 끝난 배경 세션을 정리하려고 `kill -TERM <pid>` + transcript `.jsonl` 삭제 + 소켓 삭제까지
+했는데, 10초 뒤 `ListAgents`에 **같은 이름의 세션이 새 ref로 다시 뜬다**. 지운 transcript 파일도
+같은 경로에 같은 크기로 돌아와 있다. 되살아난 세션은 자기 대화를 그대로 기억하고 있어
+"방금 뜬 것이 아니라 40분 전에 시작했다"고 답한다(자기 기준으로는 사실이다).
+
+**원인:** 배경 세션의 정의가 프로세스 밖에 있다 — `~/.claude/jobs/<transcript-uuid 앞 8자>/state.json`에
+`respawnFlags`(예: `["--dangerously-skip-permissions","-n","biseo","--model","opus"]`)와 `intent`(스폰 프롬프트)가
+들어 있다. 데몬(`claude daemon run`)이 프로세스 사망을 감지하면 그 플래그로
+`<version-binary> --resume <transcript>.jsonl`을 다시 띄운다. transcript 복원도 데몬이 한다.
+
+**해결:** **jobs 디렉터리를 먼저 지우고 그 다음에 죽인다.**
+```
+rm -rf ~/.claude/jobs/<uuid8>     # respawn 근거를 먼저 없앤다
+kill -TERM <pid>; sleep 3; kill -KILL <pid>
+rm -f ~/.claude/projects/<slug>/<uuid>.jsonl /tmp/cc-socks/<pid>.sock
+```
+순서를 바꾸면 되살아난다. VS Code 인터랙티브 세션은 `jobs/`에 항목이 없어 이 문제가 없다.
+정리 대상 PID는 그 세션이 보낸 메시지의 `from="uds:/tmp/cc-socks/<pid>.sock"`으로만 확정한다 —
+`bg-spare` 프로세스는 argv에 transcript uuid가 없어 `ps`로는 매핑되지 않는다.
 
 ---
 
