@@ -772,16 +772,19 @@ rsync로 트리를 보낼 때 `--exclude .godot`을 걸어도 캐시는 안전�
 RENDER_INFO_DRAW_CALLS_IN_FRAME)`가 13 늘었다. 2D는 배칭되니 도형 몇 개는 공짜라고
 보고 예산을 잡으면 여기서 어긋난다.
 
-**사실:** 같은 아이콘을 프리미티브 8개(`draw_circle` + `draw_arc` x3 +
-`draw_rect` x2 + `draw_line` + `draw_string`)로 그리면 프레임 263,
-4개(`draw_circle` + `draw_colored_polygon` x2 + `draw_string`)로 그리면 253이었다.
-같은 장면·같은 해상도에서 3D 몫은 175로 고정. 프리미티브 1개당 약 2.5개다.
-`draw_circle`(폴리곤)·`draw_arc`(폴리라인)·`draw_rect`·`draw_string`은 서로 다른
-배치라 연속으로 불러도 합쳐지지 않는다.
+**사실:** 같은 아이콘을 세 가지로 그려 같은 장면(3D 몫 175 고정)에서 잰 값이다.
+프리미티브 8개(`draw_circle` + `draw_arc` x3 + `draw_rect` x2 + `draw_line` +
+`draw_string`) = 프레임 **263**, 4개(`draw_circle` + `draw_colored_polygon` x2 +
+`draw_string`) = **253**, 2개(`draw_circle` + `draw_colored_polygon`) = **252**.
+비용은 개수에 비례하지 않는다 — 8에서 4로 줄일 때 10이 빠졌고 4에서 2로 줄일 때는
+1뿐이었다. 비싼 쪽은 `draw_arc`(폴리라인)와 `draw_string`이고, `draw_circle`과
+`draw_colored_polygon`은 거의 공짜다. 종류가 다른 프리미티브는 서로 다른 배치라
+연속으로 불러도 합쳐지지 않는다.
 
-**해결:** 상시 떠 있는 HUD는 채움 도형 1~2개로 실루엣을 만든다. 윤곽선 여러 겹
-대신 노치를 판 폴리곤 하나를 쓰고, 글자는 항상 보일 필요가 없으면 열렸을 때만
-그린다. 프리미티브 8개 → 2개로 프레임 13개를 되찾았다.
+**해결:** 윤곽선(`draw_arc`/`draw_line`) 여러 겹과 상시 `draw_string`을 없애고,
+노치를 판 채움 폴리곤 하나로 실루엣을 만든다. 글자는 항상 보일 필요가 없으면
+열렸을 때만 그린다. 프리미티브 8개 → 2개로 프레임 11개를 되찾았다. 도형 개수를
+세지 말고 **종류를 세라** — 줄일 것은 개수가 아니라 배치 전환이다.
 
 ## GDT-038 — nakama-godot의 validate_subscription은 결제창을 띄우지 않는다 — 영수증을 만드는 플러그인은 따로 필요하다
 
