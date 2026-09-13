@@ -41,6 +41,16 @@ ID 접두사 `AGT`. ID는 불변이다.
 수행하는 에이전트는 다르다 — 나쁜 티켓이면 자기가 3회 실패하고 정지하므로 인센티브가
 정렬돼 있고, 왜 그 줄을 썼는지 모르는 채로 읽는다.
 
+**보강 (2026-09-12, TRPG 0단계 티켓 5개):** 위 결론은 **발급 전 명세 검토**에 한한다.
+**발급 후 산출물 검증** — 커밋된 코드와 실행 결과를 티켓 완료 조건과 한 줄씩 대조하는 세션 — 은
+같은 맹점을 공유하지 않았다. 리뷰어가 받는 입력이 지시문이 아니라 코드·로그·테스트 실행 수라서다.
+실측 2건: (1) T-005 티켓 세션이 "API 키 없음"이라며 실기동을 건너뛰었는데 haiku 검증 세션이 `.env`를
+확인하고 `uv run gm_agent.py dev`를 직접 돌려 `registered worker`를 잡았다. (2) T-002 검증 세션이
+gdunit4 러너 출력에서 "6 test cases 실행"을 눈으로 확인했다 — 직전까지 파스 에러로 스위트가 로드조차
+안 되는데 게이트는 PASS였다. 성립 조건 셋: 검증자는 **읽기·실행만** 하고 고치지 않는다(고치는 순간
+검증이 아니다), 결함은 리더가 아니라 **티켓 세션에 직접** 보낸다, 리더에겐 최종 1회만 보고한다.
+모델은 haiku로 충분했다 — 단, 게이트 스크립트가 "실행된 테스트 수"를 직접 세도록 고친 뒤의 일이다(GDT-047).
+
 함께 걸림: AGT-001
 
 ---
@@ -662,3 +672,67 @@ uuid가 들어 있는지**다 — 사람이 띄우면 새 uuid가 생긴다. 부
 가르지 못한다(사람이 띄워도 같은 데몬을 재사용한다).
 정리 대상 PID는 그 세션이 보낸 메시지의 `from="uds:/tmp/cc-socks/<pid>.sock"`으로만 확정한다 —
 `bg-spare` 프로세스는 argv에 transcript uuid가 없어 `ps`로는 매핑되지 않는다.
+
+## AGT-031 — 스폰된 세션에게 `SendMessage(to: "main")`은 리더가 아니라 자기 자신이다 — 보고가 아무 데도 안 간다
+
+`측정 2026-09-12 · Claude Code 2.1.270`
+
+**증상:** 검증 세션이 "리더에 보고했다"고 화면에 적었는데 리더 세션에는 아무것도 오지 않았다. 스크롤백에
+`You are the main conversation — "main" addresses you. Send to a named agent instead.` 가 있고, 세션은 이를
+"이 세션이 곧 리더라서 별도 전송이 필요 없다"로 오독한 채 정지했다. 결과는 스크롤백을 읽어 건졌다.
+
+`main`은 각 세션의 **자기 대화**를 가리키는 예약어다. 리더가 프롬프트에 `리더=trpg-2d`라고 줬어도 세션은
+"리더 = main"으로 접는다.
+
+**해결:** 프롬프트와 계약 양쪽에 명시한다 — `to`는 프롬프트가 준 리더 이름을 그대로 쓴다, `"main"`은 자기 자신이다.
+넣은 뒤 이어진 세션 4개는 전부 `→ sent to trpg-2d`로 정상 도착했다. 보고가 안 오면 검증을 안 한 것과 같으므로
+리더는 `ListAgents`/스크롤백으로 대조한다.
+
+---
+
+## AGT-032 — `claude --bg` 세션은 공유 체크아웃에 쓰지 못한다 — 하네스가 `EnterWorktree`를 강제한다
+
+`측정 2026-09-12 · Claude Code 2.1.270`
+
+**증상:** 백그라운드 세션이 파일을 `Write`하려 하면
+`This background session hasn't isolated its changes yet. Call EnterWorktree first...` 로 막힌다.
+워크트리를 금지한 프로젝트(AGT-007)에서는 세션이 아무것도 못 쓰고 멈춘다. 세션이 그 가드를 피하려고
+`EnterWorktree`를 부르면 `.claude/worktrees/<name>` 에 별도 브랜치가 생기고 커밋이 `main`이 아닌 곳에 쌓인다.
+
+**해결:** 레포의 `.claude/settings.json`에 `{"worktree": {"bgIsolation": "none"}}`. 세션이 스스로 설정을
+바꾸게 두지 말고 리더가 사람 승인 뒤에 넣는다. 격리를 끄는 대신 티켓 범위 검사(`scope-check`)로 충돌을 막는다.
+이미 만들어진 워크트리는 산출물을 `main` 체크아웃으로 복사한 뒤 `ExitWorktree(remove, discard_changes=true)`.
+(뒤에 Orca 터미널 탭으로 방식을 바꿨다 — AGT-034.)
+
+---
+
+## AGT-033 — `claude stop <id>` · `claude rm <id>`는 존재하지 않는 명령이다 — 그 텍스트가 새 세션의 프롬프트가 된다
+
+`측정 2026-09-12 · Claude Code 2.1.270`
+
+**증상:** 끝난 백그라운드 세션을 정리하려고 `claude stop e6560799`를 치니 출력이
+`다음 지시 기다립니다. 참고로 현재 워크트리는 clean이라...` — **새 인터랙티브 세션이 "stop e6560799"를
+프롬프트로 받아 답한 것**이다. `claude stop --help`는 일반 `claude --help`를 보여준다. 스킬 문서에 적힌
+`claude stop/rm`은 이 버전에 없다. 대상 세션은 그대로 살아 있다(`claude agents --json`에 idle).
+
+**해결:** `claude agents --json`에서 `pid`를 읽어 `kill <pid>`. 자기 pid(`ps -o ppid= -p $$`)와 워킹트리에
+미커밋 작업이 없는지 먼저 확인한다. 존재하지 않는 서브커맨드가 프롬프트로 흡수되므로, 처음 쓰는 `claude <단어>`는
+`claude <단어> --help`가 서브커맨드 도움말을 내는지부터 본다.
+
+---
+
+## AGT-034 — Orca `terminal split`의 "Timed out waiting for split pane handle"은 실패가 아니다 — pane은 만들어졌고 handle만 못 받은 것이다
+
+`측정 2026-09-12 · Orca 1.4.200 · Claude Code 2.1.270`
+
+**증상:** `orca terminal split --terminal <리더> --command "claude ..." --json`이 `ok:false, runtime_error:
+Timed out waiting for split pane handle`을 낸다. 실패로 보고 두 번 더 부르니 `terminal list`에 빈 `Claude Code`
+pane이 **세 개** 떠 있었다. 각각 claude가 프롬프트 없이 대기 중이라 보이지 않게 컨텍스트를 점유한다.
+
+같이 걸린 것 둘: (a) `terminal send --text "<400자 넘는 프롬프트>" --enter`가 텍스트를 입력창에 넣고 **제출하지
+않는다** — `❯` 뒤에 본문이 남아 있다. `--enter`를 다시 보내도 안 된다. (b) 새 pane 제목은 `--title`을 줘도
+claude가 시작하며 덮어쓴다. 식별은 제목이 아니라 handle로 한다.
+
+**해결:** split 타임아웃이면 `orca terminal list --worktree current --json`으로 실제 생성을 확인하고 고아를
+`terminal close`. 프롬프트는 짧게 — 계약은 `CLAUDE.md`에 두고 프롬프트엔 티켓 번호·리더 이름·HEAD·세션이 알 수
+없는 상태 한 줄만. 그래도 안 걸리면 `--interrupt`로 입력을 비운 뒤 `--wait-submit 15`와 함께 다시 보낸다.

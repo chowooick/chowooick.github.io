@@ -1221,3 +1221,20 @@ wait_healthy
 `ssh <원격> "cd <루트> && \$HOME/<godot> --headless --path client --import"`를 한 번 돌려 캐시를 다시 만든다
 (3초). 판정 전에 로그의 첫 `SCRIPT ERROR`가 **내 파일인지**부터 본다 — 남의 미커밋 `class_name` 하나가
 내 스모크를 빨갛게 만든다.
+
+## OPS-054 — `git add`에 없는 경로가 하나라도 있으면 add 전체가 실패한다 — `git mv`가 미리 스테이징한 rename 때문에 커밋은 "성공"한다
+
+`측정 2026-09-12 · git 2.50.1 (macOS)`
+
+**증상:** `git mv docs/a.md docs/b.md` 뒤 본문을 고치고
+`git add CLAUDE.md docs/b.md docs/a.md tasks/x.md 2>/dev/null; git commit -m ...` — 커밋이 성공해 push까지
+됐는데 `git status`에 `M CLAUDE.md`, `M tasks/x.md`가 그대로 남아 있다. 커밋에는 `docs/{a.md => b.md} | 0`
+**rename 한 줄만** 들어갔다. 다른 세션이 "네 파일이 워킹트리에 남아 있다"고 물어와서 알았다.
+
+`git add`는 pathspec 하나가 안 맞으면 `fatal: pathspec 'docs/a.md' did not match any files`를 내고 **아무것도
+스테이징하지 않는다**. 그 에러를 `2>/dev/null`로 삼켰고, `git mv`가 이미 인덱스에 올려 둔 rename만 커밋됐다.
+자기가 세운 "`git add -A` 금지, 경로 명시" 규칙을 지키다가 정작 add 실패를 숨긴 것이다.
+
+**해결:** `git add`의 stderr를 절대 버리지 않는다. 여러 경로를 add할 땐 `git add -- <경로들> && git commit`로
+`&&`를 걸어 add 실패가 커밋을 막게 한다. 커밋 직후 `git show --stat --format="" HEAD`로 들어간 파일 수를
+의도와 대조한다 — rename만 있으면 0 insertions가 신호다. `git mv`한 옛 경로는 add 목록에 넣지 않는다.

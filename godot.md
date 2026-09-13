@@ -919,3 +919,83 @@ idle(`process_frame`) → draw → `frame_post_draw`이므로, idle 중에 `queu
 타입 주석도 전역 이름 대신 `Node3D` 같은 내장 타입으로 쓴다.
 캐시를 고치는 쪽으로 가려면 `--import`를 캐시 유무가 아니라 **매 동기화마다** 돌려야
 한다(측정 3초).
+
+## GDT-047 — gdUnit4 CI 러너는 로드 실패한 스위트를 조용히 건너뛰고 exit 0을 낸다 — "게이트 초록"이 "테스트가 돌았다"를 뜻하지 않는다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · gdUnit4 v6.2.1`
+
+**증상:** `godot --headless -s addons/gdUnit4/bin/GdUnitCmdTool.gd -a tests`가 exit 0인데, 테스트 5개짜리
+스위트가 실행 목록에 없다. 그 파일은 `var p := monitor_signals(...)`의 `:=` 추론 실패로 파스 에러였고,
+러너는 `Failed to load script ... Parse error`를 stderr에 찍고 **다음 스위트로 넘어간다**. 검증 세션과
+리더 모두 PASS를 믿고 티켓을 닫았다. 나중에 타입을 명시해 파스가 되자 그 안의 테스트 2개가 실패 상태였음이 드러났다.
+
+**해결:** 게이트가 exit code만 보지 않게 한다. 출력의 ANSI 코드를 벗기고 `Executed test cases : (N/M)`·
+`Executed test suites : (N/M)`을 파싱해 N이 0이면 FAIL, 실행 스위트 수가 `client/tests` 아래
+`test_*.gd`/`*_test.gd` 파일 수보다 적어도 FAIL. PASS 줄에 `(6 cases / 2 suites)`처럼 수를 찍어 눈으로도 보이게 한다.
+검증: `GdUnitTestSuite`를 상속하지 않는 `test_x.gd`를 넣으니 러너는 exit 0, 게이트는 "3개 중 2개만 실행"으로 exit 1.
+
+---
+
+## GDT-048 — gdUnit4 시그널 테스트가 두 번 속인다: 람다 카운터는 값 캡처라 0에 머물고, `is_emitted("sig")`는 인자 실린 emit을 못 잡는다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · gdUnit4 v6.2.1`
+
+**증상 1:** `var n := 0; obj.connected.connect(func() -> void: n += 1)` 뒤 `await assert_signal(obj).is_emitted("connected")`는
+통과하는데 `assert_int(n).is_equal(1)`은 0이다. 시그널은 실제로 1회 났다. GDScript 람다는 바깥 지역 변수를
+**값으로 캡처**해서 `n += 1`이 람다 안 사본만 바꾼다. 프로덕션 코드를 의심하며 `RefCounted`의 `call_deferred`까지 뒤졌다.
+
+**증상 2:** `disconnected.emit("null provider")`처럼 인자를 실어 보내는 시그널에 `is_emitted("disconnected")`를 쓰면
+매칭이 안 돼 실패한다. 인자 없는 호출은 인자 없는 emit만 잡는다.
+
+**해결:** 카운터는 참조형으로 — `var hits: Array[int] = [0]` 뒤 람다에서 `hits[0] += 1`. "정확히 1회"는
+`is_emitted` 뒤 `is_not_emitted`(`wait_until` 100ms)로 잡는다. 인자 있는 시그널은 `is_emitted("disconnected", "null provider")`.
+이 두 실패가 GDT-047의 파스 에러 뒤에 숨어 있었다 — 게이트가 돌지 않으면 잘못 쓴 테스트도 초록이다.
+
+---
+
+## GDT-049 — godot-livekit 오디오 publish는 프레임 계약을 어기면 GDScript로 못 잡는 네이티브 SIGABRT로 프로세스가 죽는다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · godot-livekit v0.3.3 (44f0aa7) · client-sdk-cpp v0.3.1`
+
+**증상:** `LiveKitAudioSource`를 publish한 뒤 `capture_frame()`이 제때 안 들어오면
+`RtcError: InvalidState - failed to capture frame` 뒤 Godot 프로세스 전체가 SIGABRT. C++ 미처리 예외라
+`try/catch`도 시그널도 없다. 창 드래그·씬 로딩·GC로 메인 스레드가 20ms 멈추는 순간 클라이언트가 통째로 날아간다.
+
+SDK 헤더(`livekit/audio_source.h`)의 계약: `queue_size_ms=0`(direct 모드, 하드웨어 마이크 권장)은 **정확히 10ms
+프레임만** 받는다. `>0`(버퍼 모드)은 20ms 안에 콜백을 못 받으면 던진다. 크래시는 콜드 스타트에 빈 채로
+publish하고 크기가 안 맞는 프레임을 넣은 **우리 호출 실수**였다. 업스트림 `livekit/client-sdk-cpp#44`의 같은
+증상은 이미 패치돼 v0.3.1에 포함돼 있다(git ancestor 확인) — 즉 SDK 버그가 아니다.
+
+**해결:** `queue_size_ms=0`, 첫 마이크 프레임을 받은 **뒤에** publish, 10ms 고정 청크(48kHz면 480 샘플)로
+잘라 넣기, 피딩을 전용 `Thread`로. 검증은 `OS.delay_msec(1500)`으로 메인 스레드를 강제로 멈춰도 살아남는지로
+한다 — GUI 2프로세스 실제 마이크·스피커 15초 무크래시. 예외는 호출 스레드에서 동기적으로 던져지므로
+벤더링한 wrapper에 try/catch 몇 줄을 넣는 패치도 가능하지만, 계약을 맞추는 쪽이 먼저다.
+
+---
+
+## GDT-050 — `audio/driver/enable_input`은 런타임 `ProjectSettings.set_setting()`으로 켜지지 않는다 — `project.godot`에 있어야 한다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · macOS CoreAudio`
+
+**증상:** 스크립트에서 `ProjectSettings.set_setting("audio/driver/enable_input", true)` 뒤 `AudioEffectCapture`를
+붙이면 `input_unit is null` 에러가 나고 마이크 프레임이 0이다. 값은 바뀌었다고 나오지만 오디오 드라이버는
+프로세스 시작 시 이미 초기화돼 있어 입력 유닛을 만들지 않는다.
+
+**해결:** `client/project.godot`의 `[audio]` 절에 `driver/enable_input=true`를 박는다. 공유 파일이라 티켓
+범위 확장 승인이 필요했다 — 마이크를 쓰는 티켓은 처음부터 이 파일을 범위에 넣는다. macOS는 최초 실행 시
+마이크 권한 팝업이 뜰 수 있고, 허용 후 재실행해야 한다.
+
+---
+
+## GDT-051 — `NodotProject/godot-cpp-builds` 프리빌트 릴리스의 `bin/`이 비어 있다 — 체크섬은 맞고 아티팩트 자체가 결함이다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · godot-livekit v0.3.3 · godot-cpp-builds godot-4.5-stable · macOS arm64`
+
+**증상:** godot-livekit `build.sh macos`가 프리빌트 `godot-cpp-prebuilt-*.zip`을 받아 링크 단계에서
+실패한다. 다운로드 손상을 의심해 체크섬을 대조했는데 일치한다 — 릴리스 zip 안의 `bin/`이 원래 비어 있다.
+
+**해결:** `godot-cpp/` 서브모듈을 직접 `scons platform=macos target=template_release arch=arm64`로 빌드한 뒤
+`build.sh`가 그 산출물을 쓰게 한다. 다른 플랫폼에서 같은 증상이면 같은 방법. 벤더링할 때 빌드 SHA와
+이 우회를 `docs/versions.md`에 적어 두지 않으면 다음 사람이 체크섬부터 다시 의심한다.
+부수 관찰: 이 GDExtension이 로드된 콜드 `.godot` 상태에서 `godot --headless --editor --quit-after 1`은 세그폴트가
+난다(에디터 스캔 스레드 경합 추정). `--editor --quit`과 `--import`는 문제없다. GDT-017·GDT-036과 함께 걸린다.
