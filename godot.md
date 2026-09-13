@@ -1030,3 +1030,35 @@ publish하고 크기가 안 맞는 프레임을 넣은 **우리 호출 실수**�
 버려진다 — 크래시도, 좀비 대기도 없다. `RefCounted` 헬퍼 하나(시그널 1개 + `run()` + `_invoke()`)로
 `rpc_async`·`join_match_async` 양쪽에 재사용했다. 스탠드얼론 Godot 프로젝트로 fast/slow/timeout 세 케이스를
 `--headless`로 직접 돌려 검증했다(`client/src/net/net_deadline.gd`, T-005).
+
+---
+
+## GDT-053 — GDExtension 타입을 `ClassDB.class_call_static`/`class_get_integer_constant`로 문자열 참조하면 확장 없는 플랫폼에서도 파싱된다
+
+`측정 2026-09-12 · Godot 4.7.2-stable`
+
+**증상:** godot-livekit 같은 GDExtension은 플랫폼별 바이너리만 있다(예: macOS arm64뿐, Linux 미제공).
+스크립트에 `var x: LiveKitRoom`처럼 정적 타입으로 쓰거나 `LiveKitAudioSource.create(...)`·
+`LiveKitTrack.KIND_AUDIO`처럼 클래스명을 식별자로 직접 참조하면, 확장이 로드되지 않는 플랫폼(CI Linux
+러너)에서 `Parse Error: Could not find type "LiveKitAudioSource"` / `Identifier "LiveKitRoom" not
+declared in the current scope`로 그 스크립트를 의존하는 모든 스크립트까지 컴파일이 통째로 깨진다.
+`ClassDB.class_exists()`로 방어해도, 정적 타입 주석이나 `ClassName.static_method()` 형태의 식별자
+참조 자체가 남아 있으면 파서가 그 시점에 이미 실패한다.
+
+**해결:** 모든 GDExtension 클래스 참조를 문자열 기반으로 바꾼다.
+- 생성자: `ClassDB.instantiate("LiveKitRoom")` (변수 타입은 `Object`로 선언)
+- static 팩토리 메서드(godot-livekit의 `.create()`, `.from_track()` 등, `flags` 비트 32=STATIC):
+  `ClassDB.class_call_static("LiveKitAudioSource", "create", mix_rate, channels, queue_ms)`
+- 정수 상수(`enum` 멤버, 예: `LiveKitTrack.KIND_AUDIO`):
+  `ClassDB.class_get_integer_constant("LiveKitTrack", "KIND_AUDIO")`
+- 인스턴스 메서드·시그널(`room.connected.connect(...)`, `room.get_local_participant()`)은 변수가
+  `Object` 타입이면 정적 검사를 안 받고 런타임에 동적 디스패치된다 — 이건 그대로 써도 파싱이 깨지지
+  않는다. 문제는 오직 "클래스명 자체를 식별자로 쓰는" 경우(타입 주석·static 호출·상수 접근)뿐이다.
+
+`ClassDB.class_exists("LiveKitRoom")`로 먼저 가드하면 확장 없는 플랫폼에서 `false`를 받아
+정상적으로 `ERR_UNAVAILABLE` 등을 리턴할 수 있다. `godot-livekit.gdextension`이 해당 플랫폼 라이브러리
+경로를 선언하지 않았거나 파일이 없으면 로드만 조용히 실패하고(경고 로그는 남는다) `ClassDB`에 클래스가
+등록되지 않을 뿐, 스크립트 파싱 자체는 막지 않는다. macOS(확장 있음)에서
+`ClassDB.class_call_static("LiveKitAudioSource", "create", 48000, 1, 0)`이 실제 인스턴스를
+반환하는 것으로 직접 확인했고, 확장 디렉터리를 통째로 옮겨 없앤 상태로 `gdunit4` 게이트가 그대로 PASS하는
+것도 확인했다(`client/src/voice/livekit_voice_provider.gd`, T-016).
