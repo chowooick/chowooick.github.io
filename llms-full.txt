@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-13T10:29:47Z · 소스 커밋 `f6c08db` · 이 파일은 자동 생성물이다.
+생성 2026-09-13T12:46:58Z · 소스 커밋 `bb0639e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -1699,6 +1699,42 @@ declared in the current scope`로 그 스크립트를 의존하는 모든 스크
 `Dictionary`(참조 타입)에 담아 `box[0] += 1`처럼 인덱스로 접근해야 여러 호출에 걸쳐 상태가 실제로
 누적된다. `assert_int`/`assert_bool`로 재시도 횟수를 검증하는 gdUnit4 테스트를 작성할 때 특히
 잘 걸린다(`client/src/main/boot_login_retry.gd`, T-028).
+
+## GDT-055 — macOS export는 project.godot에 `import_etc2_astc=true` 없으면 arm64/universal에서 거부된다
+
+`측정 2026-09-13 · Godot 4.7.2-stable`
+
+**증상:** `godot --headless --export-release "macOS" ...`가 파일 하나 안 건드리고 바로
+`ERROR: Cannot export project with preset "macOS" due to configuration errors: ETC2 ASTC 텍스처
+형식이 비활성화된 경우 universal 또는 arm64용으로 내보낼 수 없습니다`로 실패한다. 프로젝트에
+텍스처 리소스가 하나도 없어도 발생한다.
+
+**해결:** `project.godot`의 `[rendering]` 섹션에 `textures/vram_compression/import_etc2_astc=true`
+한 줄을 추가한다(에디터 GUI로는 렌더링 > 텍스처 > VRAM 압축 > ETC2 ASTC 가져오기). 이 검사는
+Apple Silicon(arm64) 타깃 자체에 걸려 있어 `binary_format/architecture`를 `arm64`로 좁혀도,
+텍스처를 안 써도 피할 수 없다. `export_presets.cfg`만 새로 만드는 티켓에서는 이 project setting이
+빠져 있어 처음 export 시도에서 막히기 쉽다(`client/export_presets.cfg`, T-056).
+
+## GDT-056 — macOS "universal" export는 GDExtension의 arm64·x86_64 슬라이스를 둘 다 요구하고, 없으면 조용히 크래시한다
+
+`측정 2026-09-13 · Godot 4.7.2-stable`
+
+**증상:** 공식 Godot 4.7 macOS export 템플릿(`macos.zip`)은 `godot_macos_release.universal`
+하나만 들어있다 — arm64 전용 템플릿은 애초에 없다(`binary_format/architecture="arm64"`로 좁히면
+`요청한 템플릿 바이너리 "godot_macos_release.arm64"을(를) 찾을 수 없습니다`로 즉시 실패).
+그래서 macOS export는 사실상 항상 `architecture="universal"`이어야 하는데, 그 상태에서 프로젝트가
+쓰는 GDExtension이 macOS arm64 슬라이스만 벤더링되어 있으면(x86_64 없음) export 후반
+"앱 번들 생성" 단계에서 `ERROR: Failed to open '.../libgodot-livekit.macos.x86_64.dylib'`를
+찍고, 그 직후 Godot 에디터 프로세스 자체가 `signal 11`로 죽는다(export 결과 pck는 이미 만들어져
+있어서 절반만 완성된 것처럼 보임 — 실제로는 export 실패로 처리됨).
+
+**해결:** universal 바이너리 자체는 그대로 두고, `.gdextension` 파일의 `[libraries]`·
+`[dependencies]`에서 실제 벤더링 안 된 아키텍처 항목(`macos.x86_64` 등, 파일 없는 선언)을 지운다.
+그러면 universal Godot 실행 파일에 arm64 슬라이스의 GDExtension만 들어가고, Intel Mac에서
+실행하면 그 확장 기능만 조용히 비활성(`ClassDB.class_exists`로 감지 가능, [[GDT-016]] 참고)된
+채로 나머지는 정상 동작한다. Windows·Linux처럼 애초에 안 만든 플랫폼도 같은 이유로 `.gdextension`에서
+지워야 export가 그 플랫폼에서 통과한다(`client/addons/godot-livekit/godot-livekit.gdextension`,
+T-056).
 
 ---
 
