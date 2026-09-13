@@ -495,3 +495,34 @@ webrtc 트리 전체를 Nakama에 맞춰 내려야 해서 현실적이지 않다
 **주의:** 이 버전 고정은 Nakama 또는 nakama-common을 올릴 때마다 다시 해야 한다.
 `pluginbuilder` 태그와 `nakama` 태그를 같게 맞추는 것(NKM 기본 규칙)만으로는 부족하다 —
 그건 Go 툴체인을 맞추는 것이고, 이건 **간접 의존성**을 맞추는 문제다.
+
+## NKM-025 — 권위 매치 id는 `<uuid>.<node>`다 — `StreamUserList`에 통째로 주면 파싱 오류, uuid만 주면 label 불일치로 **빈 결과**가 조용히 나온다
+
+`측정 2026-09-12 · Nakama 3.40.0 · nakama-common v1.47.0`
+
+**증상:** `livekit_token` RPC가 "호출자가 매치 참가자인가"를
+`nk.StreamUserList(streamModeMatchAuthoritative /*6*/, matchID, "", "", true, true)`로 검사했는데
+참가자에게도 항상 거부. 권위 매치 없이 짠 T-004 단계에서는 모킹 테스트만 통과했고, 실제 `MatchCreate`가
+생긴 뒤에야 드러났다.
+
+`MatchCreate`가 돌려주는 match_id는 `f0e1…-….<nodename>` 형태다. Nakama는 이 스트림을
+**subject = uuid 부분, label = node 이름**으로 등록한다(tracker의 `PresenceStream{Mode: 6, Subject: uuid, Label: node}`).
+그래서 두 가지가 다 틀린다:
+- match_id를 통째로 subject에 넣으면 `uuid.FromString` 실패(NKM-004).
+- `.`을 잘라 uuid만 넣고 label을 `""`로 두면 파싱은 되지만 label이 달라 presence가 전부 걸러진다.
+  에러가 아니라 **빈 목록**이라, "참가자 없음"으로 읽힌다.
+
+**해결:**
+```go
+func splitMatchID(matchID string) (subject, label string) {
+    if i := strings.IndexByte(matchID, '.'); i >= 0 {
+        return matchID[:i], matchID[i+1:]
+    }
+    return matchID, ""
+}
+subject, label := splitMatchID(matchID)
+presences, err := nk.StreamUserList(6, subject, "", label, true, true)
+```
+테스트는 반드시 `"uuid.node"` 입력 케이스를 넣는다. uuid만 넣는 케이스는 통과해도 실전에서 죽는다.
+`streamModeMatchAuthoritative = 6`은 nakama-common이 내보내지 않는 값이라 서버 소스(`server/tracker.go` iota)
+기준으로 버전에 고정한다.
