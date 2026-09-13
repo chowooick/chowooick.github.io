@@ -1375,3 +1375,35 @@ WebSocket ping/pong wait)보다 충분히 긴 시간(그 타임아웃보다 길�
 그 경우 클라이언트가 몇 초 안에 반드시 알아챈다는 보장은 없고(하트비트가 없다면 네트워크가 복구된
 뒤에야 지연된 서버 종료 신호가 도착함), "탐지 안 됨"이 실패가 아니라 하트비트 필요성의 신호일 수
 있다는 것을 테스트 설계에 반영해야 한다.
+
+## OPS-060 — OrbStack의 host↔VM 포트 릴레이는 유저스페이스 프록시라 STUN/TURN이 클라이언트의 진짜 공인 IP를 못 본다
+
+`측정 2026-09-13 · OrbStack(macOS, Apple Silicon) Ubuntu 24.04 VM · coturn 4.18.0 · docker compose bridge 네트워크`
+
+**증상:** VM 안에 `docker compose`로 띄운 coturn(`-p 3478:3478/udp` 포트 매핑, 기본 브리지 네트워크)에
+진짜 외부(다른 리전의 별도 서버)에서 `turnutils_stunclient <공인IP>`로 STUN Binding을 쏘면 응답은
+정상적으로 온다(닫힌 포트에 쏘면 `STUN receive timeout after 3000 ms`로 명확히 실패하는 것과 대조돼
+왕복 자체는 진짜다). 그런데 응답에 담긴 reflexive address가 요청자의 실제 공인 IP가 아니라
+`172.19.0.1` 같은 **docker compose의 내부 브리지 게이트웨이 주소**로 찍힌다. 같은 VM 안에 매핑 안 해둔
+포트(`--network host`로 임시 bind)를 열어도 외부에서 바로 도달하는데, 그때 수신 측이 보는 발신지는
+`127.0.0.1`(loopback)이다.
+
+**원인:** OrbStack의 `machines.forward_ports`(+ `expose_ports_to_lan`)는 사전에 정의한 포트 목록을
+포워딩하는 게 아니라, **VM 안에서 리슨하는 포트를 감지해 맥 쪽에 같은 포트를 자동으로 미러링하는
+유저스페이스 프록시**다(Docker Desktop의 vpnkit과 같은 부류). 이 프록시가 외부 연결을 받아 VM 안으로
+중계할 때 자기 자신(로컬)에서 새 연결을 맺으므로, VM 안 프로세스가 보는 발신 주소는 항상 로컬(호스트
+포트 매핑이면 docker 브리지 게이트웨이, host 네트워크면 127.0.0.1)이지 실제 인터넷 저편 클라이언트의
+주소가 아니다. `network_mode: host`로 바꿔도 172.19.0.1이 127.0.0.1로 바뀔 뿐 근본 문제(진짜 공인 IP
+소실)는 그대로다 — OPS-055가 다룬 macOS Docker Desktop 리눅스 VM과 같은 모양이지만, OPS-055는 "포트
+범위가 안 맞아 기동 자체가 실패"하는 문제였고 이건 "기동은 되고 응답도 오는데 주소 정보가 구조적으로
+틀리는" 다른 층의 문제다. coturn의 `--external-ip`는 TURN 릴레이가 광고하는 후보 주소만 고칠 뿐 STUN
+Binding 응답의 reflexive address(요청자가 실제로 관측되는 주소)는 못 고친다.
+
+**해결:** STUN/TURN처럼 "서버가 클라이언트의 진짜 공인 IP를 정확히 돌려줘야" 동작하는 서비스는
+OrbStack(또는 이와 같은 유저스페이스 포트 릴레이를 쓰는 가상화)의 VM 안에 두면 안 된다. 물리 호스트가
+LAN에 직접 붙어 있다면(공유기 포트포워딩이 물리 호스트의 실제 NIC로 바로 온다) 미디어 경로(coturn·
+LiveKit RTC)만 VM 밖 물리 호스트에 네이티브로 띄우고, 시그널링(HTTPS)만 Traefik 뒤 VM에 두는 구성이
+왕복이 짧다. 대안은 TURN을 아예 클라우드 VM처럼 유저스페이스 릴레이가 없는 호스트에 두는 것.
+판별 방법: VM 안에서 `network_mode: host`로 같은 STUN 요청을 다시 쏴서 reflexive address가 172.19.0.1
+대신 127.0.0.1로 바뀌기만 하면(클라이언트 공인 IP로는 안 바뀌면) 이 유저스페이스 릴레이가 원인임이
+확정된다.
