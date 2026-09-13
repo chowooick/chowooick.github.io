@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-13T02:08:07Z · 소스 커밋 `ae49495` · 이 파일은 자동 생성물이다.
+생성 2026-09-13T02:19:16Z · 소스 커밋 `a2eb055` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -1438,6 +1438,86 @@ idle(`process_frame`) → draw → `frame_post_draw`이므로, idle 중에 `queu
 캐시를 고치는 쪽으로 가려면 `--import`를 캐시 유무가 아니라 **매 동기화마다** 돌려야
 한다(측정 3초).
 
+## GDT-047 — gdUnit4 CI 러너는 로드 실패한 스위트를 조용히 건너뛰고 exit 0을 낸다 — "게이트 초록"이 "테스트가 돌았다"를 뜻하지 않는다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · gdUnit4 v6.2.1`
+
+**증상:** `godot --headless -s addons/gdUnit4/bin/GdUnitCmdTool.gd -a tests`가 exit 0인데, 테스트 5개짜리
+스위트가 실행 목록에 없다. 그 파일은 `var p := monitor_signals(...)`의 `:=` 추론 실패로 파스 에러였고,
+러너는 `Failed to load script ... Parse error`를 stderr에 찍고 **다음 스위트로 넘어간다**. 검증 세션과
+리더 모두 PASS를 믿고 티켓을 닫았다. 나중에 타입을 명시해 파스가 되자 그 안의 테스트 2개가 실패 상태였음이 드러났다.
+
+**해결:** 게이트가 exit code만 보지 않게 한다. 출력의 ANSI 코드를 벗기고 `Executed test cases : (N/M)`·
+`Executed test suites : (N/M)`을 파싱해 N이 0이면 FAIL, 실행 스위트 수가 `client/tests` 아래
+`test_*.gd`/`*_test.gd` 파일 수보다 적어도 FAIL. PASS 줄에 `(6 cases / 2 suites)`처럼 수를 찍어 눈으로도 보이게 한다.
+검증: `GdUnitTestSuite`를 상속하지 않는 `test_x.gd`를 넣으니 러너는 exit 0, 게이트는 "3개 중 2개만 실행"으로 exit 1.
+
+---
+
+## GDT-048 — gdUnit4 시그널 테스트가 두 번 속인다: 람다 카운터는 값 캡처라 0에 머물고, `is_emitted("sig")`는 인자 실린 emit을 못 잡는다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · gdUnit4 v6.2.1`
+
+**증상 1:** `var n := 0; obj.connected.connect(func() -> void: n += 1)` 뒤 `await assert_signal(obj).is_emitted("connected")`는
+통과하는데 `assert_int(n).is_equal(1)`은 0이다. 시그널은 실제로 1회 났다. GDScript 람다는 바깥 지역 변수를
+**값으로 캡처**해서 `n += 1`이 람다 안 사본만 바꾼다. 프로덕션 코드를 의심하며 `RefCounted`의 `call_deferred`까지 뒤졌다.
+
+**증상 2:** `disconnected.emit("null provider")`처럼 인자를 실어 보내는 시그널에 `is_emitted("disconnected")`를 쓰면
+매칭이 안 돼 실패한다. 인자 없는 호출은 인자 없는 emit만 잡는다.
+
+**해결:** 카운터는 참조형으로 — `var hits: Array[int] = [0]` 뒤 람다에서 `hits[0] += 1`. "정확히 1회"는
+`is_emitted` 뒤 `is_not_emitted`(`wait_until` 100ms)로 잡는다. 인자 있는 시그널은 `is_emitted("disconnected", "null provider")`.
+이 두 실패가 GDT-047의 파스 에러 뒤에 숨어 있었다 — 게이트가 돌지 않으면 잘못 쓴 테스트도 초록이다.
+
+---
+
+## GDT-049 — godot-livekit 오디오 publish는 프레임 계약을 어기면 GDScript로 못 잡는 네이티브 SIGABRT로 프로세스가 죽는다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · godot-livekit v0.3.3 (44f0aa7) · client-sdk-cpp v0.3.1`
+
+**증상:** `LiveKitAudioSource`를 publish한 뒤 `capture_frame()`이 제때 안 들어오면
+`RtcError: InvalidState - failed to capture frame` 뒤 Godot 프로세스 전체가 SIGABRT. C++ 미처리 예외라
+`try/catch`도 시그널도 없다. 창 드래그·씬 로딩·GC로 메인 스레드가 20ms 멈추는 순간 클라이언트가 통째로 날아간다.
+
+SDK 헤더(`livekit/audio_source.h`)의 계약: `queue_size_ms=0`(direct 모드, 하드웨어 마이크 권장)은 **정확히 10ms
+프레임만** 받는다. `>0`(버퍼 모드)은 20ms 안에 콜백을 못 받으면 던진다. 크래시는 콜드 스타트에 빈 채로
+publish하고 크기가 안 맞는 프레임을 넣은 **우리 호출 실수**였다. 업스트림 `livekit/client-sdk-cpp#44`의 같은
+증상은 이미 패치돼 v0.3.1에 포함돼 있다(git ancestor 확인) — 즉 SDK 버그가 아니다.
+
+**해결:** `queue_size_ms=0`, 첫 마이크 프레임을 받은 **뒤에** publish, 10ms 고정 청크(48kHz면 480 샘플)로
+잘라 넣기, 피딩을 전용 `Thread`로. 검증은 `OS.delay_msec(1500)`으로 메인 스레드를 강제로 멈춰도 살아남는지로
+한다 — GUI 2프로세스 실제 마이크·스피커 15초 무크래시. 예외는 호출 스레드에서 동기적으로 던져지므로
+벤더링한 wrapper에 try/catch 몇 줄을 넣는 패치도 가능하지만, 계약을 맞추는 쪽이 먼저다.
+
+---
+
+## GDT-050 — `audio/driver/enable_input`은 런타임 `ProjectSettings.set_setting()`으로 켜지지 않는다 — `project.godot`에 있어야 한다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · macOS CoreAudio`
+
+**증상:** 스크립트에서 `ProjectSettings.set_setting("audio/driver/enable_input", true)` 뒤 `AudioEffectCapture`를
+붙이면 `input_unit is null` 에러가 나고 마이크 프레임이 0이다. 값은 바뀌었다고 나오지만 오디오 드라이버는
+프로세스 시작 시 이미 초기화돼 있어 입력 유닛을 만들지 않는다.
+
+**해결:** `client/project.godot`의 `[audio]` 절에 `driver/enable_input=true`를 박는다. 공유 파일이라 티켓
+범위 확장 승인이 필요했다 — 마이크를 쓰는 티켓은 처음부터 이 파일을 범위에 넣는다. macOS는 최초 실행 시
+마이크 권한 팝업이 뜰 수 있고, 허용 후 재실행해야 한다.
+
+---
+
+## GDT-051 — `NodotProject/godot-cpp-builds` 프리빌트 릴리스의 `bin/`이 비어 있다 — 체크섬은 맞고 아티팩트 자체가 결함이다
+
+`측정 2026-09-12 · Godot 4.7.2-stable · godot-livekit v0.3.3 · godot-cpp-builds godot-4.5-stable · macOS arm64`
+
+**증상:** godot-livekit `build.sh macos`가 프리빌트 `godot-cpp-prebuilt-*.zip`을 받아 링크 단계에서
+실패한다. 다운로드 손상을 의심해 체크섬을 대조했는데 일치한다 — 릴리스 zip 안의 `bin/`이 원래 비어 있다.
+
+**해결:** `godot-cpp/` 서브모듈을 직접 `scons platform=macos target=template_release arch=arm64`로 빌드한 뒤
+`build.sh`가 그 산출물을 쓰게 한다. 다른 플랫폼에서 같은 증상이면 같은 방법. 벤더링할 때 빌드 SHA와
+이 우회를 `docs/versions.md`에 적어 두지 않으면 다음 사람이 체크섬부터 다시 의심한다.
+부수 관찰: 이 GDExtension이 로드된 콜드 `.godot` 상태에서 `godot --headless --editor --quit-after 1`은 세그폴트가
+난다(에디터 스캔 스레드 경합 추정). `--editor --quit`과 `--import`는 문제없다. GDT-017·GDT-036과 함께 걸린다.
+
 ---
 
 <!-- source: agents.md -->
@@ -1484,6 +1564,16 @@ ID 접두사 `AGT`. ID는 불변이다.
 
 수행하는 에이전트는 다르다 — 나쁜 티켓이면 자기가 3회 실패하고 정지하므로 인센티브가
 정렬돼 있고, 왜 그 줄을 썼는지 모르는 채로 읽는다.
+
+**보강 (2026-09-12, TRPG 0단계 티켓 5개):** 위 결론은 **발급 전 명세 검토**에 한한다.
+**발급 후 산출물 검증** — 커밋된 코드와 실행 결과를 티켓 완료 조건과 한 줄씩 대조하는 세션 — 은
+같은 맹점을 공유하지 않았다. 리뷰어가 받는 입력이 지시문이 아니라 코드·로그·테스트 실행 수라서다.
+실측 2건: (1) T-005 티켓 세션이 "API 키 없음"이라며 실기동을 건너뛰었는데 haiku 검증 세션이 `.env`를
+확인하고 `uv run gm_agent.py dev`를 직접 돌려 `registered worker`를 잡았다. (2) T-002 검증 세션이
+gdunit4 러너 출력에서 "6 test cases 실행"을 눈으로 확인했다 — 직전까지 파스 에러로 스위트가 로드조차
+안 되는데 게이트는 PASS였다. 성립 조건 셋: 검증자는 **읽기·실행만** 하고 고치지 않는다(고치는 순간
+검증이 아니다), 결함은 리더가 아니라 **티켓 세션에 직접** 보낸다, 리더에겐 최종 1회만 보고한다.
+모델은 haiku로 충분했다 — 단, 게이트 스크립트가 "실행된 테스트 수"를 직접 세도록 고친 뒤의 일이다(GDT-047).
 
 함께 걸림: AGT-001
 
@@ -2106,6 +2196,70 @@ uuid가 들어 있는지**다 — 사람이 띄우면 새 uuid가 생긴다. 부
 가르지 못한다(사람이 띄워도 같은 데몬을 재사용한다).
 정리 대상 PID는 그 세션이 보낸 메시지의 `from="uds:/tmp/cc-socks/<pid>.sock"`으로만 확정한다 —
 `bg-spare` 프로세스는 argv에 transcript uuid가 없어 `ps`로는 매핑되지 않는다.
+
+## AGT-031 — 스폰된 세션에게 `SendMessage(to: "main")`은 리더가 아니라 자기 자신이다 — 보고가 아무 데도 안 간다
+
+`측정 2026-09-12 · Claude Code 2.1.270`
+
+**증상:** 검증 세션이 "리더에 보고했다"고 화면에 적었는데 리더 세션에는 아무것도 오지 않았다. 스크롤백에
+`You are the main conversation — "main" addresses you. Send to a named agent instead.` 가 있고, 세션은 이를
+"이 세션이 곧 리더라서 별도 전송이 필요 없다"로 오독한 채 정지했다. 결과는 스크롤백을 읽어 건졌다.
+
+`main`은 각 세션의 **자기 대화**를 가리키는 예약어다. 리더가 프롬프트에 `리더=trpg-2d`라고 줬어도 세션은
+"리더 = main"으로 접는다.
+
+**해결:** 프롬프트와 계약 양쪽에 명시한다 — `to`는 프롬프트가 준 리더 이름을 그대로 쓴다, `"main"`은 자기 자신이다.
+넣은 뒤 이어진 세션 4개는 전부 `→ sent to trpg-2d`로 정상 도착했다. 보고가 안 오면 검증을 안 한 것과 같으므로
+리더는 `ListAgents`/스크롤백으로 대조한다.
+
+---
+
+## AGT-032 — `claude --bg` 세션은 공유 체크아웃에 쓰지 못한다 — 하네스가 `EnterWorktree`를 강제한다
+
+`측정 2026-09-12 · Claude Code 2.1.270`
+
+**증상:** 백그라운드 세션이 파일을 `Write`하려 하면
+`This background session hasn't isolated its changes yet. Call EnterWorktree first...` 로 막힌다.
+워크트리를 금지한 프로젝트(AGT-007)에서는 세션이 아무것도 못 쓰고 멈춘다. 세션이 그 가드를 피하려고
+`EnterWorktree`를 부르면 `.claude/worktrees/<name>` 에 별도 브랜치가 생기고 커밋이 `main`이 아닌 곳에 쌓인다.
+
+**해결:** 레포의 `.claude/settings.json`에 `{"worktree": {"bgIsolation": "none"}}`. 세션이 스스로 설정을
+바꾸게 두지 말고 리더가 사람 승인 뒤에 넣는다. 격리를 끄는 대신 티켓 범위 검사(`scope-check`)로 충돌을 막는다.
+이미 만들어진 워크트리는 산출물을 `main` 체크아웃으로 복사한 뒤 `ExitWorktree(remove, discard_changes=true)`.
+(뒤에 Orca 터미널 탭으로 방식을 바꿨다 — AGT-034.)
+
+---
+
+## AGT-033 — `claude stop <id>` · `claude rm <id>`는 존재하지 않는 명령이다 — 그 텍스트가 새 세션의 프롬프트가 된다
+
+`측정 2026-09-12 · Claude Code 2.1.270`
+
+**증상:** 끝난 백그라운드 세션을 정리하려고 `claude stop e6560799`를 치니 출력이
+`다음 지시 기다립니다. 참고로 현재 워크트리는 clean이라...` — **새 인터랙티브 세션이 "stop e6560799"를
+프롬프트로 받아 답한 것**이다. `claude stop --help`는 일반 `claude --help`를 보여준다. 스킬 문서에 적힌
+`claude stop/rm`은 이 버전에 없다. 대상 세션은 그대로 살아 있다(`claude agents --json`에 idle).
+
+**해결:** `claude agents --json`에서 `pid`를 읽어 `kill <pid>`. 자기 pid(`ps -o ppid= -p $$`)와 워킹트리에
+미커밋 작업이 없는지 먼저 확인한다. 존재하지 않는 서브커맨드가 프롬프트로 흡수되므로, 처음 쓰는 `claude <단어>`는
+`claude <단어> --help`가 서브커맨드 도움말을 내는지부터 본다.
+
+---
+
+## AGT-034 — Orca `terminal split`의 "Timed out waiting for split pane handle"은 실패가 아니다 — pane은 만들어졌고 handle만 못 받은 것이다
+
+`측정 2026-09-12 · Orca 1.4.200 · Claude Code 2.1.270`
+
+**증상:** `orca terminal split --terminal <리더> --command "claude ..." --json`이 `ok:false, runtime_error:
+Timed out waiting for split pane handle`을 낸다. 실패로 보고 두 번 더 부르니 `terminal list`에 빈 `Claude Code`
+pane이 **세 개** 떠 있었다. 각각 claude가 프롬프트 없이 대기 중이라 보이지 않게 컨텍스트를 점유한다.
+
+같이 걸린 것 둘: (a) `terminal send --text "<400자 넘는 프롬프트>" --enter`가 텍스트를 입력창에 넣고 **제출하지
+않는다** — `❯` 뒤에 본문이 남아 있다. `--enter`를 다시 보내도 안 된다. (b) 새 pane 제목은 `--title`을 줘도
+claude가 시작하며 덮어쓴다. 식별은 제목이 아니라 handle로 한다.
+
+**해결:** split 타임아웃이면 `orca terminal list --worktree current --json`으로 실제 생성을 확인하고 고아를
+`terminal close`. 프롬프트는 짧게 — 계약은 `CLAUDE.md`에 두고 프롬프트엔 티켓 번호·리더 이름·HEAD·세션이 알 수
+없는 상태 한 줄만. 그래도 안 걸리면 `--interrupt`로 입력을 비운 뒤 `--wait-submit 15`와 함께 다시 보낸다.
 
 ---
 
@@ -3334,4 +3488,21 @@ wait_healthy
 `ssh <원격> "cd <루트> && \$HOME/<godot> --headless --path client --import"`를 한 번 돌려 캐시를 다시 만든다
 (3초). 판정 전에 로그의 첫 `SCRIPT ERROR`가 **내 파일인지**부터 본다 — 남의 미커밋 `class_name` 하나가
 내 스모크를 빨갛게 만든다.
+
+## OPS-054 — `git add`에 없는 경로가 하나라도 있으면 add 전체가 실패한다 — `git mv`가 미리 스테이징한 rename 때문에 커밋은 "성공"한다
+
+`측정 2026-09-12 · git 2.50.1 (macOS)`
+
+**증상:** `git mv docs/a.md docs/b.md` 뒤 본문을 고치고
+`git add CLAUDE.md docs/b.md docs/a.md tasks/x.md 2>/dev/null; git commit -m ...` — 커밋이 성공해 push까지
+됐는데 `git status`에 `M CLAUDE.md`, `M tasks/x.md`가 그대로 남아 있다. 커밋에는 `docs/{a.md => b.md} | 0`
+**rename 한 줄만** 들어갔다. 다른 세션이 "네 파일이 워킹트리에 남아 있다"고 물어와서 알았다.
+
+`git add`는 pathspec 하나가 안 맞으면 `fatal: pathspec 'docs/a.md' did not match any files`를 내고 **아무것도
+스테이징하지 않는다**. 그 에러를 `2>/dev/null`로 삼켰고, `git mv`가 이미 인덱스에 올려 둔 rename만 커밋됐다.
+자기가 세운 "`git add -A` 금지, 경로 명시" 규칙을 지키다가 정작 add 실패를 숨긴 것이다.
+
+**해결:** `git add`의 stderr를 절대 버리지 않는다. 여러 경로를 add할 땐 `git add -- <경로들> && git commit`로
+`&&`를 걸어 add 실패가 커밋을 막게 한다. 커밋 직후 `git show --stat --format="" HEAD`로 들어간 파일 수를
+의도와 대조한다 — rename만 있으면 0 insertions가 신호다. `git mv`한 옛 경로는 add 목록에 넣지 않는다.
 
