@@ -831,3 +831,24 @@ T-004 커밋 안에 들어갔다. T-004가 보고한 sha는 사라졌고, T-003�
 항상 `git commit <경로...> -m "..."` 형태로 커밋 자체에 범위를 지정한다. 커밋 직후
 `git show --stat HEAD`로 들어간 파일 수를 티켓 범위와 대조한다 — AGT-037의 습관과 같지만
 `--amend` 여부와 무관하게 매번 적용해야 한다.
+
+## AGT-039 — livekit-agents `RoomIO`는 세션 시작 시점에 방에 있던 "첫 참가자"에만 오디오를 연결한다
+
+`측정 2026-09-13 · livekit-agents 1.8.1 · trpg 리포, AI GM 실배포 E2E 무인 검증`
+
+**증상:** 헤드리스 프로브(samantha TTS로 합성한 발화를 LiveKit 룸에 실제 오디오 트랙으로 publish)가
+GM을 소환하고 주사위를 굴린 뒤 말을 걸어도 GM의 STT가 전혀 반응하지 않았다(나레이션 없음, 타임아웃).
+룸에는 프로브 말고도 이미 다른(말 없는) 참가자가 먼저 들어와 있었다.
+
+`livekit/agents/voice/room_io/room_io.py`의 `RoomIO._init_task`는 세션 시작 시 `room.remote_participants`를
+훑어 조건(kind 필터·`ATTRIBUTE_PUBLISH_ON_BEHALF` 제외)을 만족하는 **첫 번째** 참가자에만
+`_on_participant_connected`로 오디오·전사 입력을 연결하고 `_participant_available_fut`를 확정한다.
+이후 새로 들어오는 참가자는 `if self._participant_available_fut.done(): return`으로 전부 무시된다.
+`RoomIO.set_participant()`을 직접 호출해 다른 참가자로 바꾸지 않는 한(trpg는 단일 화자 설계라
+호출하지 않는다, `agent/gm/speaker.py`), GM은 처음 링크된 그 참가자의 오디오만 듣는다 —
+말하는 사람이 몇 번째로 방에 들어왔는지에 따라 GM이 아예 못 들을 수 있다.
+
+**해결:** 실제로 말할 참가자(또는 그 오디오를 대신 publish하는 프로브)가 **GM을 소환(dispatch)하기
+전에** LiveKit 룸에 먼저 연결돼 있어야 한다. 순서를 "룸 연결 → GM 소환 → 발화"로 맞추면 GM 세션
+시작 시점에 그 참가자가 유일/최초로 존재해 정상 연결된다. 순서를 안 지키면(예: 방을 미리 만든
+다른 참가자가 먼저 있는 상태에서 GM을 부르면) 원인을 알기 어려운 무응답으로만 보인다.
