@@ -545,3 +545,28 @@ if uid, _ := ctx.Value(runtime.RUNTIME_CTX_USER_ID).(string); uid != "" {
 ```
 테스트는 반드시 실 스택에서 세션 토큰으로 HTTP 호출해 500(거부)을 확인한다 — 모킹 컨텍스트로는 두 판정이
 구분되지 않는다. NKM-008 과 함께 걸린다.
+
+## NKM-027 — REST `/v2/rpc/{id}`는 payload를 두 번 JSON 인코딩해야 한다 — 객체를 그대로 보내면 `http_key`든 세션 토큰이든 똑같이 "cannot unmarshal object into Go value of type string"로 거부한다
+
+`측정 2026-09-12 · Nakama 3.40.0`
+
+**증상:** 세션 Bearer 토큰으로 `POST /v2/rpc/match_create`에 `-d '{"name":"foo"}'`(객체 그대로)를 보내면
+`{"error":"json: cannot unmarshal object into Go value of type string","code":3}`. `?http_key=...` 쿼리 인증
+경로도 같은 페이로드로 같은 에러 — 인증 방식이 원인이 아니다.
+
+grpc-gateway가 생성한 REST 바인딩은 `RpcRequest.payload`가 **문자열** 필드라, HTTP 요청 바디 전체를
+그 문자열 필드 하나로 언마샬한다. 즉 바디는 JSON 객체가 아니라 **그 객체를 JSON 문자열로 인코딩한 값**이어야
+한다 — `"{\"name\":\"foo\"}"`처럼 따옴표로 감싼 문자열 리터럴 전체가 바디다. 응답도 같은 모양으로 온다
+(`{"payload":"{\"match_id\":\"...\"}"}"`), 즉 두 번 디코드해야 실제 값이 나온다.
+
+반면 **소켓(WS)의 `rpc` envelope**는 반대다 — `{"cid":"1","rpc":{"id":"match_create","payload":"{\"name\":\"foo\"}"}}`처럼
+`payload`가 이미 필드값이라 **한 번만** 인코딩하면 된다.
+
+**해결:** REST로 세션 RPC를 부를 때는 페이로드를 두 번 인코딩한다.
+```python
+body = json.dumps(json.dumps({"name": "foo"}))  # 문자열의 문자열
+requests.post(url, data=body, headers={"Authorization": f"Bearer {token}"})
+```
+소켓 경로를 쓸 수 있으면 그쪽이 더 단순하다(한 번 인코딩만). 이 프로젝트의 `agent/gm/nakama.py`는
+`httpx.post(url, json=payload)`로 객체를 그대로 보내는데, 이 형태면 실 서버에서 위 에러로 즉시 죽는다 —
+T-015(실서버 결합)가 아직 끝나지 않아 드러나지 않았을 뿐이다.
