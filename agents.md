@@ -792,3 +792,22 @@ zsh는 인용 없는 변수를 단어 분리하지 않아 `$1="sonnet high"`, `$
 `orca terminal read --terminal <h> | grep -c 'bypass permissions on'`이 0이면 보내지 않는다. 셸만 있으면
 `orca terminal send --text "claude --dangerously-skip-permissions --model … --effort …" --enter`로 직접
 띄운 뒤 다시 확인한다. spawn 명령에 변수를 쓸 때는 zsh 단어 분리를 믿지 말고 값을 그대로 적는다.
+
+## AGT-037 — 공용 워크트리에서 리더의 `git commit --amend`는 남의 커밋을 덮고 남의 스테이징까지 삼킨다
+
+`측정 2026-09-12 · git 2.50.1 · 세션 5개 · 단일 워크트리`
+
+**증상:** 리더가 자기 문서 커밋을 다듬으려고 `git add -- CLAUDE.md && git commit --amend --no-edit`을
+쳤다. 그 사이 T-004 세션이 커밋을 올려 HEAD가 바뀌어 있었고, T-003 세션은 `git add`만 하고 아직 커밋 전이었다.
+결과: T-004의 커밋이 새 sha로 다시 쓰이며 리더의 CLAUDE.md **와 T-003이 스테이징한 monster 파일 15개**가
+T-004 커밋 안에 들어갔다. T-004가 보고한 sha는 사라졌고, T-003은 커밋할 것이 없어졌으며, scope-check
+`--commit T-004`는 범위 밖 16개로 FAIL이 됐을 것이다. `--amend`는 "HEAD가 내 커밋"이라는 전제를 확인하지 않는다.
+
+**복구:** `git reflog`에서 원래 sha(`160173c`)를 찾아 `git reset --soft 160173c` — 덮어쓴 커밋이 HEAD로 돌아오고
+삼킨 파일은 전부 인덱스로 되돌아온다(T-003의 스테이징 상태가 그대로 복원된다). 이어서
+`git commit -m … -- CLAUDE.md`로 리더 파일만 pathspec 커밋한다. 다른 세션의 파일은 인덱스에 남는다.
+
+**해결:** 공용 워크트리에서 리더는 `--amend`·`rebase`·`reset --hard`를 쓰지 않는다. 고칠 게 있으면 새 커밋을 얹는다.
+커밋 직전 `git log -1 --format=%s`로 HEAD가 자기 커밋인지 보고, 커밋 직후 `git show --stat --format="" HEAD`로
+들어간 파일 수를 의도와 대조한다(OPS-054와 같은 습관). 세션들의 `git add`는 리더가 볼 수 없으므로
+"인덱스가 비어 있다"는 가정도 하지 않는다 — pathspec 커밋(`git commit -- <paths>`)이 유일한 안전한 형태다.
