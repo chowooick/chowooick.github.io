@@ -852,3 +852,27 @@ GM을 소환하고 주사위를 굴린 뒤 말을 걸어도 GM의 STT가 전혀 
 전에** LiveKit 룸에 먼저 연결돼 있어야 한다. 순서를 "룸 연결 → GM 소환 → 발화"로 맞추면 GM 세션
 시작 시점에 그 참가자가 유일/최초로 존재해 정상 연결된다. 순서를 안 지키면(예: 방을 미리 만든
 다른 참가자가 먼저 있는 상태에서 GM을 부르면) 원인을 알기 어려운 무응답으로만 보인다.
+
+## AGT-040 — llama-server 응답의 캐시 토큰은 `timings.cache_n`과 `usage.prompt_tokens_details.cached_tokens` 둘 다에 온다
+
+`측정 2026-09-13 · llama.cpp b10766 · Busan(192.168.139.3:8081), EXAONE-4.0-32B-Q4_K_M`
+
+**증상:** GM 턴마다 프롬프트 캐시 히트 여부를 로그에 남기려는데(trpg T-021), OpenAI 호환
+`/v1/chat/completions` 응답에 캐시 정보가 어느 필드로 오는지, 필드가 실제로 있는지가 문서에 없었다.
+
+`id_slot=1`로 짧은 문장 2회를 직접 호출해 실제 응답을 봤다:
+
+```json
+"usage": {"prompt_tokens": 13, "prompt_tokens_details": {"cached_tokens": 0}},
+"timings": {"cache_n": 0, "prompt_n": 13, "prompt_ms": 1002.6, "predicted_n": 12, ...}
+```
+
+`timings` 객체가 OpenAI 호환 경로에도 그대로 실려 온다(llama.cpp 서버 자체 확장). 캐시 토큰 수는
+`timings.cache_n`(llama.cpp 네이티브)과 `usage.prompt_tokens_details.cached_tokens`(OpenAI
+호환 필드를 흉내) 둘 다에 같은 값으로 온다. `prompt_n`은 이번 요청이 처리한 프롬프트 토큰 총수 —
+캐시 히트 시 `cache_n`이 `prompt_n`보다 작게 나오는 구조.
+
+**해결:** 캐시 히트 판정은 `timings.cache_n > 0`을 쓴다 — OpenAI 호환 레이어가 바뀌어도 llama.cpp
+네이티브 필드라 남을 가능성이 높다. 이 확인은 슬롯이 비어 있는 상태에서 한 것이라 `cache_n=0`(미스)만
+관측했다 — 히트 사례(`cache_n>0`)는 실호출로 재현하지 말고(캐시 상태가 흔들린다) 가짜 응답으로
+단위 테스트에서 덮는다.
