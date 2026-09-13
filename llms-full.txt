@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-13T10:15:46Z · 소스 커밋 `fe316d4` · 이 파일은 자동 생성물이다.
+생성 2026-09-13T10:29:47Z · 소스 커밋 `f6c08db` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -586,6 +586,28 @@ requests.post(url, data=body, headers={"Authorization": f"Bearer {token}"})
 소켓 경로를 쓸 수 있으면 그쪽이 더 단순하다(한 번 인코딩만). 이 프로젝트의 `agent/gm/nakama.py`는
 `httpx.post(url, json=payload)`로 객체를 그대로 보내는데, 이 형태면 실 서버에서 위 에러로 즉시 죽는다 —
 T-015(실서버 결합)가 아직 끝나지 않아 드러나지 않았을 뿐이다.
+
+## NKM-028 — `--runtime.env`는 OS 프로세스 환경변수를 안 채운다 — `os.Getenv`로 읽으면 항상 빈 값이다
+
+`측정 2026-09-13 · Nakama 3.40.0`
+
+**증상:** `nakama --runtime.env livekit_api_url=http://192.168.139.3:7880`으로 기동했는데, 그 Go 플러그인
+코드에서 `os.Getenv("livekit_api_url")`을 부르면 빈 문자열이 온다. `docker exec <컨테이너> env`·
+`/proc/1/environ`에도 값이 없다 — `ps`/`cmdline`엔 `--runtime.env` 인자가 그대로 보이는데도 그렇다.
+같은 서버의 다른 RPC 핸들러는 같은 값을 문제없이 읽고 있어서, 처음엔 배포(env 미적용)를 의심하게 만든다.
+
+`--runtime.env`는 OS 프로세스 환경으로 들어가는 게 아니라 Nakama 런타임이 자체 관리하는 키-값 맵이다.
+Go 런타임 모듈 안에서는 이 값이 **함수 인자로 오는 `ctx`에만** 실려 온다.
+
+**해결:** `ctx.Value(runtime.RUNTIME_CTX_ENV)`(타입은 `map[string]string`)로 읽는다, `os.Getenv`가 아니라.
+```go
+env, _ := ctx.Value(runtime.RUNTIME_CTX_ENV).(map[string]string)
+url := env["livekit_api_url"]
+```
+`ctx`를 못 받는 위치(패키지 초기화, `InitModule` 바깥에서 미리 계산해두는 값 등)에서 이 값이 필요하면
+설계를 바꿔야 한다 — env를 요청 시점마다 `ctx`로 다시 읽게 하거나, `InitModule`이 받는 `ctx`에서 한 번
+읽어 캐시한다. `os.Getenv`로의 폴백을 넣어도 항상 폴백 경로로만 가므로, 코드 리뷰에서 `--runtime.env`로
+전달하는 값을 `os.Getenv`로 읽는 코드가 있으면 그 자체가 결함 신호다.
 
 ---
 
