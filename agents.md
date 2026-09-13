@@ -736,3 +736,40 @@ claude가 시작하며 덮어쓴다. 식별은 제목이 아니라 handle로 한
 **해결:** split 타임아웃이면 `orca terminal list --worktree current --json`으로 실제 생성을 확인하고 고아를
 `terminal close`. 프롬프트는 짧게 — 계약은 `CLAUDE.md`에 두고 프롬프트엔 티켓 번호·리더 이름·HEAD·세션이 알 수
 없는 상태 한 줄만. 그래도 안 걸리면 `--interrupt`로 입력을 비운 뒤 `--wait-submit 15`와 함께 다시 보낸다.
+
+---
+
+## AGT-035 — `uv add sherpa-onnx`만으로는 onnxruntime dylib가 없다 — PyPI의 "Dynamic: requires-dist"가 실제 의존성을 숨긴다
+
+`측정 2026-09-12 · uv 0.12.10 · sherpa-onnx 1.13.8 · macOS arm64(Darwin 25.6) · Python 3.12`
+
+**증상:** `uv add onnxruntime sherpa-onnx`로 설치한 뒤 `import sherpa_onnx`가
+
+```
+ImportError: dlopen(.../sherpa_onnx/lib/_sherpa_onnx.cpython-312-darwin.so, 0x0002):
+Library not loaded: @rpath/libonnxruntime.dylib
+```
+
+로 죽는다. `onnxruntime` 패키지는 정상 설치돼 있고 `import onnxruntime`도 단독으로는 된다 — 그런데
+그 dylib 이름이 `onnxruntime/capi/libonnxruntime.1.30.0.dylib`(버전 번호 포함)라 sherpa-onnx가 찾는
+버전 없는 `libonnxruntime.dylib`와 이름부터 다르다. 설치된 macOS arm64 wheel(`sherpa_onnx-1.13.8-...-macosx_11_0_arm64.whl`)은 2.1MB로 작다 — onnxruntime을 내장하지 않은 "얇은" wheel이었다.
+
+**원인:** `sherpa_onnx-1.13.8.dist-info/METADATA`에 `Requires-Dist: sherpa-onnx-core==1.13.8`가
+**있는데도** `Dynamic: requires-dist`로 표시돼 있어 `uv add`가 그 의존성을 해석에 반영하지 않았다(실제
+설치된 `uv.lock`에 `sherpa-onnx-core` 항목 자체가 없다). `sherpa-onnx-core`가 진짜 네이티브 바이너리와
+자기 몫의 `libonnxruntime.dylib`(버전 없는 이름)를 담고 있는 패키지다 — 별도의 `onnxruntime` PyPI
+패키지와는 완전히 다른 dylib다. 같은 리포의 Python 3.9 venv(`sherpa_onnx==1.13.7` +
+`sherpa_onnx_core==1.13.7`을 둘 다 명시 설치한 곳)는 이 문제가 없었다 — `sherpa_onnx/lib/`에 버전 없는
+`libonnxruntime.dylib`가 실제로 들어 있었다.
+
+**해결:** `sherpa-onnx`를 넣을 때 **같은 버전의 `sherpa-onnx-core`를 항상 같이 명시**한다:
+
+```
+uv add sherpa-onnx sherpa-onnx-core==<sherpa-onnx와 동일 버전>
+```
+
+버전이 어긋나면(예: core가 더 오래됨) 또 다른 형태로 깨질 수 있으므로 두 버전을 맞춘다. `pip install
+sherpa-onnx`로 한 번에 될 때도 있는 것은 pip이 dist-info의 "Dynamic" 표시와 무관하게 PyPI가 실제로 서빙한
+wheel 메타데이터를 그대로 신뢰하기 때문으로 보인다 — 재현 안 되면 리졸버 차이(uv vs pip)부터 의심한다.
+onnxruntime 계열 패키지가 `ImportError: ... Library not loaded: @rpath/lib*.dylib`로 죽으면, 그 라이브러리를
+번들해야 할 "짝 패키지"가 dist-info에서 숨겨져 있는지부터 확인한다.
