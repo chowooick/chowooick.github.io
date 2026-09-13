@@ -592,3 +592,24 @@ url := env["livekit_api_url"]
 설계를 바꿔야 한다 — env를 요청 시점마다 `ctx`로 다시 읽게 하거나, `InitModule`이 받는 `ctx`에서 한 번
 읽어 캐시한다. `os.Getenv`로의 폴백을 넣어도 항상 폴백 경로로만 가므로, 코드 리뷰에서 `--runtime.env`로
 전달하는 값을 `os.Getenv`로 읽는 코드가 있으면 그 자체가 결함 신호다.
+
+## NKM-029 — `update_account_async`로 username을 바꿔도 이미 접속 중인 매치 프레즌스·채팅 발신자 이름은 재접속 전까지 그대로다
+
+`측정 2026-09-13 · Nakama 3.40.0`
+
+**증상:** 클라이언트 A가 소켓 연결·매치 조인·채팅 조인을 마친 뒤 `update_account_async(session, "NewName")`으로
+자신의 username을 바꿨다. 같은 매치에 있는 클라이언트 B는 이후에도(10 tick/s로 계속 오는 op 2 스냅샷 160회
+이상 관찰) `players[A.user_id].username`이 옛 이름 그대로였고, A가 그 뒤 보낸 채팅 메시지의 발신자
+username도 옛 이름 그대로였다. A 자신의 로컬 `session.username`/`update_account_async`의 반환값은 새
+이름으로 정상 갱신된다 — 클라이언트 쪽 계정 정보는 맞다.
+
+Go 런타임 모듈(`MatchJoin`)이 저장하는 `runtime.Presence`는 조인 시점의 username을 담은 스냅샷이고, 이후
+매 tick `p.GetUsername()`을 불러도 계정 테이블을 다시 조회하지 않는다 — 그 프레즌스 객체 자체가 고정값이다.
+채팅(`ChannelMessageSend`)의 발신자 이름도 같은 소켓 세션의 캐시된 값을 쓴다. 즉 **런타임에 계정
+username을 바꿔도, 그 값을 참조하는 살아있는 소켓 세션들의 표시 이름은 갱신되지 않는다** — leave+rejoin
+(또는 재접속으로 새 소켓 세션을 여는 것)만이 새 프레즌스를 만들어 새 이름을 반영한다.
+
+**해결:** 없음(회피책만). 재접속 없이 다른 클라이언트에게 실시간으로 새 이름을 보여줘야 한다면 서버가
+직접 브로드캐스트해야 한다 — 예: 계정 갱신 후 `MatchSignal`/자체 이벤트로 새 username을 담은 메시지를
+그 유저가 속한 매치들에 보내고, 클라이언트가 그 이벤트로 로컬 표시를 갱신. 순수 클라이언트 변경만으로는
+"재접속 없이 원격에 반영"을 만족시킬 방법이 없다.
