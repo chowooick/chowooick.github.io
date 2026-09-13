@@ -1342,3 +1342,36 @@ function send(obj) {
 소켓의 첫 프레임을 핸드셰이크(인증)로 읽는 서버라면 반드시 인증 프레임 **뒤에** 보낸다.
 검증은 `WebSocket.prototype.send`를 감싸 실제로 나간 프레임 목록을 찍어 보는 것이 확실하다 —
 "호출했다"와 "나갔다"는 다르다.
+
+---
+
+## OPS-059 — Docker Desktop(macOS)에서 `docker network disconnect`는 이미 열린 TCP 연결을 끊지 않는다
+
+`측정 2026-09-13 · Docker Desktop for Mac, Docker Engine 27.x, macOS`
+
+**증상:** 컨테이너 하나(Nakama, WebSocket 서버)에 클라이언트가 이미 연결된 상태에서
+`docker network disconnect <network> <container>`로 10초간 끊었다가 `docker network connect`로
+복구해도, 클라이언트 쪽에서는 연결이 끊긴 적 없는 것처럼 계속 정상 동작한다. 재접속 로직(소켓
+`closed`/`connection_error` 이벤트에 의존하는 것)이 전혀 발동하지 않는다.
+
+직접 재현: 파이썬 `socket.create_connection`으로 컨테이너의 게시된 포트에 연결해 두고, `sendall`
+직후 `docker network disconnect`, 10초 대기, `docker network connect`, 그다음 `recv`. disconnect
+동안 보낸 바이트는 커널 송신 버퍼에 남아 있다가 네트워크가 돌아오자마자 그대로 재전송되어 정상
+응답이 도착한다 — 애플리케이션 레벨에서는 에러도 타임아웃도 전혀 관측되지 않는다. `docker network
+disconnect`는 컨테이너를 그 브리지 네트워크에서 떼어 **새 연결**은 확실히 막지만(같은 테스트에서
+`curl`은 즉시 타임아웃), Docker Desktop의 포트 포워딩 경로(호스트 ↔ VM ↔ 컨테이너) 위에 이미 만들어진
+연결의 패킷 흐름은 끊지 못한다 — TCP가 재전송으로 조용히 흡수해 버린다. 몇 초짜리 단절 시뮬레이션
+용도로는 사실상 no-op.
+
+대조: 같은 연결에 `docker compose stop <service>`를 실행하면 0.3초 안에 소켓에 정상 FIN(`recv`가
+0바이트)이 도착한다 — 컨테이너 프로세스가 죽으며 커널이 열린 소켓을 실제로 닫기 때문에 즉시·확실하게
+감지된다.
+
+**해결:** "클라이언트가 짧은 시간 안에 반드시 재접속을 감지해야 하는" 테스트에는 `docker network
+disconnect`를 쓰지 않는다. 대신 `docker compose stop <service>` → 대기 → `start`(또는 `restart`)로
+컨테이너 프로세스 자체를 내렸다 올린다. `docker network disconnect`는 서버 쪽 세션 타임아웃(예:
+WebSocket ping/pong wait)보다 충분히 긴 시간(그 타임아웃보다 길게) 유지했을 때 "서버가 세션을 먼저
+죽였는데 클라이언트는 조용히 아무것도 못 받는" 시나리오를 재현하는 용도로는 여전히 유효하다 — 단
+그 경우 클라이언트가 몇 초 안에 반드시 알아챈다는 보장은 없고(하트비트가 없다면 네트워크가 복구된
+뒤에야 지연된 서버 종료 신호가 도착함), "탐지 안 됨"이 실패가 아니라 하트비트 필요성의 신호일 수
+있다는 것을 테스트 설계에 반영해야 한다.
