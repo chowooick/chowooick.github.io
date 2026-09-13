@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-13T02:52:43Z · 소스 커밋 `1994403` · 이 파일은 자동 생성물이다.
+생성 2026-09-13T03:08:20Z · 소스 커밋 `a73fba9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2328,6 +2328,25 @@ sherpa-onnx`로 한 번에 될 때도 있는 것은 pip이 dist-info의 "Dynamic
 wheel 메타데이터를 그대로 신뢰하기 때문으로 보인다 — 재현 안 되면 리졸버 차이(uv vs pip)부터 의심한다.
 onnxruntime 계열 패키지가 `ImportError: ... Library not loaded: @rpath/lib*.dylib`로 죽으면, 그 라이브러리를
 번들해야 할 "짝 패키지"가 dist-info에서 숨겨져 있는지부터 확인한다.
+
+## AGT-036 — claude가 뜨지 못한 Orca pane은 빈 zsh다 — 거기 보낸 티켓 프롬프트는 셸 명령으로 실행된다
+
+`측정 2026-09-12 · Orca 1.4.200 · Claude Code 2.1.x · macOS zsh`
+
+**증상:** `orca terminal split --command "claude … --effort $2"`에서 `$2`가 비어 claude가
+`error: option '--effort <level>' argument missing`으로 즉시 종료했다. split은 `ok:true`였고 pane도
+생겼다. 이어서 `orca terminal send --text "Do ticket tasks/T-002.md. Follow CLAUDE.md … (never send to
+main, …)"`를 보내자 **zsh가 그 문장을 명령으로 실행**했다 — `zsh: no matches found: (never send …)`,
+`zsh: command not found: you`. 이번 문장에는 파괴적 단어가 없어 무해했지만, 프롬프트에 `rm`·`git`·리다이렉션이
+들어 있었다면 그대로 실행됐다. send는 대상이 claude인지 셸인지 구분하지 않는다.
+
+변수가 빈 원인은 zsh다. `for spec in "sonnet high"; do set -- $spec; …`은 bash에서는 두 단어로 갈라지지만
+zsh는 인용 없는 변수를 단어 분리하지 않아 `$1="sonnet high"`, `$2=""`가 된다.
+
+**해결:** send 전에 pane 스크롤백에서 claude 배너(`bypass permissions on` 줄)를 확인한다 —
+`orca terminal read --terminal <h> | grep -c 'bypass permissions on'`이 0이면 보내지 않는다. 셸만 있으면
+`orca terminal send --text "claude --dangerously-skip-permissions --model … --effort …" --enter`로 직접
+띄운 뒤 다시 확인한다. spawn 명령에 변수를 쓸 때는 zsh 단어 분리를 믿지 말고 값을 그대로 적는다.
 
 ---
 
