@@ -876,3 +876,28 @@ GM을 소환하고 주사위를 굴린 뒤 말을 걸어도 GM의 STT가 전혀 
 네이티브 필드라 남을 가능성이 높다. 이 확인은 슬롯이 비어 있는 상태에서 한 것이라 `cache_n=0`(미스)만
 관측했다 — 히트 사례(`cache_n>0`)는 실호출로 재현하지 말고(캐시 상태가 흔들린다) 가짜 응답으로
 단위 테스트에서 덮는다.
+
+## AGT-041 — livekit-agents job 서브프로세스에서 `logging.getLogger(name).info(...)`가 이유 없이 사라진다
+
+`측정 2026-09-13 · livekit-agents 1.8.1 · trpg 리포, agent/gm/loop.py·metrics.py`
+
+**증상:** `gm.loop`(T-015)와 `gm.metrics`(T-021)가 매 턴 `logger.info(...)`로 남기는 로그가 실 배포
+GM 워커의 stdout(`gm_agent.py dev` 리다이렉트 파일)에 한 줄도 안 보였다. `livekit.agents` 자체 로그
+(`starting worker`, `registered worker` 등)는 정상 출력되는데, 애플리케이션 코드의 로거만 사라졌다 —
+예외도 없고 조용히 드롭된다.
+
+원인은 `ipc/job_proc_executor.py`의 `_create_process`가 새 job 서브프로세스를 띄우기 직전에
+`logging.Logger.manager.loggerDict`를 훑어 **그 시점까지 이미 생성된 로거들의 level만** 스냅샷해
+자식에게 넘긴다(`ipc/job_proc_lazy_main.py`의 `proc_main`이 그 dict로 `setLevel`을 재적용).
+`gm.loop`/`gm.metrics`는 진입점 함수 안에서 지연 임포트되므로 이 스냅샷 시점엔 아직 존재하지 않는
+로거다 — 자식 프로세스에서 뒤늦게 `logging.getLogger("gm.loop")`로 새로 생성되면 레벨이 기본값
+`NOTSET`이고, 자식 프로세스의 **루트 로거 레벨은 스냅샷에 없으니 그대로 파이썬 기본값 WARNING**이라
+`INFO` 호출이 `isEnabledFor()`에서 걸러진다. `LogQueueListener.handle`이 부모 쪽에서 같은 이름으로
+한 번 더 `isEnabledFor`를 검사하긴 하지만, 자식에서 이미 걸러진 레코드는 큐에 실리지도 않는다.
+
+**해결:** 그 모듈이 로그를 실제로 내보내길 원하면, 모듈 **임포트 시점에 그 로거 자신의 레벨을 명시적으로
+`setLevel`**한다(`logging.getLogger("gm.metrics").setLevel(logging.INFO)` 같은 한 줄, 상위/루트에
+기대지 않는다) — 로거 자신에게 레벨이 박혀 있으면 부모·루트가 무엇이든 `isEnabledFor`가 그 값을 바로
+쓴다. 워커 엔트리포인트(`gm_agent.py`)에서 최상위로 `logging.getLogger().setLevel(...)`을 부모 프로세스
+시작 전에 걸어도 되지만, 그 값이 스냅샷·전파되려면 자식이 fork되기 *전에* 그 로거가 이미 존재해야 한다는
+제약이 있어 지연 임포트 구조와는 안 맞는다 — 모듈 자체가 자기 로거 레벨을 챙기는 쪽이 이 구조에서 더 안전하다.
