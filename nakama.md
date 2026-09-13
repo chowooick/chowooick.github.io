@@ -458,3 +458,40 @@ func tsOrZero(ts interface{ AsTime() time.Time }) time.Time {
 에포크를 제로 타임으로 접는다. 호출부는 `IsZero()`만 묻는다 — 에포크 비교를
 네 곳에 흩어 두면 언젠가 한 곳을 빠뜨린다. `ExpiryTime`도 같은 함정이고, 이쪽은
 에포크 만료가 곧 만료된 구독이라 결과가 우연히 맞아 더 늦게 발견된다.
+
+## NKM-024 — Go 플러그인은 호스트 바이너리와 겹치는 모든 패키지 버전이 정확히 같아야 로드된다 — `livekit/server-sdk-go`는 그래서 못 쓴다
+
+`측정 2026-09-12 · Nakama 3.40.0 · nakama-common v1.47.0 · pluginbuilder 3.40.0 (Go 1.26.5)`
+
+**증상:** `heroiclabs/nakama-pluginbuilder`로 빌드는 되는데 런타임이 `plugin.Open`에서
+`plugin was built with a different version of package github.com/klauspost/compress/...`로
+즉시 fatal. 빌드 성공이 로드 성공을 뜻하지 않는다. `docker compose build`가 초록이어도
+`up` 뒤 로그를 봐야 안다.
+
+Go의 `plugin` 패키지는 호스트 바이너리와 플러그인이 **공유하는 모든 패키지**의 버전·빌드 플래그가
+정확히 일치할 것을 요구한다. `nakama:3.40.0` 바이너리는 `google.golang.org/protobuf`, `grpc`,
+`klauspost/compress`, `prometheus/*`, `felixge/httpsnoop`, `google.golang.org/genproto/googleapis/*`를
+내장하고 있어서, 플러그인이 이 중 하나라도 다른 버전을 끌고 오면 로드가 거부된다.
+
+`livekit/server-sdk-go`는 `pion/webrtc`·`redis`·`prometheus`·`otel` 전체 트리를 가져오고,
+그 안의 `klauspost/compress` 버전이 Nakama 내장본과 달라 충돌했다. 어느 버전이든 맞추려면
+webrtc 트리 전체를 Nakama에 맞춰 내려야 해서 현실적이지 않다.
+
+**해결:**
+1. `server-sdk-go`를 버리고 `github.com/livekit/protocol/livekit`가 이미 내보내는 twirp JSON
+   클라이언트(`NewRoomServiceJSONClient`, `NewAgentDispatchServiceJSONClient`)를 직접 쓴다.
+   인증은 `twirp.WithHTTPRequestHeaders`로 매 호출에 room-scoped `roomAdmin` JWT를 얹는다.
+   의존성은 `livekit/protocol` + `twitchtv/twirp` 둘뿐이라 webrtc 트리가 통째로 사라진다.
+2. 그래도 겹치는 7개 패키지는 호스트 바이너리에서 정확한 버전을 읽어 `go.mod`에 고정한다:
+   ```sh
+   docker create --name n heroiclabs/nakama:3.40.0
+   docker cp n:/nakama/nakama ./nakama-bin && docker rm n
+   go version -m ./nakama-bin | grep -E 'protobuf|grpc|klauspost|prometheus|httpsnoop|genproto'
+   ```
+   나온 버전을 `require`에 그대로 적는다. `go mod tidy`가 올리려 하면 `replace`나 명시 `require`로 잡아둔다.
+3. 검증은 로그로: `docker compose up -d` 뒤 `Registered Go runtime RPC function invocation`이
+   RPC 수만큼 찍히고 `Startup done`이 나와야 로드된 것이다.
+
+**주의:** 이 버전 고정은 Nakama 또는 nakama-common을 올릴 때마다 다시 해야 한다.
+`pluginbuilder` 태그와 `nakama` 태그를 같게 맞추는 것(NKM 기본 규칙)만으로는 부족하다 —
+그건 Go 툴체인을 맞추는 것이고, 이건 **간접 의존성**을 맞추는 문제다.
