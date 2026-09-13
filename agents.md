@@ -919,3 +919,28 @@ GM도 각자 "연결 성공"·"방 참가 성공" 로그를 정상적으로 남�
 `LIVEKIT_URL` 호스트명을 먼저 비교한다. GM 응답이 왔다고 해서 "내가 방금 띄운 그 워커가 응답했다"고
 가정하지 않는다 — 배포본 워커가 같은 방 이름으로 몰래 응답했을 가능성을 먼저 배제해야 한다. 로컬 검증
 전엔 배포본 GM 워커를 일시 중지하거나, 로컬 전용 룸 이름 접두사(예: `local-`)를 쓰는 게 안전하다.
+
+## AGT-043 — 자체 호스팅 LiveKit은 "방 없음"을 twirp NotFound가 아니라 psrpc 3초 타임아웃으로 답한다
+
+`측정 2026-09-13 · livekit-server(자체 호스팅) · trpg 리포, server/rpc/livekit.go`
+
+**증상:** `gm_summon`(AgentDispatch)이 방금 막 만든 방에서만 `twirp error unavailable: twirp error
+unknown: no response from servers`로 실패한다. 같은 방에 누가 먼저 들어가 있던 경우(프로브가 먼저
+입장한 뒤 소환)는 성공한다 — T-015가 찾은 "프로브가 먼저 입장해야 한다"는 순서 규칙이 사실 이 버그를
+우회하고 있었던 것이다. 부산 LiveKit 로그(`livekit.err`)를 보면 `AgentDispatchInternal.ListDispatch`가
+정확히 3.00xx초 뒤 `no response from servers`로 실패 — GM 워커는 `worker registered`·`assigned job
+to worker`가 정상적으로 여러 번 찍혀 있어 워커 미등록·잘못된 LiveKit URL 문제가 아니었다(그 가설은
+반증됨).
+
+`server/rpc/livekit.go`의 `listDispatches`(T-010, **LiveKit Cloud** 기준으로 작성됐다는 주석이 있다)가
+"방이 아직 없음"을 twirp `NotFound`로만 처리한다. LiveKit **Cloud**는 없는 방을 조회하면 NotFound를
+주지만, **자체 호스팅 LiveKit은 없는 방의 dispatch 목록을 psrpc 계층에서 3초간 응답을 기다리다
+`no response from servers`로 실패시킨다** — 에러 모양이 완전히 다르다. `CreateDispatch`는 방을
+자동 생성하니 이 시점에 이미 방이 없을 수 있고, 그 직후 `ListDispatch`(또는 같은 흐름의 확인 호출)가
+막 생성된 방을 조회하면서 이 경로를 탄다.
+
+**해결:** "방 없음"을 판정할 때 twirp `NotFound` 외에 자체 호스팅에서 나오는 `unavailable: no response
+from servers`(정확히 이 문자열, ~3초 지연)도 같은 것으로 처리해야 한다. Cloud와 자체 호스팅을 둘 다
+지원하려면 두 에러 모양을 한 분기에서 같이 잡는다. 수정 자체는 T-100. 이 트랙 전까지는 "방에 아무도
+없는 상태에서 처음 소환하면 실패할 수 있다"는 걸 알고, 프로브·클라이언트가 먼저 입장한 뒤 소환하는
+순서로 우회 가능하다.
