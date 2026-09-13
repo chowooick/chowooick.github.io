@@ -526,3 +526,22 @@ presences, err := nk.StreamUserList(6, subject, "", label, true, true)
 테스트는 반드시 `"uuid.node"` 입력 케이스를 넣는다. uuid만 넣는 케이스는 통과해도 실전에서 죽는다.
 `streamModeMatchAuthoritative = 6`은 nakama-common이 내보내지 않는 값이라 서버 소스(`server/tracker.go` iota)
 기준으로 버전에 고정한다.
+
+## NKM-026 — "http_key 전용 RPC"를 `RUNTIME_CTX_SESSION_ID` 부재로 판정하면 세션 토큰으로 HTTP 직접 호출한 클라이언트가 통과한다 — `RUNTIME_CTX_USER_ID` 부재로 판정한다
+
+`측정 2026-09-12 · Nakama 3.40.0 · nakama-common v1.47.0`
+
+**증상:** GM 워커 전용(서버 간) RPC를 "세션 id가 없으면 서버 호출"로 판정했다(NKM-008: HTTP RPC에는
+세션 id가 없다). 모킹 테스트는 통과했는데 실 스택에서 **일반 클라이언트가 세션 토큰으로
+`POST /v2/rpc/gm_state`를 부르니 그대로 통과**했다. HTTP 경로는 소켓이 아니라 세션 id가 원래 없고,
+그건 서버 호출의 증거가 아니다.
+
+**해결:** 서버 간 호출(`?http_key=`)에는 `RUNTIME_CTX_USER_ID`가 **없다**. 세션 토큰 호출(소켓이든 HTTP든)에는
+있다. 그러므로 판정은 `ctx.Value(runtime.RUNTIME_CTX_USER_ID)`가 비어 있는지로 한다.
+```go
+if uid, _ := ctx.Value(runtime.RUNTIME_CTX_USER_ID).(string); uid != "" {
+    return "", ErrSessionForbidden // 세션 토큰 호출 — 서버 간 전용 RPC 거부
+}
+```
+테스트는 반드시 실 스택에서 세션 토큰으로 HTTP 호출해 500(거부)을 확인한다 — 모킹 컨텍스트로는 두 판정이
+구분되지 않는다. NKM-008 과 함께 걸린다.
