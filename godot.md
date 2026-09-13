@@ -1120,3 +1120,20 @@ Apple Silicon(arm64) 타깃 자체에 걸려 있어 `binary_format/architecture`
 채로 나머지는 정상 동작한다. Windows·Linux처럼 애초에 안 만든 플랫폼도 같은 이유로 `.gdextension`에서
 지워야 export가 그 플랫폼에서 통과한다(`client/addons/godot-livekit/godot-livekit.gdextension`,
 T-056).
+
+## GDT-057 — 헤드리스 export는 macOS/Windows 프리셋을 크로스 export한 뒤, 성공한 export와 무관하게 exit 134로 죽을 수 있다
+
+`측정 2026-09-13 · Godot 4.7.2-stable`
+
+**증상:** GitHub Actions `ubuntu-latest` 러너에서 `godot --headless --export-release "macOS" ...`,
+`"Windows Desktop"` 둘 다 로그에 `savepack` 100%와 `[ DONE ] export`가 정상적으로 찍히고 나서
+`Aborted (core dumped)`로 죽고 종료 코드 134(SIGABRT)를 낸다. 같은 프로젝트를 실제 macOS 머신에서
+네이티브로 export하면(같은 Godot 4.7.2.stable, 같은 export_presets.cfg) exit 0이고 크래시가 없다
+— 즉 export 로직 자체의 문제가 아니라 리눅스 호스트에서 macOS/Windows 프리셋을 크로스 export할 때
+엔진 종료 단계에서만 나는 크래시로 보인다. `[ DONE ] export` 시점에 pck·바이너리는 이미 디스크에
+쓰여 있다.
+
+**해결:** 확정된 원인은 아직 없음 — 크로스 export 종료 크패시의 재현 조건을 리눅스 환경에서
+직접 잡지는 못했다(증거는 CI 로그뿐). 실무 대응은 CI가 종료 코드를 그대로 신뢰하지 않고, exit 134여도
+산출물(macOS는 `.app/Contents/MacOS/<실행파일>` 존재+비어있지 않음, Windows는 `.exe`+`.pck` 존재+비어있지
+않음)을 직접 검사해 있으면 성공으로 친다. 산출물이 없으면 그대로 exit 1(`scripts/ci/export-client.sh`, T-094).
