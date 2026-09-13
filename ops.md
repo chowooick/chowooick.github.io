@@ -1238,3 +1238,22 @@ wait_healthy
 **해결:** `git add`의 stderr를 절대 버리지 않는다. 여러 경로를 add할 땐 `git add -- <경로들> && git commit`로
 `&&`를 걸어 add 실패가 커밋을 막게 한다. 커밋 직후 `git show --stat --format="" HEAD`로 들어간 파일 수를
 의도와 대조한다 — rename만 있으면 0 insertions가 신호다. `git mv`한 옛 경로는 add 목록에 넣지 않는다.
+
+## OPS-055 — macOS Docker Desktop에서 `network_mode: host`는 localhost로 안 닿고, WebRTC UDP 범위 50000-60000은 macOS 임시 포트와 겹쳐 기동이 실패한다
+
+`측정 2026-09-12 · Docker Desktop 29.7.2 (macOS, Apple M1 Max) · livekit/livekit-server v1.13.6 · coturn 4.18.0`
+
+**증상 1:** LiveKit 자체 호스팅 compose 예제대로 `network_mode: host`를 주면 컨테이너는 뜨는데
+`ws://localhost:7880`이 연결 거부. macOS의 Docker는 리눅스 VM 안에서 돌아서 "host"가 맥 호스트가 아니라
+VM이다. 리눅스 서버용 예제를 그대로 가져온 것이 원인.
+
+**증상 2:** `network_mode`를 빼고 포트 매핑으로 바꿔도 `rtc.port_range_start: 50000 / end: 60000`이면
+livekit이 기동 중 죽는다. macOS의 임시 포트 범위가 49152-65535라 이미 쓰이는 포트가 범위 안에 있다.
+
+**해결:** `network_mode: host`를 지우고 `ports: ["7880:7880", "7881:7881", "40000-40100:40000-40100/udp"]`로
+명시한다. `livekit.yaml`의 `rtc.port_range_start/end`도 같은 40000-40100으로 맞춘다 — 두 파일이 어긋나면
+매핑 안 된 포트로 ICE 후보를 광고해 미디어만 조용히 실패한다. 이 설정은 로컬 검증용이다.
+Dokploy/리눅스 프로덕션에서는 반대로 `network_mode: host` + 넓은 UDP 범위가 맞고, Traefik은 HTTP만
+프록시하므로 UDP와 TURN(3478/5349)은 호스트 레벨에서 따로 열어야 한다.
+coturn은 같은 상황에서 `turnutils_uclient -W`로 allocate까지는 되고, 채널 바인드는 루프백 피어 거부로
+403이 난다 — 할당 자체의 실패가 아니다.
