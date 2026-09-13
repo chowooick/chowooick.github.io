@@ -1456,3 +1456,30 @@ B의 커밋 diff에 A의 파일이 들어 있다. A는 `git add -A`를 쓰지 �
 이게 안 되는 상황이면 `git commit` 직전에 `git diff --cached --name-only`로 내 파일만 있는지 확인한다.
 삼켜진 뒤에는 이력을 고치지 말고(다른 세션이 그 위에 쌓고 있다) 삼킨 커밋을 그대로 두거나,
 그 커밋이 버려졌다면 인덱스에 남은 변경을 다시 커밋해 복구한다.
+
+## OPS-063 — `docker kill`/`stop`은 dockerd에 "수동 정지" 플래그를 남겨 `restart: unless-stopped`가 자동복구를 안 한다
+
+`측정 2026-09-13 · Docker 28.5.0 · Linux(호스트 커널)`
+
+**증상:** `restart: unless-stopped`가 실제로 적용된 컨테이너를 `docker kill <컨테이너>`로 죽여
+"프로세스가 죽으면 자동복구되는지" 검증하려 했더니 20분 넘게 컨테이너가 그대로 죽어 있었다(프로덕션
+컨테이너라 실제 다운타임 발생, `docker start`로 수동 복구). `journalctl -u docker`에
+`ShouldRestart failed, container will not be restarted ... hasBeenManuallyStopped=true`가 킬 직후
+정확히 찍혀 있었다.
+
+**원인:** `docker kill`·`docker stop`은 컨테이너 프로세스가 그냥 죽는 것과 dockerd 관점에서 다르다 —
+둘 다 Docker API를 거쳐 "사람이 의도적으로 멈췄다"는 상태를 컨테이너에 남긴다. `unless-stopped`는
+정의상 이 경우 재시작하지 않는다("컨테이너가 정지 상태였다면 데몬 재시작 시에도 안 올린다"는 동작과
+같은 플래그 하나로 구현돼 있다). 즉 **`docker kill`로 자동복구를 검증하면 항상 가짜로 실패한다** —
+dockerd가 "의도된 정지"와 "크래시"를 구분해 전자는 절대 자동복구 대상이 아니기 때문이다.
+
+실제 크래시를 흉내 내려고 컨테이너 안에서 `docker exec <컨테이너> kill -9 1`을 시도해도 안 통한다
+(exit 0으로 성공한 것처럼 보이지만 프로세스는 살아있다) — 리눅스 `pid_namespaces(7)`에 PID
+네임스페이스의 init(PID 1)은 **같은 네임스페이스 안에서 온** SIGKILL/SIGSTOP을 핸들러 없이도 커널이
+무시하는 특례가 있다. 네임스페이스 밖(호스트)에서 오는 SIGKILL은 이 면제 대상이 아니다.
+
+**해결:** "죽었을 때 자동복구되는지"를 검증하려면 dockerd의 관리된 정지 경로를 거치지 않고 컨테이너
+메인 프로세스를 지워야 한다 — 호스트에서 `docker inspect <컨테이너> --format '{{.State.Pid}}'`로 호스트
+PID를 얻어 **호스트에서 직접 `kill -9 <PID>`**. 이러면 dockerd는 이를 크래시로 보고
+`unless-stopped`가 정상적으로 재시작한다(실측: 재시작까지 1~2초). `docker kill`은 "정지가 되는지"
+검증에는 맞고, "죽으면 살아나는지" 검증에는 안 맞는다 — 목적에 따라 다른 도구를 써야 한다.
