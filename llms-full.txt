@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-14T20:30:11Z · 소스 커밋 `ed3c768` · 이 파일은 자동 생성물이다.
+생성 2026-09-14T21:45:56Z · 소스 커밋 `352291c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3242,6 +3242,27 @@ replica가 1개뿐이라 그 창 안에 들어온 디스패치는 받아줄 워�
 (이전 job이 채 안 끝난 사이 다음 걸 부르는 패턴) 이 창에 걸릴 확률이 올라간다. 근본 해결은 이
 티켓 범위 밖(replica를 늘리거나 `load_threshold`를 조정하는 건 배포 변경) — 원인만 여기 남긴다.
 
+## AGT-050 — livekit-agents 워커 load는 컨테이너 CPU 제한(quota)이 분모다 — quota를 올리면 같은 부하도 낮게 잡힌다
+
+`측정 2026-09-14 · trpg 리포, livekit-agents 1.8.1, Docker Compose(cgroup v2), GM 워커 replica 1개`
+
+**증상:** AGT-049(워커가 ONNX 로드 중 CPU 포화로 몇 초간 unavailable 되는 창)를 근본 해결하려는데,
+`num_idle_processes`나 `load_threshold`를 건드리지 않고도 고칠 방법이 있는지 확인이 필요했다.
+
+소스(`livekit/agents/utils/hw/cpu.py`)를 보니 `CGroupV2CPUMonitor.cpu_count()`가 `/sys/fs/cgroup/
+cpu.max`(Docker Compose의 `deploy.resources.limits.cpus`가 여기로 내려간다)를 읽어 그 값을 워커의
+"총 CPU"로 쓴다. load(`_DefaultLoadCalc.get_load`)는 그 값 대비 CPU 사용률이라, **호스트에 물리
+코어가 충분히 남아 있어도 컨테이너의 cpus 제한이 낮으면 절대 사용량이 그대로여도 load가 높게
+잡힌다.** 실측: cpus="2.0"에서 ONNX 모델 로드 직후 load가 0.75~0.99까지 튀어 threshold(0.7)를
+넘겼다 — 6.0으로 올리고 나서(같은 워크로드) `full capacity` 로그가 연속 소환 31회 동안 0건.
+
+**해결:** 단일 replica libkit-agents 워커에서 "가끔 소환이 응답 없이 실패한다"(AGT-049 계열)를
+겪을 때, `load_threshold`를 낮추거나 replica를 늘리기 전에 **컨테이너의 CPU 제한(`deploy.resources.
+limits.cpus`, Kubernetes면 `resources.limits.cpu`)부터 올려봐라** — Docker의 `cpus` 제한은 예약이
+아니라 상한이라, 호스트에 여유 코어가 있으면 다른 컨테이너 몫을 빼앗지 않고 이 load 계산의 분모만
+키울 수 있다. 몇 배가 필요한지는 관측된 최악 load를 threshold로 나눠 역산하고(예: 0.99/0.7≈1.4배가
+최소선), 연속 디스패치처럼 순간적으로 겹치는 부하를 감안해 여유를 더 준다.
+
 ---
 
 <!-- source: ops.md -->
@@ -4835,4 +4856,25 @@ daemon socket at unix:///var/run/docker.sock`로 즉시 실패한다. 로그인 
 --tail 500 <컨테이너>"`. 컨테이너 이름 자체도 Dokploy가 무작위 슬러그로 짓는 프로젝트라면
 고정 문자열로 스크립트에 박지 말고 `sudo docker ps --format '{{.Names}}' | grep -i <서비스>`로
 매번 찾는다.
+
+## OPS-068 — Dokploy raw compose를 ssh로 직접 고치면 DB `composeFile`과 라이브 파일이 어긋난다
+
+`측정 2026-09-14 · busan(Dokploy v0.30.6, sourceType: raw)`
+
+**증상:** 이전 티켓(T-071)이 GM 워커 컨테이너의 `environment`에 `GM_IDLE_PROCESSES` 항목을 추가했다고
+기록했는데, Dokploy `compose.one` API로 받은 현재 DB `composeFile` 텍스트에는 그 줄이 아예 없었다.
+반면 배포된 컨테이너의 `.env` 파일에는 실제로 `GM_IDLE_PROCESSES=1`이 들어 있어 지금 당장은 정상
+동작한다 — 문제는 다음 전체 재배포(`compose.deploy`)에서 Dokploy가 `code/`를 DB의 `composeFile`로
+통째로 재생성한다는 점이다. DB에 없는 줄은 다음 배포에서 조용히 사라진다.
+
+원인으로 추정: 그 값을 넣을 때 `compose.update` API(DB 갱신)를 거치지 않고 `ssh`로 라이브
+`/etc/dokploy/compose/<app>/code/docker-compose.yml`을 직접 고쳤다 — 당장은 동작하지만 DB와
+어긋난 상태가 다음 배포까지 조용히 남는다. 에러도 경고도 없다.
+
+**해결:** Dokploy raw compose(git 연동이 아니라 `composeFile` 텍스트를 DB에 직접 넣는 소스 타입)에서
+설정을 바꿀 때는 **항상 `compose.one`으로 현재 `composeFile`을 받아 텍스트를 고친 뒤 `compose.update`로
+다시 넣고 `compose.deploy`로 반영한다** — ssh로 라이브 파일만 고치는 지름길을 쓰지 않는다. 이미 그렇게
+어긋난 값이 있는지 의심되면 `compose.one`으로 받은 DB 텍스트와 `ssh <호스트> "sudo cat
+/etc/dokploy/compose/<app>/code/docker-compose.yml"`로 받은 라이브 텍스트를 diff해 본다 — 다르면
+라이브 쪽이 다음 배포에서 사라질 값이다.
 
