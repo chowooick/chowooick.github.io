@@ -1483,3 +1483,36 @@ dockerd가 "의도된 정지"와 "크래시"를 구분해 전자는 절대 자�
 PID를 얻어 **호스트에서 직접 `kill -9 <PID>`**. 이러면 dockerd는 이를 크래시로 보고
 `unless-stopped`가 정상적으로 재시작한다(실측: 재시작까지 1~2초). `docker kill`은 "정지가 되는지"
 검증에는 맞고, "죽으면 살아나는지" 검증에는 안 맞는다 — 목적에 따라 다른 도구를 써야 한다.
+
+## OPS-064 — adb 서버는 머신에 하나뿐이라 한 세션의 `kill-server`가 다른 세션의 기기를 30분 날린다
+
+`측정 2026-09-14 · adb 1.0.41(37.0.1), macOS 호스트, Pixel 7 Pro(Android 17) USB 연결`
+
+**증상:** 여러 프로젝트의 에이전트 세션이 같은 맥에서 한 안드로이드 기기를 공유하는 상황. 한 세션이
+연결이 이상하다고 판단해 `adb kill-server && adb start-server`를 돌렸다. 그 순간부터 **다른 세션들에서
+기기가 `offline`으로 굳었다.**
+
+```
+33251FDH3002AE   offline   usb:17825792X   transport_id:1
+```
+
+`adb kill-server`+`start-server` 재시도, `adb reconnect`, `adb reconnect offline` 전부 실패.
+`ioreg`에는 기기가 정상으로 잡히고 `~/.android/adbkey`도 멀쩡하다. `unauthorized`가 아니라 `offline`이라
+승인 팝업 대기 상태도 아니다. **결국 사람이 폰에서 USB 디버깅을 껐다 켜야 풀렸다** — 30분을 잃었다.
+
+원인은 adb 아키텍처다. `adb` 명령은 전부 **호스트의 단일 adb 서버 데몬(기본 tcp:5037)**을 거친다.
+어느 세션이 `kill-server`를 부르든 그 데몬은 프로세스 하나뿐이라 **모든 세션의 기기 연결이 함께 끊긴다.**
+USB transport가 재수립되지 못하면 기기는 `offline`으로 남고, 이 상태는 호스트 쪽 재시도로는 복구되지 않는다.
+
+**해결:** 기기를 공유하는 환경에서는 규칙으로 막는다. 실측으로 합의한 것.
+
+- **`adb kill-server` 금지.** 연결이 이상하면 `adb reconnect` / `adb reconnect device`까지만 쓴다.
+- **남의 앱을 `am force-stop` 하지 않는다.** 자기 앱만 `am start`로 앞에 띄운다 — 남의 앱을 내리면
+  그쪽 세션은 "앱이 죽었다"고 오진한다.
+- **테스트가 끝나면 자기 앱을 종료하고 바꾼 시스템 설정을 전부 되돌린다**
+  (`screen_off_timeout`·`accelerometer_rotation`·`user_rotation`·회전 잠금). 확인값을 출력으로 남긴다 —
+  "되돌렸다"는 말이 아니라 읽은 값이 근거다.
+- **기기를 쓰기 전에 다른 세션에 알린다.** 누가 언제까지 쓰는지만 맞춰도 경합이 사라진다.
+
+기기가 `offline`으로 굳으면 그건 **호스트에서 못 푸는 신호다** — 재시도를 반복하지 말고 사람에게
+"USB 디버깅을 껐다 켜달라"고 요청하는 편이 빠르다.
