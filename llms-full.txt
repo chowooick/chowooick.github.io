@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-14T17:14:56Z · 소스 커밋 `0bd6736` · 이 파일은 자동 생성물이다.
+생성 2026-09-14T17:49:51Z · 소스 커밋 `0983dd3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -1925,34 +1925,82 @@ func _init() -> void:
 읽는 쪽(`ThemeDB`·`ProjectSettings`)을 직접 찍어 확인한다 — export 결과물에 값이 박혀 있다는 사실이
 엔진이 그 값을 실제로 쓴다는 증거는 아니다.
 
-## GDT-065 — `window/handheld/orientation="sensor"`면 `adb shell settings put system user_rotation`으로 화면을 못 돌린다
+## GDT-065 — (무효 — 전제가 틀렸다) `adb`로 화면을 못 돌린다고 봤던 원인은 사실 GDT-066이다
 
 `측정 2026-09-14 · Godot 4.7.2-stable, Android 17(Pixel 7 Pro)`
 
-**증상:** 세로·가로 두 방향을 스크린샷으로 무인 검증하려고 `adb shell settings put system
-accelerometer_rotation 0` + `adb shell settings put system user_rotation 1`로 가로를 강제했다. 값은
-반영되지만(`settings get`으로 확인됨) 우리 앱 화면은 안 돌아간다 — `project.godot`에
-`window/handheld/orientation="sensor"`를 넣은 앱은 Android에서 `screenOrientation="sensor"`로
-내려가는데, 이 매니페스트 값은 시스템의 화면 자동 회전 잠금(`accelerometer_rotation`)과
-무관하게 **실제 가속도계 값만** 따른다 — `user_rotation`은 "자동 회전이 꺼졌을 때 고정할 방향"이라
-자동 회전을 무시하는 앱에는 적용되지 않는다. 결과적으로 헤드리스도 아니고 사람 손도 안 닿는 adb
-전용 파이프라인에서는 "가로 스크린샷 찍기"가 물리적으로 기기를 기울이는 사람 없이는 막힌다.
+**무효 표시:** 아래 "증상"·"해결"은 당시 설치돼 있던 APK가 `screenOrientation="landscape"`로
+하드코딩된 빌드(GDT-066 참고)였다는 걸 모르고 쓴 기록이다 — `sensor` 앱을 상대로 한 실험이
+애초에 아니었다. `accelerometer_rotation`·`user_rotation`·`cmd window user-rotation lock`이
+안 먹은 건 그 셋 다 "landscape 고정 앱"에는 원래 의미가 없기 때문이지, `sensor` 앱이라서가
+아니다. 진짜 `sensor` 앱(GDT-066 반영 빌드)에서 이 명령들이 먹는지는 재검증 전이다 — 확인되면
+이 자리에 새 사실로 다시 쓴다. ID는 남기고 본문은 그대로 둔다(당시 관측 자체는 사실이었다).
 
-**해결:** 두 우회를 확인했다.
+**증상(당시 기록, 전제 오류 포함):** 세로·가로 두 방향을 스크린샷으로 무인 검증하려고
+`adb shell settings put system accelerometer_rotation 0` + `user_rotation 1`로 가로를 강제했다.
+값은 반영되지만(`settings get`으로 확인됨) 화면은 안 돌아갔다 — 그때는 `sensor` 매니페스트가
+가속도계만 따라서 그렇다고 판단했지만, 실제로는 매니페스트 자체가 `landscape` 고정이라
+어떤 회전 설정을 넣어도 바뀔 수 없는 상태였다(GDT-066).
 
-1. `accelerometer_rotation 0` + `user_rotation 0/1` 조합도 시도했지만(재확인 포함) `sensor` 앱에는
-   그대로 안 먹는다 — 이건 확정.
-2. **확실한 우회:** `project.godot`의 `window/handheld/orientation`을 임시로 `"portrait"`(또는
-   `"landscape"`)로 바꿔 그 방향 전용으로 다시 export·install한다. base 720x1280 논리 캔버스는
-   그대로이므로 이 임시 빌드의 세로 화면은 `sensor` 빌드가 세로일 때의 화면과 레이아웃이 동일하다 —
-   스크린샷 판정 근거로 유효하다(TRPG T-105). 찍고 나면 **반드시 `"sensor"`로 되돌려 재빌드·재설치하고,
-   커밋 직전 `git diff`로 되돌아갔는지 확인한다** — 여기서 놓치면 방향 정책이 조용히 뒤집힌다.
-   에뮬레이터(가속도계 콘솔 명령 지원)로 바꾸는 방법은 시도하지 않았다.
+**당시 시도(참고용, 재검증 필요):** `cmd window user-rotation lock 0`으로 시스템 레벨 회전
+잠금을 걸면 `settings get`·`cmd window user-rotation` 조회값은 바뀌지만, 이때도 앱 화면은
+그대로였다 — 이 역시 앱이 `sensor`가 아니라 `landscape` 고정이었기 때문일 가능성이 높다.
 
-**부록 — `adb devices`가 기기를 `offline`으로 보고하면:** USB 디버깅 재승인 팝업이 화면에 떠서
-adb 명령 자체가 안 넘어가는 상태다(TRPG T-105, `am start`·`install` 도중 발생). `adb kill-server`+
-`start-server`로도 안 풀린다 — 사람이 화면을 보고 팝업을 눌러야 풀린다. 재시도 루프를 돌리지 말고
-바로 사람에게 알린다.
+**부록 — 이것만은 유효: `adb devices`가 기기를 `offline`으로 보고하면:** USB 디버깅 재승인
+팝업이 화면에 떠서 adb 명령 자체가 안 넘어가는 상태다(TRPG T-105, `am start`·`install` 도중
+발생). `adb kill-server`+`start-server`로도 안 풀린다 — 사람이 화면을 보고 팝업을 눌러야
+풀린다. 재시도 루프를 돌리지 말고 바로 사람에게 알린다. (이 항목은 orientation과 무관해서
+전제 오류의 영향을 받지 않는다.)
+
+## GDT-066 — `project.godot`의 `window/handheld/orientation`은 안드로이드 매니페스트에 안 들어간다. `export_presets.cfg`의 `screen/orientation`이 진짜다
+
+`측정 2026-09-14 · Godot 4.7.2-stable, Android 17(Pixel 7 Pro)`
+
+**증상:** 세로·가로를 다 지원하려고 `project.godot`의 `[display]`에
+`window/handheld/orientation="sensor"`를 넣었다. 헤드리스 편집기에서는 문제없이 읽힌다
+(`ProjectSettings.get_setting`으로 확인됨). 실기기에 설치하면 로그인 화면까지 뜨는 모든
+스크린샷이 예외 없이 가로(3120x1440)였다 — 물리 방향을 세로로 눕혀도 마찬가지였다.
+`"portrait"`로 바꿔 **클린 빌드**(`adb uninstall` 뒤 `adb install`, incremental install
+캐시 문제 배제)해도 똑같이 가로로만 뜬다. `adb shell settings put system user_rotation`·
+`accelerometer_rotation`·`cmd window user-rotation lock <n>` 전부 효과가 없었다(GDT-065,
+지금 보면 당연하다).
+
+**원인 확인 방법:** `project.binary`(export한 APK 안의 `assets/project.binary`)를 열어보면
+`display/window/handheld/orientation` 값은 넣은 그대로("portrait" 등) 들어 있다 —
+`strings`로 확인 가능. 하지만 **실제 안드로이드 매니페스트**는 이 값을 안 쓴다:
+
+```
+aapt2 dump xmltree TRPG.apk --file AndroidManifest.xml | grep -B5 screenOrientation
+```
+
+`com.godot.game.GodotApp` activity에 `android:screenOrientation=0`(0=landscape, Android
+`ActivityInfo` 상수)이 project.godot 설정과 무관하게 항상 박혀 있었다. `project.godot`을
+바꿔도 이 값은 안 바뀐다 — **project setting과 매니페스트 생성이 별개 경로**다.
+
+진짜 제어점은 `client/export_presets.cfg`의 android preset, `[preset.N.options]`
+아래의 `screen/orientation` 키다. 이 키가 **preset 파일에 아예 없으면** Godot Android
+exporter는 자체 기본값(landscape)을 쓴다 — project.godot 값을 참고하지 않는다. T-103이
+Android preset을 처음 만들 때 이 키를 안 넣어서 계속 landscape로 나갔던 것이다.
+
+**착시 하나 덧붙임:** 앱 실행 직후 OS가 그리는 로딩 스플래시는 실제 물리 방향을 따라 잠깐
+세로로 보이기도 한다. 그래서 "세로로 잠깐 왔다가 가로로 돌아간다"처럼 보였는데, 이건 물리
+회전이 아니라 **스플래시(물리 방향) → 우리 액티비티(하드코딩된 landscape로 스냅)** 전환이었다.
+스크린샷 판정은 로딩 스플래시가 아니라 실제 씬(로비 UI 등)이 뜬 프레임으로 해야 한다.
+
+**해결:** `export_presets.cfg`의 android `[preset.N.options]`에 한 줄 추가한다(TRPG는
+T-106이 반영).
+
+```
+screen/orientation="sensor"
+```
+
+넣은 뒤 반드시 `aapt2 dump xmltree`로 `screenOrientation` 값이 바뀐 걸 직접 확인한다
+(project.binary나 종료 코드를 믿지 않는다 — GDT-059·063과 같은 계열: "설정은 있는데 실제
+경로에 안 실린다"). `"sensor"`가 실제로 먹는지, 그리고 Android `android:screenOrientation`
+속성과 같은 이름의 다른 값(`portrait`·`landscape`·`userPortrait`·`fullSensor` 등)도 이
+키로 되는지는 이번에 `"sensor"` 하나만 실측했다 — 나머지 값 이름은 Godot 4 문서·에디터의
+export 설정 UI에 있다고 기억하는 수준이라 이 세션에서 직접 확인하지 않았다. 다른 값이
+필요하면 먼저 `aapt2 dump xmltree`로 실측하고 이 항목에 추가해라.
 
 ---
 
