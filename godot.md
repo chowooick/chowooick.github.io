@@ -1316,7 +1316,7 @@ func _init() -> void:
 풀린다. 재시도 루프를 돌리지 말고 바로 사람에게 알린다. (이 항목은 orientation과 무관해서
 전제 오류의 영향을 받지 않는다.)
 
-## GDT-066 — `project.godot`의 `window/handheld/orientation`은 안드로이드 매니페스트에 안 들어간다. `export_presets.cfg`의 `screen/orientation`이 진짜다
+## GDT-066 — prebuilt export(gradle_build=false)에서는 화면 방향을 아예 못 바꾼다. project.godot도 export_presets.cfg도 안 먹는다
 
 `측정 2026-09-14 · Godot 4.7.2-stable, Android 17(Pixel 7 Pro)`
 
@@ -1351,17 +1351,20 @@ Android preset을 처음 만들 때 이 키를 안 넣어서 계속 landscape로
 회전이 아니라 **스플래시(물리 방향) → 우리 액티비티(하드코딩된 landscape로 스냅)** 전환이었다.
 스크린샷 판정은 로딩 스플래시가 아니라 실제 씬(로비 UI 등)이 뜬 프레임으로 해야 한다.
 
-**해결:** `export_presets.cfg`의 android `[preset.N.options]`에 한 줄 추가한다(TRPG는
-T-106이 반영).
+**해결(부분적 — gradle_build=false에서는 안 먹는다):** `export_presets.cfg`의 android
+`[preset.N.options]`에 `screen/orientation="sensor"`를 추가해봤지만(TRPG T-106 실측),
+`aapt2 dump xmltree`로 확인한 결과 `screenOrientation`은 여전히 `0`(landscape)이었다.
 
-```
-screen/orientation="sensor"
-```
+원인은 한 겹 더 있었다: 이 preset이 `gradle_build/use_gradle_build=false`(**프리빌트 export**)
+모드라서다. 이 모드에서는 `AndroidManifest.xml`을 프리빌트 템플릿(`android_debug.apk`)에서
+그대로 복사해 쓴다 — 템플릿 자체에 이미 `screenOrientation=0`이 박혀 있고, `export_presets.cfg`의
+`screen/orientation` 옵션도 project.godot의 `window/handheld/orientation`도 **둘 다 이 경로에
+관여하지 않는다**. 게다가 `screen/orientation`이라는 export 옵션 자체가 Godot 4.7.2 바이너리에
+없다(`strings godot | grep screen/`로 확인 — `screen/background_color`·`edge_to_edge`·
+`immersive_mode`·`support_*`만 있고 `orientation`은 없다). 즉 이 옵션을 preset에 적어 넣는 것
+자체가 애초에 아무 키에도 매칭되지 않는 죽은 설정이었다.
 
-넣은 뒤 반드시 `aapt2 dump xmltree`로 `screenOrientation` 값이 바뀐 걸 직접 확인한다
-(project.binary나 종료 코드를 믿지 않는다 — GDT-059·063과 같은 계열: "설정은 있는데 실제
-경로에 안 실린다"). `"sensor"`가 실제로 먹는지, 그리고 Android `android:screenOrientation`
-속성과 같은 이름의 다른 값(`portrait`·`landscape`·`userPortrait`·`fullSensor` 등)도 이
-키로 되는지는 이번에 `"sensor"` 하나만 실측했다 — 나머지 값 이름은 Godot 4 문서·에디터의
-export 설정 UI에 있다고 기억하는 수준이라 이 세션에서 직접 확인하지 않았다. 다른 값이
-필요하면 먼저 `aapt2 dump xmltree`로 실측하고 이 항목에 추가해라.
+**진짜 해결(미착수):** `gradle_build/use_gradle_build=true`로 전환해 커스텀 Gradle 빌드를 써야
+매니페스트를 프로젝트 설정에 맞게 생성할 여지가 생긴다. Android SDK·Gradle 툴체인이 추가로
+필요하고 빌드 파이프라인 자체가 바뀌는 일이라 티켓 하나의 범위가 아니다 — 별도 티켓으로
+끊어야 한다(TRPG 2026-09-14, T-105·T-106 공동 확인).
