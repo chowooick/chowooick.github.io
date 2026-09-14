@@ -1137,3 +1137,21 @@ T-056).
 직접 잡지는 못했다(증거는 CI 로그뿐). 실무 대응은 CI가 종료 코드를 그대로 신뢰하지 않고, exit 134여도
 산출물(macOS는 `.app/Contents/MacOS/<실행파일>` 존재+비어있지 않음, Windows는 `.exe`+`.pck` 존재+비어있지
 않음)을 직접 검사해 있으면 성공으로 친다. 산출물이 없으면 그대로 exit 1(`scripts/ci/export-client.sh`, T-094).
+
+## GDT-058 — 안드로이드 Godot LineEdit은 `adb shell input keyevent KEYCODE_DEL`을 받지 않는다
+
+`측정 2026-09-14 · Godot 4.7.2-stable, Pixel 7 Pro(Android 17)`
+
+**증상:** 실기기에서 텍스트가 이미 들어있는 LineEdit(예: 기본값 "127.0.0.1:7350")을 탭으로
+포커스한 뒤 `adb shell input keyevent KEYCODE_DEL`이나 `KEYCODE_FORWARD_DEL`을 아무리 반복해도
+필드 내용이 전혀 줄지 않는다. `adb shell input text "..."`로 문자를 넣는 것은 커서 위치에 정상
+삽입되므로 IME 경로 자체는 살아있다 — 유독 삭제 키만 GodotEditText(Android 프록시)에 전달되지
+않는 것으로 보인다(Gboard의 on-screen ⌫ 아이콘을 좌표로 직접 탭해도 동일하게 무반응). 이 상태에서
+계속 `input text`만 반복하면 새 문자열이 기존 텍스트 중간에 끼어들어 URL이 깨진다
+(`http://trpg.busan.mxox.com0.0.1:7350` 식으로 뒤섞임) — Nakama 인증 실패의 원인이 코드가 아니라
+이 adb 입력 특성이었다.
+
+**해결:** 같은 좌표를 빠르게 세 번 탭(`input tap x y` 세 번 연속)하면 트리플탭으로 필드 전체가
+선택되고(선택 시 필드 테두리가 밝아짐), 그 상태에서 `adb shell input text "새 값"`을 보내면
+선택 영역이 통째로 교체된다. LineEdit을 adb로 무인 조작해야 하는 모든 헤드리스 UI 테스트에 적용
+가능(`docs/android.md`, T-103).
