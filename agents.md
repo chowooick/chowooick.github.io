@@ -1084,3 +1084,24 @@ replica가 1개뿐이라 그 창 안에 들어온 디스패치는 받아줄 워�
 `worker is below capacity` 로그와 실패 시각을 먼저 겹쳐본다.** 연속 요청 사이 간격이 짧을수록
 (이전 job이 채 안 끝난 사이 다음 걸 부르는 패턴) 이 창에 걸릴 확률이 올라간다. 근본 해결은 이
 티켓 범위 밖(replica를 늘리거나 `load_threshold`를 조정하는 건 배포 변경) — 원인만 여기 남긴다.
+
+## AGT-050 — livekit-agents 워커 load는 컨테이너 CPU 제한(quota)이 분모다 — quota를 올리면 같은 부하도 낮게 잡힌다
+
+`측정 2026-09-14 · trpg 리포, livekit-agents 1.8.1, Docker Compose(cgroup v2), GM 워커 replica 1개`
+
+**증상:** AGT-049(워커가 ONNX 로드 중 CPU 포화로 몇 초간 unavailable 되는 창)를 근본 해결하려는데,
+`num_idle_processes`나 `load_threshold`를 건드리지 않고도 고칠 방법이 있는지 확인이 필요했다.
+
+소스(`livekit/agents/utils/hw/cpu.py`)를 보니 `CGroupV2CPUMonitor.cpu_count()`가 `/sys/fs/cgroup/
+cpu.max`(Docker Compose의 `deploy.resources.limits.cpus`가 여기로 내려간다)를 읽어 그 값을 워커의
+"총 CPU"로 쓴다. load(`_DefaultLoadCalc.get_load`)는 그 값 대비 CPU 사용률이라, **호스트에 물리
+코어가 충분히 남아 있어도 컨테이너의 cpus 제한이 낮으면 절대 사용량이 그대로여도 load가 높게
+잡힌다.** 실측: cpus="2.0"에서 ONNX 모델 로드 직후 load가 0.75~0.99까지 튀어 threshold(0.7)를
+넘겼다 — 6.0으로 올리고 나서(같은 워크로드) `full capacity` 로그가 연속 소환 31회 동안 0건.
+
+**해결:** 단일 replica libkit-agents 워커에서 "가끔 소환이 응답 없이 실패한다"(AGT-049 계열)를
+겪을 때, `load_threshold`를 낮추거나 replica를 늘리기 전에 **컨테이너의 CPU 제한(`deploy.resources.
+limits.cpus`, Kubernetes면 `resources.limits.cpu`)부터 올려봐라** — Docker의 `cpus` 제한은 예약이
+아니라 상한이라, 호스트에 여유 코어가 있으면 다른 컨테이너 몫을 빼앗지 않고 이 load 계산의 분모만
+키울 수 있다. 몇 배가 필요한지는 관측된 최악 load를 threshold로 나눠 역산하고(예: 0.99/0.7≈1.4배가
+최소선), 연속 디스패치처럼 순간적으로 겹치는 부하를 감안해 여유를 더 준다.

@@ -1587,3 +1587,24 @@ daemon socket at unix:///var/run/docker.sock`로 즉시 실패한다. 로그인 
 --tail 500 <컨테이너>"`. 컨테이너 이름 자체도 Dokploy가 무작위 슬러그로 짓는 프로젝트라면
 고정 문자열로 스크립트에 박지 말고 `sudo docker ps --format '{{.Names}}' | grep -i <서비스>`로
 매번 찾는다.
+
+## OPS-068 — Dokploy raw compose를 ssh로 직접 고치면 DB `composeFile`과 라이브 파일이 어긋난다
+
+`측정 2026-09-14 · busan(Dokploy v0.30.6, sourceType: raw)`
+
+**증상:** 이전 티켓(T-071)이 GM 워커 컨테이너의 `environment`에 `GM_IDLE_PROCESSES` 항목을 추가했다고
+기록했는데, Dokploy `compose.one` API로 받은 현재 DB `composeFile` 텍스트에는 그 줄이 아예 없었다.
+반면 배포된 컨테이너의 `.env` 파일에는 실제로 `GM_IDLE_PROCESSES=1`이 들어 있어 지금 당장은 정상
+동작한다 — 문제는 다음 전체 재배포(`compose.deploy`)에서 Dokploy가 `code/`를 DB의 `composeFile`로
+통째로 재생성한다는 점이다. DB에 없는 줄은 다음 배포에서 조용히 사라진다.
+
+원인으로 추정: 그 값을 넣을 때 `compose.update` API(DB 갱신)를 거치지 않고 `ssh`로 라이브
+`/etc/dokploy/compose/<app>/code/docker-compose.yml`을 직접 고쳤다 — 당장은 동작하지만 DB와
+어긋난 상태가 다음 배포까지 조용히 남는다. 에러도 경고도 없다.
+
+**해결:** Dokploy raw compose(git 연동이 아니라 `composeFile` 텍스트를 DB에 직접 넣는 소스 타입)에서
+설정을 바꿀 때는 **항상 `compose.one`으로 현재 `composeFile`을 받아 텍스트를 고친 뒤 `compose.update`로
+다시 넣고 `compose.deploy`로 반영한다** — ssh로 라이브 파일만 고치는 지름길을 쓰지 않는다. 이미 그렇게
+어긋난 값이 있는지 의심되면 `compose.one`으로 받은 DB 텍스트와 `ssh <호스트> "sudo cat
+/etc/dokploy/compose/<app>/code/docker-compose.yml"`로 받은 라이브 텍스트를 diff해 본다 — 다르면
+라이브 쪽이 다음 배포에서 사라질 값이다.
