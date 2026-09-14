@@ -8,21 +8,39 @@ on:
 permissions:
   contents: write
 
+# 여러 프로젝트 세션이 같은 저장소에 짧은 간격으로 푸시한다. 이 워크플로를
+# 직렬화해 두면 자기들끼리 경쟁해서 푸시가 거부되는 일이 대부분 사라진다.
+concurrency:
+  group: build-llms-full
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: generate
-        run: ./build.sh
-      - name: commit if changed
+      - name: 원격 최신 위에서 재생성하고 푸시
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet llms-full.txt; then
+          # 생성물은 병합하는 것이 아니라 재생성하는 것이다. 사람이 먼저 푸시해
+          # 원격이 앞서 있으면 매 시도를 원격 최신에서 다시 시작한다.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git checkout -B main origin/main
+            ./build.sh
+            if git diff --quiet nakama.md godot.md agents.md ops.md llms-full.txt; then
+              echo "변경 없음"
+              exit 0
+            fi
             git add nakama.md godot.md agents.md ops.md llms-full.txt
             git commit -m "build: llms-full.txt 재생성 (ID 중복은 자동 재번호) [skip ci]"
-            git push
-          else
-            echo "변경 없음"
-          fi
+            if git push origin main; then
+              echo "푸시 성공 (시도 ${attempt})"
+              exit 0
+            fi
+            echo "푸시 거부 — 원격이 앞서 있다. 원격 최신에서 재생성 후 재시도 (${attempt}/5)"
+            sleep $((RANDOM % 5 + 2))
+          done
+          echo "::error::5회 시도 후에도 푸시하지 못했다"
+          exit 1
