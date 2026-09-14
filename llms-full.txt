@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-14T17:02:51Z · 소스 커밋 `25d5908` · 이 파일은 자동 생성물이다.
+생성 2026-09-14T17:06:03Z · 소스 커밋 `21a5276` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -1887,6 +1887,62 @@ LiveKit 안드로이드 SDK는 `build.sh`가 프리빌트로 받아오므로 Rus
 **해결:** 플랫폼을 벤더링하는 티켓은 `.so` 복사·`.gdextension` 등록과 같은 커밋에서 그 preset의
 `exclude_filter`도 확인한다. 이전에 "미벤더링"을 이유로 넣어둔 제외 규칙이면 지운다. 지운 뒤 반드시
 `unzip -l`로 직접 확인한다 — 종료 코드와 로그를 믿지 않는다(TRPG T-106).
+
+## GDT-064 — `gui/theme/default_font_size`는 Godot 4에 존재하지 않는 키다. 조용히 무시된다
+
+`측정 2026-09-14 · Godot 4.7.2-stable`
+
+**증상:** 폰 UI 폰트를 키우려고 `project.godot`의 `[gui]`에 `theme/default_font_size=34`를 넣었다.
+파싱 에러 없음, export한 APK의 `assets/project.binary`에도 값이 정확히 박힌다(`strings`로 확인 가능,
+바이트 오프셋까지 대조함). 그런데 실기기·헤드리스 어느 쪽에서도 글자 크기가 그대로다. 원인은 이 키 자체가
+Godot 4 엔진에 없다는 것 — `strings $(command -v godot) | grep default_font_size`로 엔진 바이너리를
+뒤져도 `gui/theme/default_font_antialiasing`·`default_font_hinting` 같은 사촌 키만 나오고
+`default_font_size`는 안 나온다. `ProjectSettings.get_setting("gui/theme/default_font_size")`는 넣은
+값을 돌려주지만(설정 자체는 그냥 임의 키-값 저장을 허용하므로), 그 값을 실제로 읽어 쓰는 엔진 코드가
+없어서 `ThemeDB.fallback_font_size`는 16(엔진 기본값)에서 안 바뀐다. Godot 3식 프로젝트 세팅 이름을
+Godot 4에도 있을 거라 짐작하면 걸리는 함정이다.
+
+**해결:** 진짜 키는 `gui/theme/default_theme_scale`(float, 기본 1.0)이다. 기본 테마 전체(폰트 크기·여백·
+최소 컨트롤 크기)를 이 배율로 곱해서 쓴다.
+
+```
+[gui]
+theme/default_theme_scale=2.2
+```
+
+헤드리스로 바로 검증된다(export까지 갈 필요 없음):
+
+```gdscript
+extends SceneTree
+func _init() -> void:
+    print(ThemeDB.fallback_font_size)  # 2.2 적용 시 16*2.2=35
+    quit()
+```
+
+`godot --headless --path <project> -s <위 스크립트>.gd`로 몇 초 만에 확인된다. 실기기 실측(Pixel 7 Pro,
+가로 스케일 1.125)에서는 `default_theme_scale=1.0`(폰트 16 논리) 대비 텍스트 실측 높이가 16px → 40px로
+커졌다(TRPG T-105). 의심스러운 project setting은 export까지 가지 말고 먼저 `godot --headless -s`로
+읽는 쪽(`ThemeDB`·`ProjectSettings`)을 직접 찍어 확인한다 — export 결과물에 값이 박혀 있다는 사실이
+엔진이 그 값을 실제로 쓴다는 증거는 아니다.
+
+## GDT-065 — `window/handheld/orientation="sensor"`면 `adb shell settings put system user_rotation`으로 화면을 못 돌린다
+
+`측정 2026-09-14 · Godot 4.7.2-stable, Android 17(Pixel 7 Pro)`
+
+**증상:** 세로·가로 두 방향을 스크린샷으로 무인 검증하려고 `adb shell settings put system
+accelerometer_rotation 0` + `adb shell settings put system user_rotation 1`로 가로를 강제했다. 값은
+반영되지만(`settings get`으로 확인됨) 우리 앱 화면은 안 돌아간다 — `project.godot`에
+`window/handheld/orientation="sensor"`를 넣은 앱은 Android에서 `screenOrientation="sensor"`로
+내려가는데, 이 매니페스트 값은 시스템의 화면 자동 회전 잠금(`accelerometer_rotation`)과
+무관하게 **실제 가속도계 값만** 따른다 — `user_rotation`은 "자동 회전이 꺼졌을 때 고정할 방향"이라
+자동 회전을 무시하는 앱에는 적용되지 않는다. 결과적으로 헤드리스도 아니고 사람 손도 안 닿는 adb
+전용 파이프라인에서는 "가로 스크린샷 찍기"가 물리적으로 기기를 기울이는 사람 없이는 막힌다.
+
+**해결:** 못 찾았다 — 이 티켓(TRPG T-105)에서는 사람이 기기를 눕혀 줬다. `adb shell input`류로
+가속도계 값 자체를 주입하는 방법은 시도하지 않았다(에뮬레이터의 `-sensor` 콘솔 명령은 실기기 adb에는
+없다). 무인 회전 스크린샷이 필요하면 실기기 대신 에뮬레이터(가속도계 콘솔 명령 지원)로 바꾸거나,
+앱의 orientation을 테스트 빌드에서만 "landscape"로 하드코딩해 별도 익스포트를 찍는 우회가 남는다 —
+둘 다 검증 안 됨.
 
 ---
 
