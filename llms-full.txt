@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-14T21:45:56Z · 소스 커밋 `352291c` · 이 파일은 자동 생성물이다.
+생성 2026-09-14T23:50:24Z · 소스 커밋 `6daaa5c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2150,6 +2150,75 @@ Godot 편집기 바이너리에서 직접 확인 가능하다: `strings $(comman
 수 있지만, 먼 거리에서도 시야에 들어오는 라벨(넓은 맵의 상점 간판 등)에 그대로 적용하면 이 부작용을
 피할 수 없다. 이 트레이드오프는 값 튜닝으로 없어지지 않고 설계 층위에서 결정해야 한다(AGT-047 3층 —
 사람이 화면으로 판정해야 하는 축).
+
+---
+
+## GDT-071 — 헤드리스 `godot --install-android-build-template`을 단독 호출하면 CPU를 거의 안 쓰며 영원히 멈춘다. export 플래그와 같은 호출에 묶으면 10초 안에 끝난다
+
+`측정 2026-09-14 · Godot 4.7.2-stable, macOS(Apple Silicon)`
+
+**증상:** `use_gradle_build=true`로 전환하며 `client/android/`(gitignore 대상, 클론마다
+없음)를 자동 설치하려고 `godot --headless --path client --install-android-build-template`을
+**단독으로** 실행했다. 2시간 넘게 끝나지 않았다 — `client/android/`는 끝내 생성되지 않았고
+로그 파일엔 시작 배너 한 줄뿐이었다. `ps`로 보면 CPU 누적 시간이 2시간 동안 겨우 91초
+(1% 미만) — 계산 중이 아니라 뭔가를 기다리며 멈춰 있는 것이다. `sample <pid>`로 스택을
+찍으면 메인 스레드가 `nanosleep` → `+[NSRunningApplication
+runningApplicationsWithBundleIdentifier:]`(LaunchServices) 호출을 반복하며 도는 채로
+멈춰 있었다. 네트워크 연결은 0개(`lsof -p <pid> -i`), 다른 Godot 프로세스도 없어서
+"다른 인스턴스를 기다리는 락"류의 정상적인 대기도 아니었다. `kill`(SIGTERM)로 강제
+종료해야 빠져나왔다.
+
+**해결:** `godot --help`의 이 플래그 설명 자체가 힌트였다 — "Used in conjunction with
+--export-release or --export-debug." 단독 호출을 포기하고 **같은 godot 프로세스 호출
+안에** export 플래그와 함께 넘기면(`godot --headless --path client
+--install-android-build-template --export-debug Android out.apk`) 10초 안에 끝나고
+`client/android/`도 정상 생성된다. 이미 `client/android/`가 있으면 이 플래그는 아예
+넘기지 않는다(재설치 방지) — 즉 실무 패턴은 "없을 때만 export 호출 배열 맨 앞에
+플래그를 끼워 넣는다"이지, "설치 따로 export 따로"가 아니다.
+
+**적용:** CI·로컬 스크립트가 "템플릿 설치 스텝"과 "export 스텝"을 두 개의 별도 godot
+호출로 나눠 놨다면 이 함정을 100% 밟는다. `--install-*` 계열 standalone 헤드리스 플래그가
+멈추는 것처럼 보이면, 재시도나 `--verbose`를 붙이기 전에 먼저 `godot --help`에서 그
+플래그 설명에 "in conjunction with"·"used with" 같은 문구가 있는지부터 확인한다(TRPG
+T-110).
+
+---
+
+## GDT-072 — `gradle_build/use_gradle_build=true`로 전환해도 Android `screenOrientation`은 여전히 project.godot과 무관하다 — GDT-066의 "진짜 해결" 가설은 틀렸다
+
+`측정 2026-09-14 · Godot 4.7.2-stable, Android(gradle custom build)`
+
+**증상:** GDT-066은 prebuilt export(`use_gradle_build=false`)에서 화면 방향이 project.godot과
+무관하게 항상 landscape로 박히는 것을 확인하고, "`use_gradle_build=true`로 전환하면
+매니페스트를 프로젝트 설정에 맞게 생성할 여지가 생긴다"고 **미착수 가설**로 적어뒀다.
+전환해서 실측하니 이 가설은 틀렸다 — gradle 빌드에서도 `aapt2 dump xmltree`로 확인한
+`android:screenOrientation`은 여전히 `0`(landscape)이다.
+
+**확인한 것 세 가지(모두 재현 가능):**
+1. `project.godot`의 `display/window/handheld/orientation`을 `sensor`→`portrait`로 바꾸고
+   `client/android/`를 지우지 않은 채 재익스포트해도, gradle이 매 익스포트마다 다시 쓰는
+   `client/android/build/src/debug/AndroidManifest.xml`(타임스탬프로 재생성 확인됨)의
+   `android:screenOrientation` 값은 `landscape`로 그대로다.
+2. 헤드리스 스크립트로 `ProjectSettings.get_property_list()`를 전수조사해도 이름에
+   `orientation`이 들어간 키는 `display/window/handheld/orientation` 하나뿐 — 대체 키가
+   없다.
+3. `strings godot`로 android export 플러그인의 매니페스트 템플릿 문자열
+   (`tools:replace="android:screenOrientation,android:excludeFromRecents,...`) 주변을
+   뒤져보면, `excludeFromRecents`는 `package/exclude_from_recents`라는 실재하는 export
+   옵션과 짝이 맞지만 `screenOrientation`에 대응하는 옵션 이름은 어디에도 없다 —
+   `screen/` 프리픽스로 존재하는 옵션은 `support_{small,normal,large,xlarge}`·
+   `background_color`·`edge_to_edge`·`immersive_mode`뿐이다(GDT-066도 이미 확인했던 것과
+   동일).
+
+**결론:** Godot 4.7.2의 android 커스텀(gradle) 빌드는 `screenOrientation`을 project.godot도
+export_presets.cfg도 읽지 않고 매니페스트 템플릿에 고정값으로 박아 넣는다 — prebuilt
+경로(GDT-066)와 마찬가지로 이 값을 바꾸는 유일한 방법은 `client/android/build/src/{main,debug}/
+AndroidManifest.xml`을 **손으로** 고치는 것뿐이다. 이 디렉터리는 보통 `.gitignore` 대상이라
+클론마다 사라지므로, 손으로 고친 값도 재설치 때마다 없어진다(TRPG 프로젝트는 실제로 이 이유로
+손질을 하지 않기로 했다, T-110). 이 버전의 엔진에서 orientation을 재현 가능하게 통제하려면
+자동화 스크립트가 매 빌드마다 생성된 매니페스트를 후처리하거나, 상류 엔진에 export 옵션을
+추가하는 수밖에 없어 보인다 — "gradle 전환이 곧 project.godot 통제권 회복"이라고 가정하지
+않는다.
 
 ---
 
