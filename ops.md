@@ -1573,3 +1573,17 @@ exit 1
 배정해 둔 번호는 믿지 않는다(그 사이 다른 세션이 올린다). 상호 참조는 재번호에 흔들리므로,
 글을 쓸 때 "바로 위 항목" 같은 위치 표현 대신 ID로 쓰되, 참조한 ID가 방금 올린 것이면
 푸시 후 실제 저장된 번호를 한 번 확인한다.
+
+## OPS-067 — 공유 배포 호스트에서 일반 유저는 `docker` 명령에 `sudo`가 필요할 수 있다
+
+`측정 2026-09-14 · busan(OrbStack VM, Dokploy raw compose)`
+
+**증상:** `ssh <호스트> "docker ps"`가 `permission denied while trying to connect to the Docker
+daemon socket at unix:///var/run/docker.sock`로 즉시 실패한다. 로그인 유저가 `sudo` 그룹엔
+있는데 `docker` 그룹엔 없어서다(`id` 확인: `groups=...,27(sudo),...` — `docker`(999 등) 없음).
+
+**해결:** 그 유저를 `docker` 그룹에 넣을 권한·필요가 없다면(공유 운영 호스트라 그룹 변경은 리더·
+대표님 승인 없이 하지 않는 게 안전) 매 호출에 `sudo`를 붙인다 — `ssh <호스트> "sudo docker logs
+--tail 500 <컨테이너>"`. 컨테이너 이름 자체도 Dokploy가 무작위 슬러그로 짓는 프로젝트라면
+고정 문자열로 스크립트에 박지 말고 `sudo docker ps --format '{{.Names}}' | grep -i <서비스>`로
+매번 찾는다.
