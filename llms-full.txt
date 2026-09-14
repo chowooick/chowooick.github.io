@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-14T17:51:17Z · 소스 커밋 `0474980` · 이 파일은 자동 생성물이다.
+생성 2026-09-14T18:21:46Z · 소스 커밋 `324c6b6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2004,6 +2004,41 @@ Android preset을 처음 만들 때 이 키를 안 넣어서 계속 landscape로
 매니페스트를 프로젝트 설정에 맞게 생성할 여지가 생긴다. Android SDK·Gradle 툴체인이 추가로
 필요하고 빌드 파이프라인 자체가 바뀌는 일이라 티켓 하나의 범위가 아니다 — 별도 티켓으로
 끊어야 한다(TRPG 2026-09-14, T-105·T-106 공동 확인).
+
+## GDT-067 — godot-livekit android는 빌드·로드까지는 되지만 `connect_to_room`에서 100% 크래시한다(JNI 초기화 부재로 추정)
+
+`측정 2026-09-14 · godot-livekit v0.3.3(`44f0aa7`), livekit-sdk(client-sdk-cpp) v0.3.1, Pixel 7 Pro, Android(4KB 페이지)`
+
+**증상:** GDT-061·GDT-062로 android arm64 `.so` 3개를 빌드해 벤더링하고 `.gdextension`에
+등록하면, 빌드도 되고 APK 패키징도 되고(GDT-063 참고) **GDExtension 로드·`ClassDB` 등록까지도
+된다** — 로비 화면에서 Nakama 로그인, 방 생성(`match_create`), `livekit_token` RPC까지 전부
+정상 응답을 받는다. 문제는 그다음이다. GDScript가 `_room.connect_to_room(url, token, {})`를
+호출하는 순간 앱이 네이티브 크래시로 죽는다:
+
+```
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 (read)
+Cause: null pointer dereference
+tid: ...  name: tokio-runtime-w  >>> com.trpg.client <<<
+backtrace 37 frames, #00~#34 전부 liblivekit_ffi.so 안
+```
+
+4번 연속 재현했고 PC 오프셋(`liblivekit_ffi.so`+`0xa6a880`)이 매번 완전히 동일 — 우연이 아니라
+결정적 크래시다. `pm grant android.permission.RECORD_AUDIO`로 런타임 권한을 직접 부여하고
+재시도해도 똑같이 죽어 권한 문제가 아니다. 설치 시 뜨는 "16KB 페이지 비호환" 시스템 경고와도
+무관하다 — 이 기기는 `adb shell getconf PAGE_SIZE`가 4096(4KB 모드)이라 16KB 정렬 문제가
+런타임에 실제로 발동할 상황이 아니다.
+
+원인으로 보이는 것: `grep -rn -i "javavm|jni|JNIEnv|android_init|set_java" ~/work/godot-livekit/src/`
+와 `livekit-sdk/include/` 양쪽 다 **0건**. Android에서 WebRTC 스택은 `JavaVM`과
+ApplicationContext를 네이티브 쪽에 등록해야 오디오 디바이스 모듈·네트워크 모니터가 초기화된다 —
+그 등록이 코드 어디에도 없다. 즉 **godot-livekit의 android 타겟은 컴파일은 통과하지만 런타임
+연결이 한 번도 검증된 적이 없어 보인다.**
+
+**해결(미착수):** 프리빌트 Rust 바이너리 버그가 아니라 **호출 측(C++ 레이어)의 JNI 초기화
+누락**이다. `livekit-sdk`가 JNI 등록 API를 노출하지 않으면 상류 `krazyjakee/client-sdk-cpp`까지
+손대야 하는 규모라 벤더링 티켓 하나로 못 끝낸다. `.so`를 다음에 다시 벤더링하려는 사람은 빌드가
+성공했다고 안심하지 말고 **반드시 실기기에서 `connect_to_room`까지 실행해서 확인해라** — 빌드
+성공과 런타임 동작은 별개다(TRPG T-106).
 
 ---
 
