@@ -1235,3 +1235,19 @@ cd godot-cpp && scons platform=android arch=arm64 target=template_release -j8   
 
 그다음 상위에서 `./build.sh android arm64`를 돌린다(GDT-061 패치가 먼저 들어가 있어야 한다).
 LiveKit 안드로이드 SDK는 `build.sh`가 프리빌트로 받아오므로 Rust 크로스 컴파일(`cargo-ndk`·`rustup target add`)은 **필요 없다.**
+
+## GDT-063 — export preset의 `exclude_filter`가 방금 벤더링한 GDExtension을 exit 0로 조용히 빼놓는다
+
+`측정 2026-09-14 · Godot 4.7.2-stable, Android(arm64-v8a) prebuilt 템플릿`
+
+**증상:** GDExtension을 새 플랫폼(예: android arm64)에 벤더링하고 `.gdextension`에 라이브러리·의존성을
+등록해도, 그 preset의 `export_presets.cfg`에 예전에 "이 플랫폼은 아직 안 됨"이라 넣어둔
+`exclude_filter="addons/<extension>/*"`가 남아 있으면 익스포터가 새로 추가한 `.so`까지 통째로 걸러낸다.
+익스포트는 exit 0, 로그에 에러·경고 없음 — `unzip -l <apk> | grep <arch>`로 직접 열어봐야 빠진 게
+보인다(GDT-059와 같은 계열, 다른 트리거). 빠진 채로 설치하면 `.gdextension`의 다른 슬롯이 없어 GDExtension
+로드 자체가 조용히 스킵되고, 그 확장이 제공하던 기능이 "미지원"으로 degrade한다 — 크래시가 없어 더 늦게
+발견된다.
+
+**해결:** 플랫폼을 벤더링하는 티켓은 `.so` 복사·`.gdextension` 등록과 같은 커밋에서 그 preset의
+`exclude_filter`도 확인한다. 이전에 "미벤더링"을 이유로 넣어둔 제외 규칙이면 지운다. 지운 뒤 반드시
+`unzip -l`로 직접 확인한다 — 종료 코드와 로그를 믿지 않는다(TRPG T-106).
