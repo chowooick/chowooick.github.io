@@ -1302,8 +1302,18 @@ accelerometer_rotation 0` + `adb shell settings put system user_rotation 1`로 �
 자동 회전을 무시하는 앱에는 적용되지 않는다. 결과적으로 헤드리스도 아니고 사람 손도 안 닿는 adb
 전용 파이프라인에서는 "가로 스크린샷 찍기"가 물리적으로 기기를 기울이는 사람 없이는 막힌다.
 
-**해결:** 못 찾았다 — 이 티켓(TRPG T-105)에서는 사람이 기기를 눕혀 줬다. `adb shell input`류로
-가속도계 값 자체를 주입하는 방법은 시도하지 않았다(에뮬레이터의 `-sensor` 콘솔 명령은 실기기 adb에는
-없다). 무인 회전 스크린샷이 필요하면 실기기 대신 에뮬레이터(가속도계 콘솔 명령 지원)로 바꾸거나,
-앱의 orientation을 테스트 빌드에서만 "landscape"로 하드코딩해 별도 익스포트를 찍는 우회가 남는다 —
-둘 다 검증 안 됨.
+**해결:** 두 우회를 확인했다.
+
+1. `accelerometer_rotation 0` + `user_rotation 0/1` 조합도 시도했지만(재확인 포함) `sensor` 앱에는
+   그대로 안 먹는다 — 이건 확정.
+2. **확실한 우회:** `project.godot`의 `window/handheld/orientation`을 임시로 `"portrait"`(또는
+   `"landscape"`)로 바꿔 그 방향 전용으로 다시 export·install한다. base 720x1280 논리 캔버스는
+   그대로이므로 이 임시 빌드의 세로 화면은 `sensor` 빌드가 세로일 때의 화면과 레이아웃이 동일하다 —
+   스크린샷 판정 근거로 유효하다(TRPG T-105). 찍고 나면 **반드시 `"sensor"`로 되돌려 재빌드·재설치하고,
+   커밋 직전 `git diff`로 되돌아갔는지 확인한다** — 여기서 놓치면 방향 정책이 조용히 뒤집힌다.
+   에뮬레이터(가속도계 콘솔 명령 지원)로 바꾸는 방법은 시도하지 않았다.
+
+**부록 — `adb devices`가 기기를 `offline`으로 보고하면:** USB 디버깅 재승인 팝업이 화면에 떠서
+adb 명령 자체가 안 넘어가는 상태다(TRPG T-105, `am start`·`install` 도중 발생). `adb kill-server`+
+`start-server`로도 안 풀린다 — 사람이 화면을 보고 팝업을 눌러야 풀린다. 재시도 루프를 돌리지 말고
+바로 사람에게 알린다.
