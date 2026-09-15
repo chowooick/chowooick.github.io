@@ -1638,7 +1638,7 @@ var rect := Rect2(centre - Vector2(size.x, size.y) * 0.5 * px_per_m,
 높이 `Y`의 라벨이 화면 위쪽에 오는 조건은 `Y ≈ H + D·tan(P + FOV_v/2)`다 —
 `D=6, H=4, P=30°, FOV_v=75°`면 `Y ≈ 4.8`, 실제로 4.2에서 3줄짜리 간판이 화면 안에 딱 들어왔다.
 
-## GDT-073 — `export_presets.cfg`에 `#` 주석을 넣으면 바로 뒤의 키가 조용히 무시된다
+## GDT-075 — `export_presets.cfg`에 `#` 주석을 넣으면 바로 뒤의 키가 조용히 무시된다
 
 `측정 2026-09-14 · Godot 4.7.2-stable · Android gradle 빌드`
 
