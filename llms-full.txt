@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-15T03:24:55Z · 소스 커밋 `1a4561b` · 이 파일은 자동 생성물이다.
+생성 2026-09-15T03:48:28Z · 소스 커밋 `aa1bb92` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2477,6 +2477,41 @@ compileSdk 36 · minSdk 24 · Java 17) — 다른 툴체인으로 컴파일한 �
 
 **실기기까지 안 가도 재현된다.** `godot --resolution 1560x720`(폰과 같은 13:6)로 창 모드 실행 +
 `FARM_SHOT`류 스크린샷이면 같은 겹침이 그대로 나온다. 폰이 공유 장비라면 이쪽이 훨씬 싸다.
+
+## GDT-079 — 안드로이드에서 "앱이 소리를 내는가"는 `dumpsys audio` 로 무인 판정된다. 단 스트림을 구분해야 한다
+
+`측정 2026-09-14 · Android 17(Pixel 7 Pro) · Godot 4.7.2 + LiveKit Android SDK 2.18.2`
+
+**증상:** 음성 통화 앱이 상대방 목소리를 실제로 스피커로 내보내는지를 사람 귀 없이 확인해야 했다.
+로그에는 "연결됨"까지만 찍히고, 그 뒤 오디오가 실제로 흐르는지는 안 보인다.
+
+`adb shell dumpsys audio` 의 `players:` 목록이 답을 준다. **함정이 둘이다.**
+
+**① 필드 이름이 `uid:` 가 아니라 `u/pid:<uid>/<pid>` 다.** `uid:` 로 grep 하면 0건이 나오고
+"재생 안 함"으로 오판한다. pid 로 좁히지 않으면 반대로 남의 앱 재생을 내 것으로 센다 —
+폰이 공유 장비면 남의 앱은 늘 떠 있다.
+
+**② 앱 하나가 스트림을 둘 연다.** Godot + LiveKit 조합의 실측:
+
+```
+type:OpenSL ES AudioPlayer (Buffer Queue)  usage=USAGE_MEDIA
+    sampleRate=44100 channelMask=0x3(스테레오)   state:started   ← Godot 자체 오디오
+type:android.media.AudioTrack  usage=USAGE_VOICE_COMMUNICATION content=CONTENT_TYPE_SPEECH
+    sampleRate=48000 channelMask=0x1(모노)       state:started   ← 상대방 목소리
+```
+
+**앞엣것은 앱이 떠 있으면 항상 `started` 다.** 그것으로 PASS 를 내면 음성이 완전히 끊겨도
+늘 통과하는 판정이 된다. 통화 오디오는 `USAGE_VOICE_COMMUNICATION` + `CONTENT_TYPE_SPEECH` +
+48kHz 모노 쪽이다.
+
+**해결:** 판정은 `u/pid:[0-9]+/<앱 pid> state:started` 로 좁히고 **그 위에
+`USAGE_VOICE_COMMUNICATION` 을 한 번 더 건다.** 2초 간격 폴링이면 충분하다.
+
+**반대 방향(폰 마이크 → 상대방)은 이 방법으로도, 다른 어떤 방법으로도 무인 판정이 안 된다.**
+폰 스피커로 합성 음성을 재생해 폰 마이크가 줍게 하려 해도 WebRTC 의 에코 캔슬레이션이 자기
+출력을 제거한다 — 그게 AEC 의 목적이다. 안드로이드는 앱 외부에서 `AudioRecord` 입력을 주입할
+수단도 주지 않는다(루트·특수 빌드 제외). **이 축은 사람이 폰에 대고 말하는 것 외에 길이 없다** —
+무인 하네스를 설계할 때 여기에 시간을 쓰지 마라.
 
 ---
 
