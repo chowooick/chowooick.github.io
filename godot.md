@@ -1659,7 +1659,7 @@ var rect := Rect2(centre - Vector2(size.x, size.y) * 0.5 * px_per_m,
 Android 플러그인이라면 `aapt2 dump xmltree`로 meta-data를, 그 밖이라면 패키지 안에 실제로
 그 효과가 있는지를 본다. 익스포트 성공은 설정이 읽혔다는 증거가 아니다.
 
-## GDT-074 — LiveKit Android SDK는 jitpack에만 있는 전이 의존성을 끌고 온다. Godot 플러그인은 `.gdap`에도 저장소를 적어야 한다
+## GDT-076 — LiveKit Android SDK는 jitpack에만 있는 전이 의존성을 끌고 온다. Godot 플러그인은 `.gdap`에도 저장소를 적어야 한다
 
 `측정 2026-09-14 · io.livekit:livekit-android 2.18.2 · Godot 4.7.2 Android 플러그인 v2 · AGP 8.6.1`
 
