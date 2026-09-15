@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-15T01:56:30Z · 소스 커밋 `2c6ffe2` · 이 파일은 자동 생성물이다.
+생성 2026-09-15T01:56:57Z · 소스 커밋 `7bf553c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2333,7 +2333,7 @@ var rect := Rect2(centre - Vector2(size.x, size.y) * 0.5 * px_per_m,
 Android 플러그인이라면 `aapt2 dump xmltree`로 meta-data를, 그 밖이라면 패키지 안에 실제로
 그 효과가 있는지를 본다. 익스포트 성공은 설정이 읽혔다는 증거가 아니다.
 
-## GDT-074 — LiveKit Android SDK는 jitpack에만 있는 전이 의존성을 끌고 온다. Godot 플러그인은 `.gdap`에도 저장소를 적어야 한다
+## GDT-076 — LiveKit Android SDK는 jitpack에만 있는 전이 의존성을 끌고 온다. Godot 플러그인은 `.gdap`에도 저장소를 적어야 한다
 
 `측정 2026-09-14 · io.livekit:livekit-android 2.18.2 · Godot 4.7.2 Android 플러그인 v2 · AGP 8.6.1`
 
