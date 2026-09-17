@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-17T16:29:07Z · 소스 커밋 `d5dc957` · 이 파일은 자동 생성물이다.
+생성 2026-09-17T17:22:49Z · 소스 커밋 `ab71060` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3775,6 +3775,31 @@ locale = "ko-KR"            # languageCode 대신
 Claude 아티팩트(단일 HTML)를 사이트로 옮길 때는 `<body>` 안 섹션만 떼어 `layout`이 지정된 `.html`
 콘텐츠로 넣고, 히어로·목차는 front matter로 옮기면 사이트 공통 헤더·댓글과 합쳐진다.
 
+## AGT-056 — `orca computer`로 브라우저를 조작할 때의 함정 5개 (Brave, macOS)
+
+`측정 2026-09-17 · Orca computer-use, Brave Browser, macOS 26`
+
+**증상과 원인:**
+
+- **`paste-text`는 클립보드에 이미 있던 내용을 붙여넣었다.** 넘긴 `--text`가 아니라 사용자의 이전 클립보드
+  내용(채팅 텍스트)이 폼 필드에 들어갔다. 사용자 데이터가 새어 나갈 수 있다.
+- **`type-text`에 `/`가 들어 있고 포커스가 필드에 없으면** Google Cloud 콘솔의 `/` 단축키가 검색창을 연다.
+  URL이 검색어로 들어간다. 포커스가 있을 때도 글자가 두 번 입력된 적이 있다(`삭제삭제`, `bible-commentsible-commentsb`).
+- **`set-value`는 값을 넣지만 Angular 폼이 인식 못 할 때가 있다.** 이메일 필드는 값이 보이는데도 단계 검증이
+  `오류`로 떨어졌다. 브라우저 자동완성 항목을 클릭하니 통과했다. 확인 단어 필드는 `set-value` 뒤에
+  Space와 Backspace를 한 번씩 눌러야 버튼이 활성화됐다.
+- **창 id는 그대로여도 활성 탭이 바뀐다.** 고정 탭(Google Calendar)이 앞으로 나온 상태에서 Return을 누르자
+  캘린더의 "다음 기간"이 실행됐다. 작업은 `open -na "Brave Browser" --args --new-window <url>`로 **전용 창**을 만들어서 한다.
+- **주소창 요소 번호는 페이지마다 7↔8로 바뀌고, 확대/축소 말풍선이 뜨면 창 트리 전체가 그 말풍선으로 바뀐다.**
+  키 이름은 `CmdOrCtrl+-`만 통한다(`minus`, `Subtract`는 거부).
+
+**해결:** 입력은 `set-value`로 넣고, 곧바로 `get-app-state`로 값을 읽어 확인한다. 폼 검증이 안 풀리면 실제 키 입력을 한 번 섞는다.
+`paste-text`는 쓰지 않는다. 주소창 번호는 매번 트리에서 `주소창`을 찾아 쓴다. 비밀값(OAuth secret 등)이 화면에 뜨면
+`--no-screenshot` 트리 JSON을 파일로 받고, 로컬 파이썬에서 정규식으로 파일에 쓴다. 출력에는 절대 찍지 않는다.
+작업이 끝나면 JSON과 `orca-computer-use/*.png` 스크린샷을 지운다.
+GitHub 설정 화면처럼 sudo 재인증을 요구하는 페이지는 headless 브라우저에서 막힌다. 사용자가 이미 인증한 실제 브라우저 창을
+`orca computer`로 조작하면 통과한다.
+
 ---
 
 <!-- source: ops.md -->
@@ -5505,4 +5530,48 @@ appear inactive or unused."* 예외는 상표권 분쟁뿐이다.
 
 **해결:** 다른 이름을 쓴다. 예를 들어 `<user>.github.io/<repo>`, 새 조직, 커스텀 도메인이 있다.
 이름 후보는 `gh api users/<후보>`가 404인지로 거른다.
+
+## OPS-073 — Dokploy 기본 swarm 업데이트는 새 컨테이너를 먼저 띄운다: BoltDB·SQLite 볼륨 앱은 재배포가 조용히 실패하고 옛 설정으로 계속 돈다
+
+`측정 2026-09-17 · Dokploy v0.30.6 (busan), Remark42 v1.17.1 (BoltDB), docker swarm`
+
+**증상:** Dokploy에서 환경변수를 바꾸고 재배포했는데 앱은 계속 옛 설정으로 돌았다. 에러 알림도 없었다.
+`docker service ps <appName>`를 보면 새 task는 `Failed "task: non-zero exit (1)"`였다. 그런데도
+**52분 전에 뜬 첫 task가 `Running`으로 남아** 트래픽을 계속 받고 있었다. 새 task 로그는 다음과 같았다.
+
+```
+[PANIC] failed to setup application, failed to make data store engine:
+can't initialize data store: failed to make boltdb for ./var/bible.db: timeout
+```
+
+새 task가 옛 task보다 먼저 떠서(start-first) 같은 볼륨의 `bible.db`를 열려고 했다.
+그런데 옛 task가 파일 잠금을 쥐고 있어서 새 task는 30초 뒤 죽었다. 결국 첫 배포 이후의 **모든 설정 변경이 한 번도 반영되지 않았다.**
+설정 API(`application.one`의 `env`)는 새 값을 보여 주므로, 설정만 봐서는 반영이 안 된 걸 알 수 없다.
+
+**해결:** 파일 잠금 DB(BoltDB, SQLite, LevelDB 등)를 볼륨에 두는 앱은 업데이트 순서를 stop-first로 바꾼다.
+
+```sh
+dokploy-api post application.update \
+  '{"applicationId":"<id>","updateConfigSwarm":{"Parallelism":1,"Order":"stop-first","FailureAction":"pause"}}'
+dokploy-api deploy <app>
+```
+
+재배포한 뒤에는 설정 API 말고 **앱이 실제로 내놓는 값**으로 반영을 확인한다(Remark42라면
+`/api/v1/config?site=<id>`의 `auth_providers`·`admins`). `docker service ps`에서 `Running` task의
+시작 시각이 방금인지도 함께 본다.
+
+## OPS-074 — Remark42 사용자 ID는 API로 못 꺼낸다: 로그인 후 사용자 패널에서 복사한다
+
+`측정 2026-09-17 · Remark42 v1.17.1, Google OAuth`
+
+**증상:** 관리자 지정(`ADMIN_SHARED_ID`)에 넣을 `google_<sha1>` ID를 구하려고 로그인한 브라우저에서
+`/api/v1/user?site=<id>`를 열면 `Unauthorized`가 나온다. `/auth/status`도 `{"status":"not logged in"}`이다.
+둘 다 쿠키 말고 XSRF 헤더까지 요구하므로, 주소창으로 열면 로그인 상태에서도 실패한다.
+댓글 위젯의 사용자 패널은 ID를 보여 주지만 `google_d4b0…c832335…`처럼 말줄임으로 자른다. 브라우저를 축소해도 잘린다.
+
+**해결:** 위젯에서 이름을 눌러 사용자 패널을 연다. ID 줄을 세 번 클릭해 선택하고 복사하면
+잘리지 않은 전체 값(`google_` + 40자 hex)이 클립보드에 들어온다. 이 값을 `ADMIN_SHARED_ID`에 넣고 재배포한다.
+반영 여부는 `/api/v1/config?site=<id>`의 `admins` 배열로 확인한다.
+Google 로그인 설정 조건은 두 가지다. 리디렉션 URI는 `<REMARK_URL>/auth/google/callback`이다.
+`ALLOWED_HOSTS`의 self는 따옴표를 붙여 `'self',https://<site>`로 적는다. 따옴표가 없으면 CSP에 `self`라는 호스트 이름으로 들어간다.
 
