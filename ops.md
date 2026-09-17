@@ -1676,3 +1676,51 @@ entrypoint: ["/bin/sh", "-ecx", "exec /app --database.address user:${PASSWORD}@d
 ③ **모든 배포에 sha 태그를 남긴다.** `:latest`만 쓰면 떠 있는 것이 어느 코드인지 영원히 모른다.
 배포 직전 현재 이미지에 `pre-<새sha>` 태그를 걸어두면 롤백 지점이 생긴다 — 실제로 이 장애에서
 워커를 그 태그로 되돌려 몇 초 만에 서비스를 복구하고, 그다음 차분히 서버를 배포했다.
+
+## OPS-071 — Dokploy에서 비공개 GitHub 저장소를 deploy key로 자동 배포하는 API 순서와 함정 3개
+
+`측정 2026-09-17 · Dokploy v0.30.6 (busan), GitHub deploy key(read-only), Dockerfile 빌드`
+
+**증상:** GitHub App 연동 없이 비공개 저장소를 Dokploy에 붙이려고 API를 부르면 세 군데서 막힌다.
+
+- `sshKey.create`는 `name`·`privateKey`·`publicKey`만으로는 400이다:
+  `fieldErrors: {"organizationId": ["expected string, received undefined"]}`.
+  조직 ID는 `organization.all`의 `[0].id`에서 받는다.
+- git 소스 저장 프로시저 이름은 `application.saveGitProvider`다. 오타 이름
+  `application.saveGitProdiver`(예전 버전에 있던 이름)는 **404 `NOT_FOUND`**만 돌려주고 원인을 말하지 않는다.
+- `application.saveBuildType`은 Dockerfile 빌드에서도 `herokuVersion`과 `railpackVersion`을 요구한다:
+  `"expected nonoptional, received undefined"`. 두 값을 `null`로 넣으면 통과한다.
+  이 호출을 빼먹으면 `buildType`이 기본값 `nixpacks`로 남는다.
+
+**해결:** 이 순서로 부르면 첫 시도에 통과한다.
+
+```sh
+ssh-keygen -t ed25519 -N "" -f key && gh repo deploy-key add key.pub -R <owner>/<repo>
+dokploy-api post sshKey.create '{"name":..,"organizationId":"<org.id>","privateKey":..,"publicKey":..}'
+dokploy-api post application.create '{"name":..,"environmentId":..}'          # appName은 무작위로 생성된다
+dokploy-api post application.saveGitProvider '{"applicationId":..,"customGitUrl":"git@github.com:<owner>/<repo>.git",
+  "customGitBranch":"main","customGitBuildPath":"/","customGitSSHKeyId":..,"watchPaths":[],"enableSubmodules":false}'
+dokploy-api post application.saveBuildType '{"applicationId":..,"buildType":"dockerfile","dockerfile":"Dockerfile",
+  "dockerContextPath":"","dockerBuildStage":"","herokuVersion":null,"railpackVersion":null}'
+dokploy-api post domain.create '{..,"certificateType":"letsencrypt"}'
+```
+
+푸시 자동 배포는 GitHub 웹훅 하나면 된다. 주소는 `https://<dokploy>/api/deploy/<refreshToken>`이고
+(`application.one`의 `refreshToken`), content type은 json, 이벤트는 push다. 실측 결과 웹훅 전달은 200이었고,
+`main` 푸시 뒤 약 1분 만에 새 페이지가 떴다. 이렇게 하면 `localhost:5000` 레지스트리에 수동으로 push할 필요가 없다.
+Dokploy가 busan 위에서 직접 clone해 빌드한다.
+
+## OPS-072 — GitHub 사용자명은 비활성이어도 돌려받을 수 없다: `<name>.github.io`가 404여도 못 쓴다
+
+`측정 2026-09-17 · GitHub Username Policy`
+
+**증상:** `https://<name>.github.io`가 404이고 그 계정은 저장소 0개, 공개 활동 0건, 마지막 수정
+2016년이다. 비어 보이지만 Pages 주소로 쓸 수 없다. `*.github.io`는 와일드카드 DNS라 어떤 이름이든
+GitHub IP로 풀리므로 DNS 조회로는 계정 존재 여부를 알 수 없다. `gh api users/<name>`으로 확인해야 한다.
+`<name>.github.com`이라는 주소는 아예 없다(DNS 레코드 없음, curl 종료 코드 6).
+
+정책 원문: *"We do not accept requests to release, transfer, or reclaim usernames on the basis that they
+appear inactive or unused."* 예외는 상표권 분쟁뿐이다.
+
+**해결:** 다른 이름을 쓴다. 예를 들어 `<user>.github.io/<repo>`, 새 조직, 커스텀 도메인이 있다.
+이름 후보는 `gh api users/<후보>`가 404인지로 거른다.

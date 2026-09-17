@@ -1229,3 +1229,29 @@ LLM이 붙인 라벨 단어가 읽히고, 응답이 길어져 생성 지연이 �
 AGT-051처럼 프롬프트가 잘 듣는 축(모델의 *역할* 오해)과 여기처럼 안 듣는 축(출력의 *형태*와
 *분량*)은 다르다 — 역할은 프롬프트로, 형태는 코드로. 어느 쪽인지는 변형 서너 개를 각각
 10회 이상 돌려보면 갈린다. 한 번 고치고 "좋아졌다"로 끝내면 둘을 구분하지 못한다.
+
+## AGT-055 — Hugo 0.158+는 `languageCode`를 거부하고, HTML 콘텐츠 파일은 `security.allowContent`에 markdown까지 같이 적어야 한다
+
+`측정 2026-09-17 · Hugo 0.166.0 (linux/arm64)`
+
+**증상:** `hugo --panicOnWarning` 빌드가 설정 로딩에서 죽는다:
+`ERROR failed to load config: project config key languageCode was deprecated in Hugo v0.158.0 ... Use locale instead.`
+경고 한 줄인데도 `--panicOnWarning`이 켜져 있으면 배포가 실패한다.
+
+`content/**/*.html`(원시 HTML 페이지)을 넣으면 이번에는
+`access denied: "text/html" is not whitelisted in policy "security.allowContent"`로 죽는다.
+`allowContent = ["text/html"]`만 적으면 다음 빌드에서
+`"text/markdown" is not whitelisted`로 다시 죽는다. 이 설정은 **허용 목록 전체를 교체한다.**
+
+**해결:**
+
+```toml
+locale = "ko-KR"            # languageCode 대신
+[security]
+  allowContent = ["text/markdown", "text/html"]
+```
+
+`:slug` 퍼머링크를 쓰면서 front matter에 `slug`를 안 적으면, URL이 한글 제목으로 만들어진다
+(`/studies/2026/09/ai-발전과-요한계시록-.../`). ASCII `slug`를 항상 적는다.
+Claude 아티팩트(단일 HTML)를 사이트로 옮길 때는 `<body>` 안 섹션만 떼어 `layout`이 지정된 `.html`
+콘텐츠로 넣고, 히어로·목차는 front matter로 옮기면 사이트 공통 헤더·댓글과 합쳐진다.
