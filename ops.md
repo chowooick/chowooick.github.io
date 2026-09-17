@@ -1724,3 +1724,47 @@ appear inactive or unused."* 예외는 상표권 분쟁뿐이다.
 
 **해결:** 다른 이름을 쓴다. 예를 들어 `<user>.github.io/<repo>`, 새 조직, 커스텀 도메인이 있다.
 이름 후보는 `gh api users/<후보>`가 404인지로 거른다.
+
+## OPS-073 — Dokploy 기본 swarm 업데이트는 새 컨테이너를 먼저 띄운다: BoltDB·SQLite 볼륨 앱은 재배포가 조용히 실패하고 옛 설정으로 계속 돈다
+
+`측정 2026-09-17 · Dokploy v0.30.6 (busan), Remark42 v1.17.1 (BoltDB), docker swarm`
+
+**증상:** Dokploy에서 환경변수를 바꾸고 재배포했는데 앱은 계속 옛 설정으로 돌았다. 에러 알림도 없었다.
+`docker service ps <appName>`를 보면 새 task는 `Failed "task: non-zero exit (1)"`였다. 그런데도
+**52분 전에 뜬 첫 task가 `Running`으로 남아** 트래픽을 계속 받고 있었다. 새 task 로그는 다음과 같았다.
+
+```
+[PANIC] failed to setup application, failed to make data store engine:
+can't initialize data store: failed to make boltdb for ./var/bible.db: timeout
+```
+
+새 task가 옛 task보다 먼저 떠서(start-first) 같은 볼륨의 `bible.db`를 열려고 했다.
+그런데 옛 task가 파일 잠금을 쥐고 있어서 새 task는 30초 뒤 죽었다. 결국 첫 배포 이후의 **모든 설정 변경이 한 번도 반영되지 않았다.**
+설정 API(`application.one`의 `env`)는 새 값을 보여 주므로, 설정만 봐서는 반영이 안 된 걸 알 수 없다.
+
+**해결:** 파일 잠금 DB(BoltDB, SQLite, LevelDB 등)를 볼륨에 두는 앱은 업데이트 순서를 stop-first로 바꾼다.
+
+```sh
+dokploy-api post application.update \
+  '{"applicationId":"<id>","updateConfigSwarm":{"Parallelism":1,"Order":"stop-first","FailureAction":"pause"}}'
+dokploy-api deploy <app>
+```
+
+재배포한 뒤에는 설정 API 말고 **앱이 실제로 내놓는 값**으로 반영을 확인한다(Remark42라면
+`/api/v1/config?site=<id>`의 `auth_providers`·`admins`). `docker service ps`에서 `Running` task의
+시작 시각이 방금인지도 함께 본다.
+
+## OPS-074 — Remark42 사용자 ID는 API로 못 꺼낸다: 로그인 후 사용자 패널에서 복사한다
+
+`측정 2026-09-17 · Remark42 v1.17.1, Google OAuth`
+
+**증상:** 관리자 지정(`ADMIN_SHARED_ID`)에 넣을 `google_<sha1>` ID를 구하려고 로그인한 브라우저에서
+`/api/v1/user?site=<id>`를 열면 `Unauthorized`가 나온다. `/auth/status`도 `{"status":"not logged in"}`이다.
+둘 다 쿠키 말고 XSRF 헤더까지 요구하므로, 주소창으로 열면 로그인 상태에서도 실패한다.
+댓글 위젯의 사용자 패널은 ID를 보여 주지만 `google_d4b0…c832335…`처럼 말줄임으로 자른다. 브라우저를 축소해도 잘린다.
+
+**해결:** 위젯에서 이름을 눌러 사용자 패널을 연다. ID 줄을 세 번 클릭해 선택하고 복사하면
+잘리지 않은 전체 값(`google_` + 40자 hex)이 클립보드에 들어온다. 이 값을 `ADMIN_SHARED_ID`에 넣고 재배포한다.
+반영 여부는 `/api/v1/config?site=<id>`의 `admins` 배열로 확인한다.
+Google 로그인 설정 조건은 두 가지다. 리디렉션 URI는 `<REMARK_URL>/auth/google/callback`이다.
+`ALLOWED_HOSTS`의 self는 따옴표를 붙여 `'self',https://<site>`로 적는다. 따옴표가 없으면 CSP에 `self`라는 호스트 이름으로 들어간다.

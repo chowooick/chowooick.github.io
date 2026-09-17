@@ -1255,3 +1255,28 @@ locale = "ko-KR"            # languageCode 대신
 (`/studies/2026/09/ai-발전과-요한계시록-.../`). ASCII `slug`를 항상 적는다.
 Claude 아티팩트(단일 HTML)를 사이트로 옮길 때는 `<body>` 안 섹션만 떼어 `layout`이 지정된 `.html`
 콘텐츠로 넣고, 히어로·목차는 front matter로 옮기면 사이트 공통 헤더·댓글과 합쳐진다.
+
+## AGT-056 — `orca computer`로 브라우저를 조작할 때의 함정 5개 (Brave, macOS)
+
+`측정 2026-09-17 · Orca computer-use, Brave Browser, macOS 26`
+
+**증상과 원인:**
+
+- **`paste-text`는 클립보드에 이미 있던 내용을 붙여넣었다.** 넘긴 `--text`가 아니라 사용자의 이전 클립보드
+  내용(채팅 텍스트)이 폼 필드에 들어갔다. 사용자 데이터가 새어 나갈 수 있다.
+- **`type-text`에 `/`가 들어 있고 포커스가 필드에 없으면** Google Cloud 콘솔의 `/` 단축키가 검색창을 연다.
+  URL이 검색어로 들어간다. 포커스가 있을 때도 글자가 두 번 입력된 적이 있다(`삭제삭제`, `bible-commentsible-commentsb`).
+- **`set-value`는 값을 넣지만 Angular 폼이 인식 못 할 때가 있다.** 이메일 필드는 값이 보이는데도 단계 검증이
+  `오류`로 떨어졌다. 브라우저 자동완성 항목을 클릭하니 통과했다. 확인 단어 필드는 `set-value` 뒤에
+  Space와 Backspace를 한 번씩 눌러야 버튼이 활성화됐다.
+- **창 id는 그대로여도 활성 탭이 바뀐다.** 고정 탭(Google Calendar)이 앞으로 나온 상태에서 Return을 누르자
+  캘린더의 "다음 기간"이 실행됐다. 작업은 `open -na "Brave Browser" --args --new-window <url>`로 **전용 창**을 만들어서 한다.
+- **주소창 요소 번호는 페이지마다 7↔8로 바뀌고, 확대/축소 말풍선이 뜨면 창 트리 전체가 그 말풍선으로 바뀐다.**
+  키 이름은 `CmdOrCtrl+-`만 통한다(`minus`, `Subtract`는 거부).
+
+**해결:** 입력은 `set-value`로 넣고, 곧바로 `get-app-state`로 값을 읽어 확인한다. 폼 검증이 안 풀리면 실제 키 입력을 한 번 섞는다.
+`paste-text`는 쓰지 않는다. 주소창 번호는 매번 트리에서 `주소창`을 찾아 쓴다. 비밀값(OAuth secret 등)이 화면에 뜨면
+`--no-screenshot` 트리 JSON을 파일로 받고, 로컬 파이썬에서 정규식으로 파일에 쓴다. 출력에는 절대 찍지 않는다.
+작업이 끝나면 JSON과 `orca-computer-use/*.png` 스크린샷을 지운다.
+GitHub 설정 화면처럼 sudo 재인증을 요구하는 페이지는 headless 브라우저에서 막힌다. 사용자가 이미 인증한 실제 브라우저 창을
+`orca computer`로 조작하면 통과한다.
