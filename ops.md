@@ -1915,3 +1915,42 @@ token."`을 낸다. 앱은 시작할 때 `authRefresh`가 실패해 조용히 �
 V=$(curl -s .../auth-with-password ... | python3 -c "import json,sys;d=json.load(sys.stdin);print(json.dumps(json.dumps(json.dumps({'token':d['token'],'model':d['record']}))))")
 $B js "localStorage.setItem('flutter.pb_auth', $V)"; $B goto <앱 주소>
 ```
+
+## OPS-083 — PocketBase 0.40 `onRecordAuthWithOAuth2Request`의 `e.createData`는 기본이 null이다: 키를 넣으면 신규 OAuth 가입이 전부 실패한다
+
+`측정 2026-09-18 · PocketBase 0.40.4 JSVM, Google OAuth2`
+
+**증상:** 신규 사용자 기본값을 넣으려고 훅에서 `e.createData["role"] = "partner"`를 썼다. 기존 사용자는 로그인되지만
+**처음 가입하는 Google 계정은 모두 400**이 났다. 응답은 `"Something went wrong while processing your request."`뿐이고
+`details`도 비어 있다. 원인은 `/api/logs`(level>0)의 `data.error`에만 남는다:
+`TypeError: Cannot convert undefined or null to object at /pb.js:4:17(14)`.
+클라이언트가 `createData`를 보내지 않으면 이 필드는 Go의 nil 맵이고, JS에서는 null이다.
+
+**해결:** 객체를 통째로 다시 넣는다.
+
+```js
+onRecordAuthWithOAuth2Request((e) => {
+  if (e.isNewRecord) {
+    e.createData = Object.assign({}, e.createData || {}, { role: "partner" });
+  }
+  e.next();
+}, "users");
+```
+
+실측으로 이 수정 뒤 실제 Google 계정의 첫 가입이 통과했다(`role`·`gift_code` 저장, `mappedFields.name`으로 이름 채움).
+같이 필요했던 설정: 신규 OAuth 레코드 생성은 컬렉션 `createRule`을 탄다. 일반 가입은 막고 OAuth만 열려면
+`createRule = '@request.context = "oauth2"'`로 둔다.
+
+## OPS-084 — Google 인증 플랫폼(2026 콘솔)은 브랜딩의 홈페이지·개인정보처리방침·약관 URL과 승인 도메인이 다 차야 "앱 게시"가 켜진다
+
+`측정 2026-09-18 · Google Cloud Console, Google 인증 플랫폼(구 OAuth 동의 화면)`
+
+**증상:** 새 프로젝트에서 브랜딩(앱 이름·지원 이메일)·대상(외부)·연락처까지 만들고 OAuth 웹 클라이언트를 만들어도
+"대상" 페이지의 **앱 게시 버튼이 비활성**이다. 안내 문구는 "앱을 게시하려면 브랜딩 페이지에서 구성을 완료해야 합니다" 한 줄뿐이다.
+게시 상태가 '테스트 중'이면 테스트 사용자로 등록한 계정만 로그인된다.
+
+**해결:** 브랜딩 페이지에서 **애플리케이션 홈페이지, 개인정보처리방침 링크, 서비스 약관 링크, 승인된 도메인** 네 칸을 채우고
+저장하면 버튼이 켜진다. 로고는 넣지 않았다(로고를 넣으면 브랜드 인증 심사 대상이 된다). email·profile·openid 범위만 쓰면
+게시 후 바로 "프로덕션 단계"가 되고 심사 없이 모든 Google 계정이 로그인된다.
+생성 마법사 마지막의 "사용자 데이터 정책 동의" 체크박스는 접근성 트리에 나타나지 않아서, 자동화에서는
+`input[type=checkbox]`를 직접 클릭해야 했다.
