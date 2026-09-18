@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-18T21:37:50Z · 소스 커밋 `a44eb50` · 이 파일은 자동 생성물이다.
+생성 2026-09-18T21:50:20Z · 소스 커밋 `1fd994c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5760,4 +5760,36 @@ onRecordAuthWithOAuth2Request((e) => {
 게시 후 바로 "프로덕션 단계"가 되고 심사 없이 모든 Google 계정이 로그인된다.
 생성 마법사 마지막의 "사용자 데이터 정책 동의" 체크박스는 접근성 트리에 나타나지 않아서, 자동화에서는
 `input[type=checkbox]`를 직접 클릭해야 했다.
+
+## OPS-085 — misa에는 crontab도 없다: 정기 작업은 compose 사이드카의 busybox `crond`로 돌린다 (rclone → Google Drive 백업 예)
+
+`측정 2026-09-18 · misa(Ubuntu, Dokploy), rclone/rclone:1.71 이미지, Google Drive`
+
+**증상:** `ssh misa 'which crontab rclone unzip'`가 아무것도 출력하지 않는다. 호스트에 cron 설치를 하려면 sudo와
+공유 호스트 변경이 필요하다.
+
+**해결:** 같은 compose에 사이드카를 붙인다. `rclone/rclone` 이미지는 alpine이라 busybox `crond`가 들어 있다.
+
+```yaml
+backup:
+  image: rclone/rclone:1.71
+  entrypoint: ["/bin/sh", "-ec"]
+  command:
+    - |
+      echo "0 9 * * * /backup/upload.sh >> /proc/1/fd/1 2>&1" > /etc/crontabs/root
+      exec crond -f -l 8
+  environment: { RCLONE_CONFIG: /config/rclone.conf }
+  volumes: [ "pb_data:/pb_data:ro", "/home/<user>/app/backup:/backup:ro", "/home/<user>/app/rclone:/config" ]
+```
+
+- `>> /proc/1/fd/1`로 보내면 작업 출력이 `docker logs`에 남는다.
+- 시계는 UTC다(이미지에 tzdata가 없다).
+- rclone.conf 디렉터리는 **쓰기 가능하게** 마운트한다. 갱신된 OAuth 토큰을 rclone이 그 파일에 다시 쓰기 때문이다.
+
+Drive 인증은 맥에서 `rclone authorize drive <client_id> <secret> --auth-no-open-browser`로 받는다(데스크톱 유형 OAuth 클라이언트,
+Drive API 사용 설정). 출력된 `http://127.0.0.1:53682/auth?...`를 같은 맥의 브라우저로 열어 계정을 고르면 토큰 JSON이 나온다.
+
+- **scope:** 사용자가 **직접 만든 폴더**에 올리려면 scope가 `drive`여야 한다. `drive.file`은 앱이 만든 파일만 보여서 그 폴더를 찾지 못한다.
+- **보관 기간 삭제:** 날짜 폴더(`YYYY-MM-DD`)를 문자열로 비교하고 `rclone purge`로 지운다.
+- **검증:** 가짜 옛 폴더를 넣고 스크립트를 돌려 삭제되는 것까지 확인했다.
 
