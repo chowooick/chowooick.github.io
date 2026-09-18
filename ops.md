@@ -1860,4 +1860,4 @@ end of file`로 바로 실패한다. 원격에 rsync 바이너리가 없어서�
 뒤 호스트에서 `rm -rf d && mkdir d && echo new > d/f`를 하자 컨테이너의 `ls /m`은 비어 있고 `cat /m/f`는
 `No such file`이었다. 파일 감시로 핫 리로드하는 앱(PocketBase `--hooksWatch` 등)도 변화를 못 본다.
 동기화 뒤 `docker restart <컨테이너>`로 마운트를 다시 잡는다(재시작 후 새 파일이 보이는 것 확인. misa 유저는
-`docker` 그룹이라 sudo 없이 된다). 폴더를 지우지 않고 안의 파일만 덮어쓰는 방식이면 재시작 없이 보인다.
+`docker` 그룹이라 sudo 없이 된다).
