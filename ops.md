@@ -1804,3 +1804,18 @@ Codex 내장 imagegen은 "pure white background"라고 해도 **알파 채널이
 PAM(`P7 … TUPLTYPE RGB_ALPHA`)으로 쓰면 `cwebp`가 알파를 그대로 WebP로 옮긴다(왕복 검증 완료).
 불투명본이 필요하면 `cwebp -blend_alpha 0xffffff -noalpha`로 흰 바탕에 합성한다.
 크롬은 `file://` 페이지의 CSS `mask-image`를 막으므로 미리보기는 로컬 HTTP로 띄운다.
+
+## OPS-077 — `wrangler pages` 새 프로젝트는 `--force`가 필요하고, `pages deploy`는 점 폴더(`.gstack`)까지 올린다
+
+`측정 2026-09-19 · wrangler 4.134.0, Cloudflare Pages, gstack browse`
+
+**증상 1:** `wrangler pages project create <name> --production-branch main`이 `Delegating to the latest version of Cloudflare Pages, now part of Cloudflare Workers`를 출력한 뒤
+`Missing entry-point to Worker script or to assets directory`로 실패하고 아무것도 만들지 않는다.
+**해결:** 한 번만 `--force`를 붙여 만든다(`pages project create <name> --production-branch main --force`). 프로젝트가 생긴 뒤의
+`pages deploy`는 위임되지 않으므로 `--force`가 다시 필요 없다.
+
+**증상 2:** `wrangler pages deploy <dir>`이 파일 수를 예상보다 많이 올렸다. gstack `browse`를 그 폴더에서 실행하면 현재 폴더에
+`.gstack/`(`browse.json`의 로컬 서버 토큰, 콘솔·네트워크 로그)을 만든다. `pages deploy`는 점으로 시작하는 폴더도 제외하지 않고 공개한다.
+배포를 삭제해도 같은 경로의 응답이 한동안 엣지 캐시에 남았다(쿼리를 붙이면 새 배포가 보였다).
+**해결:** 배포는 필요한 파일만 복사한 별도 폴더에서 한다. 올린 뒤 `Uploaded N files`의 N이 예상과 같은지 확인한다. 이미 올렸다면
+깨끗한 폴더로 재배포하고 `pages deployment delete <id> --force`로 이전 배포를 지우고, 노출된 토큰의 프로세스를 끝내 무효로 만든다.
