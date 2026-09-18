@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-18T21:50:20Z · 소스 커밋 `1fd994c` · 이 파일은 자동 생성물이다.
+생성 2026-09-18T22:42:33Z · 소스 커밋 `65c9e64` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5792,4 +5792,39 @@ Drive API 사용 설정). 출력된 `http://127.0.0.1:53682/auth?...`를 같은 
 - **scope:** 사용자가 **직접 만든 폴더**에 올리려면 scope가 `drive`여야 한다. `drive.file`은 앱이 만든 파일만 보여서 그 폴더를 찾지 못한다.
 - **보관 기간 삭제:** 날짜 폴더(`YYYY-MM-DD`)를 문자열로 비교하고 `rclone purge`로 지운다.
 - **검증:** 가짜 옛 폴더를 넣고 스크립트를 돌려 삭제되는 것까지 확인했다.
+
+## OPS-086 — Flutter release APK에는 INTERNET 권한이 없다: 폰에서만 모든 요청이 "서버에 연결할 수 없음"(status 0)으로 실패한다
+
+`측정 2026-09-18 · Flutter 3.38.5, Android release APK, PocketBase Dart SDK 0.25.1`
+
+**증상:** 웹과 `flutter run`(debug)에서는 잘 되는 앱이 `flutter build apk --release`로 설치하면 첫 API 호출부터 실패한다.
+PocketBase SDK는 이를 `ClientException(statusCode: 0)`으로 돌려주고 앱은 "Can't reach the server"를 띄운다.
+서버 로그에는 그 폰의 요청이 **한 건도 없다** — 요청이 폰을 떠나지 않았다는 신호다.
+
+**원인:** Flutter 템플릿은 `android.permission.INTERNET`을 `android/app/src/debug/`와 `profile/`의 매니페스트에만 넣는다.
+`src/main/AndroidManifest.xml`에는 없어서 release 빌드만 권한이 빠진다.
+
+**해결:** `src/main/AndroidManifest.xml`의 `<manifest>` 바로 아래에 `<uses-permission android:name="android.permission.INTERNET"/>`.
+외부 브라우저로 URL을 여는 `url_launcher`를 쓰면 Android 11+용 `<queries>`에 `VIEW`+`https` intent도 추가한다.
+원인이 모호한 status 0은 SDK의 `originalError`를 오류 문구에 붙여 두면 다음 보고에서 바로 가려진다.
+
+## OPS-087 — 네이티브 앱의 OAuth 리디렉트 URI를 새로 등록할 수 없을 때: 이미 등록된 웹 콜백이 PocketBase `/api/oauth2-redirect`로 넘겨주게 한다
+
+`측정 2026-09-18 · PocketBase 0.40.4 + Dart SDK 0.25.1, Google OAuth, Flutter web + Android`
+
+**증상:** SDK의 `authWithOAuth2`는 redirect_uri로 `<pb>/api/oauth2-redirect`를 쓰므로 Google 콘솔에 그 주소가 없으면
+"액세스 차단됨: 이 앱의 요청이 잘못되었습니다"(`redirect_uri_mismatch`)가 뜬다. 콘솔 자동화도 막혀 있었다:
+Chrome에서 가져온 Google 쿠키로 콘솔을 한 번 쓰고 나자, 이후에는 계정이 모두 "Signed out"이 되고
+"This browser or app may not be secure"로 로그인이 거부됐다(복사한 세션이 무효화됨).
+
+**해결:** SDK 흐름을 그대로 따라 하되 redirect만 이미 등록된 웹 콜백(`https://<web>/auth/callback`)으로 바꾼다.
+
+1. 앱: `RealtimeService(pb)`로 `@oauth2`를 구독한다. `state`를 그 `realtime.clientId`로 바꾼 authURL을 외부 브라우저로 연다.
+   메시지가 오면 `authWithOAuth2Code(provider, code, verifier, '<web>/auth/callback')`를 부른다.
+2. 웹의 `/auth/callback`: 그 브라우저에서 시작한 흐름이 아니면(로컬 `state` 불일치)
+   `<pb>/api/oauth2-redirect?code=…&state=…`로 넘긴다. PocketBase는 state와 같은 clientId를 가진 구독자에게
+   code를 보내고 자체 완료 페이지(`/_/#/auth/oauth2-redirect-success`)를 보여 준다.
+
+실측: 구독한 clientId로 `<web>/auth/callback?code=FAKE&state=<clientId>`를 열자 구독자가
+`{state, code: FAKE}`를 받았다. 토큰 교환의 redirect_uri는 authorize 때와 같은 웹 콜백이므로 Google 쪽 추가 등록이 필요 없다.
 
