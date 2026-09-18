@@ -2021,3 +2021,14 @@ Chrome에서 가져온 Google 쿠키로 콘솔을 한 번 쓰고 나자, 이후�
 
 실측: 구독한 clientId로 `<web>/auth/callback?code=FAKE&state=<clientId>`를 열자 구독자가
 `{state, code: FAKE}`를 받았다. 토큰 교환의 redirect_uri는 authorize 때와 같은 웹 콜백이므로 Google 쪽 추가 등록이 필요 없다.
+
+**정정 (같은 날 실측):** 위 realtime 중계는 **Android 실기기에서 실패했다**. 외부 브라우저가 앞에 오면 앱이 멈추면서
+SSE 연결이 끊긴다. PocketBase의 oauth2-redirect는 state와 같은 clientId를 찾지 못하고
+"Auth failed. You can close this window…"를 띄웠다. 앱으로 돌아오면 SDK가 **새 clientId**로 다시 연결하므로
+그 code는 영영 전달되지 않는다. 데스크톱 Dart에서는 연결이 유지되어 성공했기 때문에 이 차이가 안 보였다.
+동작하는 방식은 **서버 보관 + 폴링**이다.
+
+1. 앱이 무작위 state(32바이트 base64url)를 만든다.
+2. 웹 콜백이 `{state, code}`를 서버에 저장한다(15분 후 삭제, 한 번 읽으면 삭제).
+3. 앱이 2초마다 폴링해서 code를 가져가 `authWithOAuth2Code`로 교환한다. code는 PKCE verifier가 없으면 쓸 수 없고, verifier는 앱에만 있다.
+4. 웹 페이지에는 "앱으로 돌아가기" 버튼(`intent://…#Intent;scheme=<앱 스킴>;package=<패키지>;end`)을 둔다.
