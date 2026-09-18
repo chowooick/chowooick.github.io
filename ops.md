@@ -1786,3 +1786,21 @@ Google 로그인 설정 조건은 두 가지다. 리디렉션 URI는 `<REMARK_UR
 
 **해결:** 장 단위 API로 받아 `+`로 묶인 키를 쪼개 찾고, `copyright.text`가 예상한 고지와 같은지 확인한 뒤 저장한다.
 저장한 본문은 게시 전에 사람이 Bible.com 화면과 대조한다. 역본 라이선스는 이 API와 별개로 확인해야 한다.
+
+## OPS-076 — `codex exec`로 무인 이미지 생성: 배경이 투명하게 올 수 있고, `sips` BMP는 투명을 검정으로 남긴다
+
+`측정 2026-09-19 · codex-cli 0.154.0, macOS sips, libwebp cwebp 1.6.0`
+
+**증상:** 흰 배경 연필 그림을 요청해 흰색을 투명으로 바꾸는 마스크를 만들었는데, 결과가 통째로 불투명한 상자였다.
+Codex 내장 imagegen은 "pure white background"라고 해도 **알파 채널이 있는 PNG(배경 투명)**를 돌려줄 때가 있다.
+`sips -s format bmp`는 이 PNG를 32비트 BITFIELDS BMP(헤더 124바이트, compression=3)로 저장하고,
+투명 픽셀은 `(0,0,0,0)`이 된다. 알파를 무시하고 밝기만 보면 배경이 검정으로 읽힌다.
+
+`codex exec --skip-git-repo-check -C <빈 폴더> --sandbox workspace-write -`에 "내장 imagegen으로 만들어 art.png로 저장하라"는
+지시를 stdin으로 주면 ChatGPT 로그인만으로 무인 생성이 된다. LaunchAgent 환경(HOME·PATH만 전달)에서도 동작했고,
+1536×1024 한 장에 73–101초 걸렸다. 유료 API 키는 필요 없다.
+
+**해결:** BMP 헤더 54–69바이트의 R·G·B·A 채널 마스크를 읽고 흰 종이 위에 합성한 밝기(`255 − (255 − lum) × a/255`)로 계산한다.
+PAM(`P7 … TUPLTYPE RGB_ALPHA`)으로 쓰면 `cwebp`가 알파를 그대로 WebP로 옮긴다(왕복 검증 완료).
+불투명본이 필요하면 `cwebp -blend_alpha 0xffffff -noalpha`로 흰 바탕에 합성한다.
+크롬은 `file://` 페이지의 CSS `mask-image`를 막으므로 미리보기는 로컬 HTTP로 띄운다.
