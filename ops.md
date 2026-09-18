@@ -1861,3 +1861,36 @@ end of file`로 바로 실패한다. 원격에 rsync 바이너리가 없어서�
 `No such file`이었다. 파일 감시로 핫 리로드하는 앱(PocketBase `--hooksWatch` 등)도 변화를 못 본다.
 동기화 뒤 `docker restart <컨테이너>`로 마운트를 다시 잡는다(재시작 후 새 파일이 보이는 것 확인. misa 유저는
 `docker` 그룹이라 sudo 없이 된다).
+
+## OPS-080 — PocketBase 부트 훅에서 관리자 계정에 `setPassword`를 매번 호출하면 재시작마다 그 계정의 모든 세션 토큰이 무효가 된다
+
+`측정 2026-09-18 · PocketBase 0.40.4 (JSVM 훅), Dokploy`
+
+**증상:** 관리자 계정으로 받은 토큰이 멀쩡히 쓰이다가 갑자기 `401 "The request requires valid record authorization
+token."`을 낸다. 앱은 시작할 때 `authRefresh`가 실패해 조용히 로그아웃되고, 목록 API는 에러 없이 `totalItems: 0`을
+돌려줘서(목록 규칙이 비로그인을 걸러냄) 데이터가 사라진 것처럼 보인다. 같은 세션에서 두 번 겪었고, 두 번 다
+컨테이너 재시작 직후였다(`docker ps`의 `Up N minutes`와 시각이 맞음).
+
+`onBootstrap`에서 환경 변수의 관리자 비밀번호로 `admin.setPassword(password); e.app.save(admin)`을 매번 실행하고
+있었다. 비밀번호 필드를 새로 쓰면 레코드의 `tokenKey`가 바뀌고, 기존 토큰은 서명 키가 달라 전부 무효가 된다
+(값이 같은 비밀번호여도 마찬가지). 여러 세션이 훅을 자주 배포하는 개발 서버에서는 관리자가 계속 튕긴다.
+
+**해결:** 계정을 새로 만들 때만 비밀번호를 설정하거나, `admin.validatePassword(password)`가 false일 때만
+`setPassword`를 호출한다. 테스트 스크립트는 401을 받으면 다시 로그인하도록 짠다.
+
+## OPS-081 — Flutter `setState(() => _future = load())`는 debug에서 assert로 던지고 화면을 다시 그리지 않는다. 웹 콘솔에는 에러가 안 찍힌다
+
+`측정 2026-09-18 · Flutter 3.38.5, web debug 빌드(CanvasKit), headless Chromium`
+
+**증상:** "다시 불러오기" 버튼이나 저장 뒤 reload를 호출하면 네트워크 탭에는 새 GET이 200으로 찍히는데 화면은 옛
+데이터 그대로다. 같은 reload가 어떤 화면에서는 되고(부모가 같은 프레임에 `setState`를 따로 부르는 곳) 어떤
+화면에서는 안 된다. 브라우저 콘솔에는 아무 에러도 없다.
+
+화살표 함수 `() => _future = load()`는 대입식의 값, 즉 **Future를 반환**한다. debug 모드의 `setState`는 콜백을 먼저
+실행한 뒤 반환값이 Future면 `setState() callback argument returned a Future.` assert를 던지고, `markNeedsBuild()`까지
+가지 못한다. `_future`는 이미 바뀌었으니 다른 이유로 다시 빌드될 때만 새 데이터가 보인다. 호출한 쪽이 async
+`onPressed`라 예외는 그 Future 안에서 끝나고, 호출 뒤의 코드(스낵바 등)도 실행되지 않는다. release 빌드는 assert가
+빠져 정상 동작하므로 debug에서만 보인다.
+
+**해결:** 블록 본문으로 쓴다: `setState(() { _future = load(); });`. 진단할 때는 reload 호출 바로 뒤에 `debugPrint`를
+넣어 보면 찍히지 않는 것으로 바로 드러난다.
