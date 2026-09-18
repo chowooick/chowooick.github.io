@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-18T20:22:24Z · 소스 커밋 `df47c98` · 이 파일은 자동 생성물이다.
+생성 2026-09-18T20:22:50Z · 소스 커밋 `c833bff` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5661,7 +5661,10 @@ end of file`로 바로 실패한다. 원격에 rsync 바이너리가 없어서�
 `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'` 경고를 파일마다 찍는다.
 
 **해결:** `COPYFILE_DISABLE=1 tar --no-xattrs -czf - <폴더> | ssh misa 'cd <대상> && rm -rf <폴더> && tar -xzf -'`.
-`--no-xattrs`가 경고를 없앤다. 그 폴더가 실행 중인 컨테이너에 바인드 마운트되어 있으면 `rm -rf`로 새로 만든
-디렉터리는 **다른 inode**라 컨테이너가 옛 디렉터리를 계속 볼 수 있다 — 동기화 뒤 `docker restart <컨테이너>`로
-마운트를 다시 잡는다(misa 유저는 `docker` 그룹이라 sudo 없이 된다).
+`--no-xattrs`가 경고를 없앤다. 그 폴더가 실행 중인 컨테이너에 바인드 마운트되어 있으면 `rm -rf` 뒤 새로 만든
+디렉터리는 **다른 inode**라 컨테이너에는 **지워진 빈 디렉터리**가 보인다 — 실측: `docker run -v /tmp/bm/d:/m`
+뒤 호스트에서 `rm -rf d && mkdir d && echo new > d/f`를 하자 컨테이너의 `ls /m`은 비어 있고 `cat /m/f`는
+`No such file`이었다. 파일 감시로 핫 리로드하는 앱(PocketBase `--hooksWatch` 등)도 변화를 못 본다.
+동기화 뒤 `docker restart <컨테이너>`로 마운트를 다시 잡는다(재시작 후 새 파일이 보이는 것 확인. misa 유저는
+`docker` 그룹이라 sudo 없이 된다).
 
