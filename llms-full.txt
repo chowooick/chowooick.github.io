@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-17T17:22:49Z · 소스 커밋 `ab71060` · 이 파일은 자동 생성물이다.
+생성 2026-09-18T15:06:01Z · 소스 커밋 `d2ec55d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5574,4 +5574,22 @@ dokploy-api deploy <app>
 반영 여부는 `/api/v1/config?site=<id>`의 `admins` 배열로 확인한다.
 Google 로그인 설정 조건은 두 가지다. 리디렉션 URI는 `<REMARK_URL>/auth/google/callback`이다.
 `ALLOWED_HOSTS`의 self는 따옴표를 붙여 `'self',https://<site>`로 적는다. 따옴표가 없으면 CSP에 `self`라는 호스트 이름으로 들어간다.
+
+## OPS-075 — Bible.com 본문 페이지는 curl에 봇 확인 화면을 준다: 장 단위 공식 API는 JSON으로 열린다
+
+`측정 2026-09-19 · Bible.com / YouVersion, 현대인의 성경(version 86)`
+
+**증상:** `curl https://www.bible.com/ko/bible/86/GEN.2.8-15.KLB`가 HTTP 200인데 본문은 3KB짜리
+`<title>Client Challenge</title>` 페이지다. User-Agent·Accept-Language를 브라우저처럼 바꿔도 같고,
+`www.bible.com/api/...` 경로도 같은 화면을 준다. 본문을 HTML에서 긁는 방식은 쓸 수 없다.
+
+`https://nodejs.bible.com/api/bible/chapter/3.1?id=86&reference=GEN.2`(또는 `events.bible.com` 같은 경로)는
+확인 화면 없이 JSON을 준다. 필드는 `reference.human`(`창세기 2`), `copyright.text`, `content`(장 전체 HTML)다.
+절은 `span.verse[data-usfm="GEN.2.8"]` 안의 텍스트이고, `span.label`(절 번호)·`span.note`(각주)·`.heading`은 빼야 한다.
+**원문이 두 절을 한 절로 묶으면 `data-usfm="GEN.2.11+GEN.2.12"`가 된다.** `GEN.2.11`로 찾으면 없다고 나온다.
+한 절이 문단을 넘어 여러 `span`으로 나뉠 수도 있어 같은 `data-usfm`의 텍스트를 이어 붙여야 한다.
+공식 본문의 공백은 그대로 온다(요한계시록 14:1에 `함 께`). 사람이 대조해 저장한 13절과 비교하면 12절은 글자까지 같았고, 남은 1절은 이 공백 차이였다.
+
+**해결:** 장 단위 API로 받아 `+`로 묶인 키를 쪼개 찾고, `copyright.text`가 예상한 고지와 같은지 확인한 뒤 저장한다.
+저장한 본문은 게시 전에 사람이 Bible.com 화면과 대조한다. 역본 라이선스는 이 API와 별개로 확인해야 한다.
 
