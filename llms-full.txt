@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-19T18:13:22Z · 소스 커밋 `093b378` · 이 파일은 자동 생성물이다.
+생성 2026-09-19T21:15:10Z · 소스 커밋 `40c41f5` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5970,4 +5970,29 @@ SSE 연결이 끊긴다. PocketBase의 oauth2-redirect는 state와 같은 client
 `reference.human: "Micah 6"`, `copyright.text: "PUBLIC DOMAIN (not copyrighted)"`를 돌려준다. 본문 HTML 구조는 KLB(86)와 같아
 `span.verse[data-usfm]`로 절을 뽑을 수 있다. 이 역본은 하나님의 이름을 "Yahweh"로 옮긴다.
 Bible.com 링크 형식은 `https://www.bible.com/bible/206/MIC.6.8.WEB`.
+
+## OPS-090 — 기관 이름과 똑같은 도메인이 파킹 페이지일 수 있다. 200 응답만으로 공식 사이트로 확정하지 않는다
+
+`측정 2026-09-19 · curl 8.7.1`
+
+**증상:** `https://www.palisadesparklibrary.org/`는 `curl -sL`에 HTTP 200을 돌려주지만 본문은
+`<script>window.onload=function(){window.location.href="/lander"}</script>` 한 줄뿐이다. 파킹 업자가 잡아둔 도메인이고
+실제 도서관 공식 사이트는 `https://www.palparklibrary.org/`다. 상태 코드만 확인하는 링크 검사와
+HTML을 안 보고 URL만 인용하는 작업은 이 차이를 놓친다.
+
+**해결:** 기관 URL을 인용하기 전에 본문 길이와 텍스트를 함께 본다. 100~500바이트에 `lander`·`window.location` 리디렉트만
+있으면 파킹이다. 도메인을 추측하지 말고 검색으로 공식 주소를 먼저 확인한다.
+
+## OPS-091 — Imperva(Incapsula) 뒤의 사이트는 curl·WebFetch에 본문 대신 incident ID를 준다. 검색 스니펫으로 우회한다
+
+`측정 2026-09-19 · nypl.org`
+
+**증상:** `https://www.nypl.org/help/library-card`는 브라우저에서는 열리지만 curl(User-Agent를 Chrome으로 바꿔도)에는
+`Request unsuccessful. Incapsula incident ID: 1591000770297314089-...` 959바이트만 온다. WebFetch는 같은 페이지에 대해
+"웹 페이지 내용이 비어 있다"고 답한다 — 도구가 실패했다고 알려주는 게 아니라 빈 입력으로 모델을 호출하기 때문에,
+모델이 "내용을 주세요"라고 되묻는 응답을 결과로 받는다. 재시도해도 같다.
+
+**해결:** WebSearch로 그 사이트를 `allowed_domains`에 넣어 검색하면 스니펫에 본문 문장이 들어온다.
+`libanswers.<기관>.org` 같은 별도 호스트의 FAQ는 보호 밖이라 WebFetch가 통하는 경우가 있다.
+WebFetch 결과가 "내용이 비어 있다"는 말로 오면 그건 봇 차단 신호다.
 
