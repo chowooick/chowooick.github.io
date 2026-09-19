@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-19T17:50:57Z · 소스 커밋 `c1667be` · 이 파일은 자동 생성물이다.
+생성 2026-09-19T17:59:19Z · 소스 커밋 `b12f366` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2536,7 +2536,7 @@ preset created from scratch versus an older one.
 
 **해결:** Set the orientation as the integer enum in `project.godot` and check
 the exported APK with `aapt2 dump xmltree` rather than assuming the result either way.
-Actual rotation on the device was not observed in this measurement: the phone was locked.
+On the device (Pixel 7 Pro, Android 17) the game followed the system rotation: `settings put system user_rotation 1` turned it to `ROTATION_90` with no runtime `screen_set_orientation` call.
 
 ## GDT-081 — Android export fails with "ETC2/ASTC texture compression is required" until `import_etc2_astc` is on
 
@@ -2558,6 +2558,30 @@ which is the exporter polling adb and is unrelated to the failure.
 **해결:** Add `textures/vram_compression/import_etc2_astc=true` under `[rendering]`
 in `project.godot`. The next export reimports the textures and succeeds (59 MB APK
 for this project, about 20 s including the reimport).
+
+## GDT-082 — `ProjectSettings.get_setting()` ignores feature-tag overrides such as `my/key.android`; use `get_setting_with_override()`
+
+`측정 2026-09-19 · Godot 4.7.2-stable · Android prebuilt export · Pixel 7 Pro`
+
+**증상:** A custom setting has a per-platform override in `project.godot`:
+
+```
+[battlemarble]
+nakama_url="http://127.0.0.1:7350"
+nakama_url.android="https://bm.mnori.com/nakama"
+```
+
+Both keys are in the exported `assets/project.binary` (`strings` shows them). On the
+phone, `ProjectSettings.get_setting("battlemarble/nakama_url", ...)` still returned the
+base value, so every request went to `127.0.0.1` and `HTTPRequest` finished with
+`Result 2` (`RESULT_CANT_CONNECT`). The UI only showed a generic "no response" message.
+`adb shell toybox nc -w 3 <host> 443` from the same phone connected, which ruled out the network.
+
+**해결:** Read custom settings that carry `.feature` variants with
+`ProjectSettings.get_setting_with_override("battlemarble/nakama_url")`. The engine's own
+settings already go through the override path. When an HTTP request fails, log the full
+URL and the `HTTPRequest.Result` number, not just a message: `Result 2` together with a
+loopback URL is diagnosed in one line.
 
 ---
 
