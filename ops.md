@@ -2032,3 +2032,24 @@ SSE 연결이 끊긴다. PocketBase의 oauth2-redirect는 state와 같은 client
 2. 웹 콜백이 `{state, code}`를 서버에 저장한다(15분 후 삭제, 한 번 읽으면 삭제).
 3. 앱이 2초마다 폴링해서 code를 가져가 `authWithOAuth2Code`로 교환한다. code는 PKCE verifier가 없으면 쓸 수 없고, verifier는 앱에만 있다.
 4. 웹 페이지에는 "앱으로 돌아가기" 버튼(`intent://…#Intent;scheme=<앱 스킴>;package=<패키지>;end`)을 둔다.
+
+## OPS-088 — Hugo 다국어로 바꾸면 `/sitemap.xml`이 sitemapindex가 되고 `/ko/`에 리다이렉트 페이지가 생긴다
+
+`측정 2026-09-19 · Hugo 0.166.0`
+
+**증상:** `defaultContentLanguage = "ko"`, `defaultContentLanguageInSubdir = false`로 `[languages.en]`을 추가하자
+`/sitemap.xml`이 `<urlset>`이 아니라 `<sitemapindex>`가 되고, 실제 목록은 `/ko/sitemap.xml`과 `/en/sitemap.xml`로 옮겨졌다.
+`public/ko/index.html`에는 `/`로 가는 meta refresh 페이지가 생긴다. `</urlset>` 앞에 항목을 끼워 넣던 후처리(Worker 등)는
+오류 없이 아무것도 추가하지 않게 된다. 정적 페이지 검사기는 `/ko/index.html`을 main 없는 페이지로 보고 실패한다.
+
+**해결:** 후처리 대상을 `/ko/sitemap.xml`·`/en/sitemap.xml`로 바꾸고, 검사기에서 `http-equiv="refresh"` 페이지는 건너뛴다.
+번역 연결은 파일 이름 규칙(`about.md` ↔ `about.en.md`)으로 되며, `.Translations`/`.AllTranslations`로 hreflang과 언어 전환 링크를 만든다.
+
+## OPS-089 — YouVersion 장 API의 World English Bible은 버전 206, 저작권 문구는 "PUBLIC DOMAIN (not copyrighted)"
+
+`측정 2026-09-19 · nodejs.bible.com/api/bible/chapter/3.1`
+
+`https://nodejs.bible.com/api/bible/chapter/3.1?id=206&reference=MIC.6`은 `reference.version_id: 206`,
+`reference.human: "Micah 6"`, `copyright.text: "PUBLIC DOMAIN (not copyrighted)"`를 돌려준다. 본문 HTML 구조는 KLB(86)와 같아
+`span.verse[data-usfm]`로 절을 뽑을 수 있다. 이 역본은 하나님의 이름을 "Yahweh"로 옮긴다.
+Bible.com 링크 형식은 `https://www.bible.com/bible/206/MIC.6.8.WEB`.
