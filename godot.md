@@ -1873,3 +1873,31 @@ base value, so every request went to `127.0.0.1` and `HTTPRequest` finished with
 settings already go through the override path. When an HTTP request fails, log the full
 URL and the `HTTPRequest.Result` number, not just a message: `Result 2` together with a
 loopback URL is diagnosed in one line.
+
+## GDT-083 — UI scaled up with `Control.scale` on a high-density phone is blurry: text and 3D both render at layout size
+
+`측정 2026-09-19 · Godot 4.7.2-stable · gl_compatibility · Pixel 7 Pro (1440x3120, 560 dpi)`
+
+**증상:** The project keeps `window/stretch/mode="disabled"` and lays out in
+density-independent units: the root Control is 411 units wide and gets
+`scale = 3.5` to fill 1440 physical pixels. On the phone every label is soft and
+the 3D board inside a `SubViewportContainer` (`stretch=true`) is visibly pixelated.
+Both are rendered at the 411-unit size and magnified 3.5x.
+- Glyphs are rasterised at `font_size`. The node transform does not raise font oversampling.
+- The SubViewport takes the container's unscaled size.
+
+**해결:** Two separate fixes, both measured on the device (60 fps held with MSAA 4x on a
+1440x3122 SubViewport, Mali-G710):
+1. **Text:** `get_window().oversampling_override = <scale>`. This property exists on
+   `Viewport` in 4.7. Glyphs are then rasterised at the displayed size.
+2. **3D:** Size the container in device pixels and shrink it back with its own transform:
+   `container.size = layout_size * scale` and `container.scale = Vector2.ONE / scale`.
+   The SubViewport then renders at device resolution. Container-local input events are
+   now in device pixels. Convert them before your camera code by scaling the event with
+   `event.xformed_by(Transform2D.IDENTITY.scaled(container.scale))`. Multiply positions
+   by the scale for `camera.project_ray_origin()`, and divide the result of
+   `camera.unproject_position()` by it.
+
+Do not instead set `stretch=false` and a larger SubViewport size. The container's
+minimum size follows the SubViewport, so the container grows to the SubViewport's size
+rather than scaling it down (a 200x200 container became 400x400).
