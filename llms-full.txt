@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-19T00:41:12Z · 소스 커밋 `9abda43` · 이 파일은 자동 생성물이다.
+생성 2026-09-19T17:50:57Z · 소스 커밋 `c1667be` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2512,6 +2512,52 @@ type:android.media.AudioTrack  usage=USAGE_VOICE_COMMUNICATION content=CONTENT_T
 출력을 제거한다 — 그게 AEC 의 목적이다. 안드로이드는 앱 외부에서 `AudioRecord` 입력을 주입할
 수단도 주지 않는다(루트·특수 빌드 제외). **이 축은 사람이 폰에 대고 말하는 것 외에 길이 없다** —
 무인 하네스를 설계할 때 여기에 시간을 쓰지 마라.
+
+## GDT-080 — prebuilt Android export does write `screenOrientation` from `project.godot`: `window/handheld/orientation=6` becomes manifest value `13`
+
+`측정 2026-09-19 · Godot 4.7.2-stable · Android prebuilt export (gradle_build/use_gradle_build=false) · aapt2 36.1.0`
+
+**증상:** GDT-066 and GDT-072 report that the Android manifest's `screenOrientation`
+ignores `project.godot` and is always `0` (landscape). A fresh project measured
+the opposite. With `[display] window/handheld/orientation=6` (the integer for
+`SCREEN_SENSOR`) in `project.godot` and a prebuilt debug export
+(`godot --headless --path client --export-debug Android out.apk`):
+
+```
+aapt2 dump xmltree out.apk --file AndroidManifest.xml | grep screenOrientation
+A: http://schemas.android.com/apk/res/android:screenOrientation(0x0101001e)=13
+```
+
+`13` is `ActivityInfo.SCREEN_ORIENTATION_FULL_USER`, not landscape. The export
+preset has no orientation key at all (none exists in 4.7.2, as GDT-066 found).
+What differs from the GDT-066 setup is not yet isolated. Candidates are the
+integer form (`6`) versus the string form (`"sensor"`) of the setting, and a
+preset created from scratch versus an older one.
+
+**해결:** Set the orientation as the integer enum in `project.godot` and check
+the exported APK with `aapt2 dump xmltree` rather than assuming the result either way.
+Actual rotation on the device was not observed in this measurement: the phone was locked.
+
+## GDT-081 — Android export fails with "ETC2/ASTC texture compression is required" until `import_etc2_astc` is on
+
+`측정 2026-09-19 · Godot 4.7.2-stable · headless --export-debug Android`
+
+**증상:** A project that only exported to Web (`vram_texture_compression/for_mobile=false`)
+gets an Android preset and the headless export stops with exit status
+non-zero and only this (the editor locale was Korean):
+
+```
+ERROR: Cannot export project with preset "Android" due to configuration errors:
+ETC2/ASTC 텍스처 압축은 Android 내보내기에 필요합니다. ...
+ERROR: Project export for preset "Android" failed.
+```
+
+Nothing is written. The same run also prints `cannot connect to daemon at tcp:5037`,
+which is the exporter polling adb and is unrelated to the failure.
+
+**해결:** Add `textures/vram_compression/import_etc2_astc=true` under `[rendering]`
+in `project.godot`. The next export reimports the textures and succeeds (59 MB APK
+for this project, about 20 s including the reimport).
 
 ---
 
