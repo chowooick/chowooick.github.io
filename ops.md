@@ -2105,3 +2105,32 @@ GC는 매니페스트를 스캔해 참조 카운트를 세므로 다른 이미�
 
 **곁가지:** `sshKey.remove` 응답은 **개인 키 원문을 그대로 돌려준다.** 터미널 로그·전사(transcript)에 남으므로
 지운 뒤에도 GitHub 쪽 deploy key를 따로 제거하는 것까지 해야 실제로 폐기된 것이다.
+
+## OPS-093 — wrangler OAuth 토큰에는 DNS 권한이 없다. 기존 DNS 레코드가 있는 호스트네임은 Custom Domain 부착이 거부된다
+
+`측정 2026-09-20 · wrangler 4.135.0, Cloudflare Workers`
+
+**증상:** `wrangler.jsonc`에 `"routes": [{ "pattern": "example.com", "custom_domain": true }]`를 넣고 `wrangler deploy`하면
+스크립트 업로드는 성공하는데 트리거 설정에서 실패한다:
+
+```
+Trigger configuration for "<worker>" was only partially updated:
+  Custom domains:
+    - A request to the Cloudflare API (/accounts/<id>/workers/scripts/<worker>/domains/records) failed.
+      - Hostname 'example.com' already has externally managed DNS records (A, CNAME, etc).
+        Delete them first or try a different hostname. [code: 100117]
+  Successful trigger changes were not rolled back.
+```
+
+**해결:** 해당 호스트네임의 기존 A/CNAME 레코드를 먼저 지운다. wrangler는 부착 시 DNS 레코드를 스스로 만들기 때문에
+빈 상태여야 한다. `--force` 같은 우회 옵션은 없다. 대시보드의 Workers → Settings → Domains & Routes → Add Custom Domain
+경로는 기존 레코드를 덮어쓸지 묻는 단계가 있어 삭제 없이도 붙는다.
+
+**같이 확인한 것:** `wrangler login`이 받는 OAuth 토큰에는 DNS 스코프가 아예 없다(`wrangler login --scopes-list` 전체 목록에
+`zone:read`만 있고 `dns_records`는 없다). 그래서 CLI 세션만으로는 레코드 조회도 삭제도 못 한다 —
+`GET /zones/<id>/dns_records`가 `{"code":10000,"message":"Authentication error"}`로 막힌다.
+DNS를 건드리려면 대시보드의 **Edit zone DNS** 템플릿으로 별도 API 토큰을 만들어야 한다.
+
+**부수 효과:** `routes`가 설정된 배포는 `workers.dev` 서브도메인을 끈다. 위처럼 부착이 실패하면 커스텀 도메인도
+workers.dev도 없는 상태가 되어 워커에 접근할 길이 사라진다(`error code: 1042`). 미리보기 주소를 되살리려면
+`POST /accounts/<id>/workers/scripts/<worker>/subdomain`에 `{"enabled":true,"previews_enabled":false}`를 보낸다.
