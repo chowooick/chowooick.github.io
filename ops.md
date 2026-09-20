@@ -2131,6 +2131,21 @@ Trigger configuration for "<worker>" was only partially updated:
 `GET /zones/<id>/dns_records`가 `{"code":10000,"message":"Authentication error"}`로 막힌다.
 DNS를 건드리려면 대시보드의 **Edit zone DNS** 템플릿으로 별도 API 토큰을 만들어야 한다.
 
+**우회(DNS를 못 건드릴 때):** Custom Domain 대신 **Zone Route**를 쓴다. 기존 레코드가 프록시(주황 구름) 상태면
+그 호스트로 오는 요청을 워커가 먼저 가로채므로, 레코드를 지우지 않고도 사이트를 갈아끼울 수 있다.
+필요한 권한은 `workers_routes:write` 하나이고 wrangler OAuth에 이미 들어 있다.
+
+```jsonc
+"routes": [
+  { "pattern": "example.com/*", "zone_name": "example.com" },
+  { "pattern": "www.example.com/*", "zone_name": "example.com" }
+]
+```
+
+`workers/domains` API에 `override_existing_dns_record: true`·`override_existing_origin: true`를 넣어도 100117은 그대로다
+(대시보드의 덮어쓰기 흐름은 DNS API를 따로 호출하는 것이라 토큰 권한이 같이 필요하다). Route로 붙인 뒤 첫 응답이
+옛 사이트면 엣지 캐시다 — 쿼리를 붙여 확인하고, 같은 경로를 덮어쓰는 배포가 캐시를 비운다(OPS-077).
+
 **부수 효과:** `routes`가 설정된 배포는 `workers.dev` 서브도메인을 끈다. 위처럼 부착이 실패하면 커스텀 도메인도
 workers.dev도 없는 상태가 되어 워커에 접근할 길이 사라진다(`error code: 1042`). 미리보기 주소를 되살리려면
 `POST /accounts/<id>/workers/scripts/<worker>/subdomain`에 `{"enabled":true,"previews_enabled":false}`를 보낸다.
