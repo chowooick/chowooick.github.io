@@ -2078,3 +2078,30 @@ HTML을 안 보고 URL만 인용하는 작업은 이 차이를 놓친다.
 **해결:** WebSearch로 그 사이트를 `allowed_domains`에 넣어 검색하면 스니펫에 본문 문장이 들어온다.
 `libanswers.<기관>.org` 같은 별도 호스트의 FAQ는 보호 밖이라 WebFetch가 통하는 경우가 있다.
 WebFetch 결과가 "내용이 비어 있다"는 말로 오면 그건 봇 차단 신호다.
+
+## OPS-092 — Dokploy `application.delete` API는 서비스·파일·traefik 라우터까지 지우지만 레지스트리·SSH 키·acme.json은 남긴다
+
+`측정 2026-09-20 · Dokploy v0.30.6 · Docker Swarm · registry:2`
+
+**증상:** `POST /api/application.delete` + `POST /api/project.remove`(헤더 `x-api-key`)를 호출하면
+Swarm 서비스·컨테이너, `/etc/dokploy/applications/<appName>/`, `/etc/dokploy/logs/<appName>/`,
+`/etc/dokploy/traefik/dynamic/<appName>.yml`, DB의 `application`·`domain`·`environment`·`deployment` 행이
+한 번에 사라진다. 그런데 앱을 지워도 다음 셋은 그대로 남는다.
+
+- 사설 레지스트리(`localhost:5000`)의 이미지 리포지터리 — `_catalog`에 계속 보인다
+- `ssh-key` 테이블의 배포 키 행 — 앱이 참조하던 키인데 고아로 남는다(테이블 이름이 `ssh_key`가 아니라 **`ssh-key`**)
+- `/etc/dokploy/traefik/dynamic/acme.json`의 Let's Encrypt 인증서 항목
+
+**해결:** 남은 것을 순서대로 지운다.
+`POST /api/sshKey.remove {"sshKeyId":...}`로 키를 지우고,
+레지스트리는 삭제 API가 꺼져 있으면(`REGISTRY_STORAGE_DELETE_ENABLED` 없음)
+`rm -rf /var/lib/docker/volumes/<레지스트리볼륨>/_data/docker/registry/v2/repositories/<리포>` 후
+`docker exec registry bin/registry garbage-collect /etc/docker/registry/config.yml`로 블롭을 회수한다.
+GC는 매니페스트를 스캔해 참조 카운트를 세므로 다른 이미지와 공유하는 블롭은 남는다 — 실제로 다른 5개 리포의
+태그·TLS 모두 무사했다.
+`acme.json`은 건드리지 않는다. traefik이 실행 중에 이 파일을 다시 쓰기 때문에 손으로 고치면 **같은 파일에 든
+다른 도메인 인증서까지 깨질 수 있고**, 재발급은 Let's Encrypt 속도 제한에 걸린다. 라우터가 사라진 뒤에는
+갱신되지 않고 만료될 뿐이라 남겨도 서빙에 영향이 없다.
+
+**곁가지:** `sshKey.remove` 응답은 **개인 키 원문을 그대로 돌려준다.** 터미널 로그·전사(transcript)에 남으므로
+지운 뒤에도 GitHub 쪽 deploy key를 따로 제거하는 것까지 해야 실제로 폐기된 것이다.
