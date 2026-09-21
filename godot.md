@@ -1901,3 +1901,35 @@ Both are rendered at the 411-unit size and magnified 3.5x.
 Do not instead set `stretch=false` and a larger SubViewport size. The container's
 minimum size follows the SubViewport, so the container grows to the SubViewport's size
 rather than scaling it down (a 200x200 container became 400x400).
+
+## GDT-084 — `release_focus()` deferred from a Button's mouse-press cancels the click; fast automated clicks hide it
+
+`측정 2026-09-20 · Godot 4.7.2-stable, Web export, Chrome 14x / WebKit (Playwright)`
+
+**증상:** 버튼을 사람이 누르면 아무 일도 없다("눌러도 멈춤"). Playwright `mouse.click()` 테스트는 전부 통과한다.
+원인은 마우스 클릭 뒤 포커스 테두리를 없애려고 `gui_input`에서 **누름(pressed)** 이벤트에
+`call_deferred("release_focus")`를 건 코드다. 지연 호출은 그 프레임 끝에 돈다. 사람 클릭(누름→뗌 약 100ms)은
+여러 프레임에 걸치므로 뗌보다 먼저 포커스가 빠지고, BaseButton은 포커스를 잃을 때 진행 중인 누름
+(`press_attempt`)을 취소한다 → `pressed` 시그널이 안 나온다. `mouse.click()`은 누름·뗌이 같은 프레임에
+들어가 뗌이 먼저 처리되므로 재현되지 않는다. Godot는 누름·뗌 이벤트를 모두 받고
+(`gui_get_hovered_control()`도 그 버튼), 서버 로그에는 요청이 하나도 없다.
+
+**해결:** 포커스 해제는 **뗌(`not event.pressed`)** 에서 한다. 클릭 테스트는
+`mouse.down()` → `waitForTimeout(120)` → `mouse.up()`으로 사람 속도를 흉내 내야 이런 결함이 잡힌다(FARM).
+
+## GDT-085 — Web export: thousands of `PrimitiveMesh` resources make WebKit drop the WebGL context at startup
+
+`측정 2026-09-20 · Godot 4.7.2-stable, Web export (Compatibility), Playwright WebKit 26 on macOS`
+
+**증상:** Chrome에서는 멀쩡한데 WebKit에서는 시작 0.4초 만에 `WebGL: context lost.`, 이어서
+`Could not create texture atlas, status: 36061`, `SceneShaderGLES3: Vertex shader compilation failed: (unknown error)`가
+쏟아지고 화면이 검다. WebGL 호출을 감싸 세어 보니 잃는 순간 **살아 있는 버퍼가 12,734개**(`createBuffer` 12,734 ·
+`deleteBuffer` 3)였다. 절차적으로 월드를 짓느라 `BoxMesh.new()`·`CylinderMesh.new()`를 조각마다 새로 만들어
+고유 메시가 5,109개였고, 메시마다 정점·속성·인덱스 버퍼를 따로 올린다. 나중에 `SurfaceTool.append_from`으로
+몇십 개 배치로 합치고 원본을 지워도 **합치기 전에 이미 한꺼번에 업로드된다** — PrimitiveMesh는
+`MeshInstance3D.mesh`에 넣거나 배열을 읽는 순간 GPU에 올라간다. MSAA·그림자 크기·안개를 끈 빌드는 모두 똑같이
+죽었다.
+
+**해결:** 같은 치수의 프리미티브는 메시 하나를 공유한다(`"box%s" % size` 같은 키로 캐시). 고유 메시 5,109개 →
+1,303개로 줄이자 WebKit에서 컨텍스트 손실이 사라졌다. 절차적 월드를 웹에 낼 때는 WebKit으로 한 번 띄워
+`webglcontextlost` 이벤트를 확인한다(FARM).
