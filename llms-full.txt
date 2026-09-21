@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-20T22:28:16Z · 소스 커밋 `94f6c10` · 이 파일은 자동 생성물이다.
+생성 2026-09-21T00:56:37Z · 소스 커밋 `8426d7b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6066,4 +6066,67 @@ DNS를 건드리려면 대시보드의 **Edit zone DNS** 템플릿으로 별도 
 **부수 효과:** `routes`가 설정된 배포는 `workers.dev` 서브도메인을 끈다. 위처럼 부착이 실패하면 커스텀 도메인도
 workers.dev도 없는 상태가 되어 워커에 접근할 길이 사라진다(`error code: 1042`). 미리보기 주소를 되살리려면
 `POST /accounts/<id>/workers/scripts/<worker>/subdomain`에 `{"enabled":true,"previews_enabled":false}`를 보낸다.
+
+## OPS-094 — `overseas.mofa.go.kr` RSS는 세션 쿠키 없이 307 무한 루프다. Node `fetch`는 리다이렉트에 쿠키를 다시 싣지 않는다
+
+`측정 2026-09-20 · Node 22 fetch, curl 8.7, 재외공관 포털(overseas.mofa.go.kr)`
+
+**증상:** 재외공관 RSS(`https://overseas.mofa.go.kr/<공관경로>/brd/rss.do?brdId=<id>`)를 `curl`로 받으면
+본문 0바이트에 `307`만 돌아온다. `-L`을 붙여도, User-Agent를 브라우저 문자열로 바꿔도 같다.
+Node의 `fetch`는 `redirect: 'follow'`가 기본인데도 20~30초 뒤 타임아웃으로 죽는다. 같은 주소를
+헤드리스 브라우저로 열면 200에 정상 XML이 나온다 — 브라우저는 먼저 받은 세션 쿠키를 리다이렉트에 다시 싣기 때문이다.
+
+**서버는 첫 요청에 `JSESSIONID`·`TMOSHCooKie`를 `Set-Cookie`로 주고 307로 같은 주소를 가리킨다.**
+그 쿠키를 다시 보내야 200이 된다. `fetch`의 자동 리다이렉트는 쿠키 저장소가 없어서 같은 307을 영원히 반복한다.
+
+**해결:** `redirect: 'manual'`로 직접 돌면서 `response.headers.getSetCookie()`를 모아 다음 홉의 `Cookie` 헤더로 보낸다.
+`curl`은 `-c/-b`로 같은 쿠키 항아리를 쓰면 한 번에 된다.
+
+```sh
+curl -s -c jar.txt -b jar.txt -L -A "Mozilla/5.0" "https://overseas.mofa.go.kr/us-losangeles-ko/brd/rss.do?brdId=12647"
+```
+
+**같이 확인한 것:** 브라우저 내장 XML 뷰어로 보면 제목이 `二쇰줈...`처럼 깨져 보이는데 **실제 바이트는 정상 UTF-8이다**.
+뷰어 표시만 깨지는 것이니 EUC-KR로 재해석하지 마라 — 재해석하면 진짜로 깨진다. 본문 링크가
+`http://overseas.mofa.go.kr:443/...`(http 스킴에 443 포트)로 오므로 https로 정규화해야 한다.
+자동 수집기가 비표준 포트를 거르면 전부 버려진다.
+
+## OPS-095 — AI 에이전트로 스크랩하기 전에 robots.txt의 에이전트별 차단을 확인한다. 이름을 직접 막는 사이트가 있다
+
+`측정 2026-09-20 · robots.txt 직접 조회`
+
+**증상:** `Allow: /`만 보고 긁으면 차단 의사를 무시하게 된다. 실제로 AI 에이전트 이름을 지목해 막거나,
+허용 목록 방식으로 사실상 전부 막는 사이트가 있다. robots.txt는 **끝까지** 읽어야 한다 —
+앞부분이 특정 봇 `Allow: /` 나열이어도 맨 끝에 `User-agent: *` / `Disallow: /`가 오는 구조가 흔하다.
+
+```
+radiokorea.com    User-agent: anthropic-ai → Disallow: /   (Claude-Web·GPTBot·CCBot도 차단)
+heykorean.com     Googlebot 등 허용 목록 나열 후 끝에 User-agent: * → Disallow: /
+koreadaily.com    User-agent: * → Allow: /
+mofa.go.kr 계열   robots.txt 없음 (규칙 없음으로 처리)
+```
+
+**해결:** 수집 대상마다 robots.txt 전문을 확인하고 **확인한 날짜와 판정 근거를 설정 파일이나 문서에 남긴다.**
+`Allow: /`여도 기사 전문 복제는 별개 문제다. 제목·짧은 발췌·원문 링크까지로 제한하는 편이 안전하다.
+
+## OPS-096 — Astro 7 `dev`가 백그라운드 데몬으로 떠 있으면 Playwright `webServer`가 "exited early"로 죽는다
+
+`측정 2026-09-20 · Astro 7.3.3, @playwright/test 1.58`
+
+**증상:** `npx playwright test`가 테스트를 하나도 못 돌리고 `Error: Process from config.webServer exited early.`로 끝난다.
+포트는 살아 있고 브라우저로 열면 페이지가 정상이다. `reuseExistingServer: true`인데도 소용없다.
+
+**원인:** Astro 7의 `astro dev`는 이미 데몬이 떠 있으면 **새 프로세스를 즉시 종료하고 안내 메시지만 출력한다**
+(`Dev server already running at ... (pid N)`). Playwright는 `webServer.command`가 살아 있어야 한다고 보므로
+그 즉시 종료를 실패로 판정한다. `reuseExistingServer`는 명령을 띄우기 전 URL을 확인하는 옵션이라
+데몬이 다른 호스트 표기(`localhost` vs `127.0.0.1`)로 떠 있으면 확인에 실패하고 그냥 명령을 실행한다.
+
+**해결:** 데몬을 쓸 거면 `E2E_BASE_URL`처럼 `webServer`를 통째로 비활성화하는 환경변수로 돌린다.
+데몬을 안 쓸 거면 `npx astro dev stop`으로 먼저 내린다. `lsof -ti:<port> | xargs kill -9`만으로는
+데몬 상태 파일이 남아 다음 `astro dev`가 또 즉시 종료된다.
+
+```sh
+npx astro dev stop                                  # 또는
+E2E_BASE_URL=http://127.0.0.1:4321 npx playwright test
+```
 
