@@ -1293,3 +1293,30 @@ GitHub 설정 화면처럼 sudo 재인증을 요구하는 페이지는 headless 
 **해결:** 제어 문자 이스케이프가 필요한 소스는 기존 파일의 같은 줄을 복사해 Edit로 고치거나, Python에서
 `'\\' + 'u0000'`처럼 조각을 이어 붙여 쓴다. 쓴 뒤 `LC_ALL=C grep -n '[[:cntrl:]]' <파일>`로
 탭 말고 다른 제어 문자가 없는지 확인한다.
+
+## AGT-058 — onnxruntime-web로 398MB 모델을 WebKit에 올리면 탭 footprint가 1.2–1.6GB다. 크래시 표시는 추론 중에도 켜 둔다
+
+`측정 2026-09-20 · onnxruntime-web 1.30.0 · Supertonic 3(fp32 ONNX 4개, 398MB) · Playwright WebKit(rev 2359, iPhone 15 에뮬레이션) · macOS 27`
+
+**증상:** iPhone Safari에서 모델을 받은 뒤 `A problem repeatedly occurred on <URL>`로 탭이 두 번 죽었다.
+"받는 중 탭이 죽으면 다음 방문에 localStorage 표시를 보고 기기 음성으로 바꾼다"는 장치가 있었는데도 반복됐다.
+
+**측정:** Mac의 WebKit에서 `footprint <pid>`(jetsam이 보는 값)를 0.5초 간격으로 쟀다. `ps`의 RSS는 해제한
+메모리까지 세어 WebContent 2.5–3.2GB로 나오므로 판단에 쓰지 않는다.
+
+| 백엔드 | WebContent 최고 | WebContent 추론 중 | GPU 프로세스 최고 |
+| --- | --- | --- | --- |
+| WebGPU | 1.23–1.58GB | 1.0–1.3GB | 0.95GB |
+| WASM | 1.44–1.48GB | 0.9–1.1GB | 0.1GB |
+
+모델 크기의 3–4배다. 다음은 모두 ±100MB 안에서 차이가 없었다: fetch 스트림을 `cache.put`에 바로 흘리기(청크 배열+합친
+사본 제거), `enableCpuMemArena:false`·`enableMemPattern:false`, `graphOptimizationLevel` `basic`/`disabled`,
+`session.disable_prepacking`, 큰 모델부터 세션 만들기. WebAssembly 메모리는 줄어들지 않아 모델 바이트 사본이 해제돼도
+힙에 남는다. 줄이려면 가중치 자체(fp16·int8·ORT 형식)를 바꿔야 한다.
+
+**반복 크래시의 원인:** 표시를 모델 불러오기·확인 합성 동안만 켜고 끝나면 지웠다. 짧은 확인 문장은 통과하고 첫 실제
+문장에서 탭이 죽으면 저장 상태가 `ready`로 남아, 듣기를 누를 때마다 모델을 다시 올려 또 죽는다.
+
+**해결:** 크래시 표시(localStorage)를 **모든 추론 요청** 동안 켜 둔다 — 요청 수를 세어 0→1에 켜고 1→0에 끈다.
+`pagehide`에서 끄고, bfcache에서 돌아오면(`pageshow`의 `persisted`) 진행 중일 때 다시 켠다. 다음 방문에서 표시가
+남아 있으면 실패로 기록하고 대체 경로로 간다. 메모리는 RSS가 아니라 `footprint`로 잰다.
