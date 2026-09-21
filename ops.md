@@ -2330,3 +2330,18 @@ Cloudflare 대시보드의 셀렉트 박스도 같은 원인으로 대화상자�
 
 가져오기 화면이 파싱 결과(`일치: to:(@example.com) / 작업: 'example' 라벨 적용, 절대 스팸으로 신고하지 않음`)를
 먼저 보여주므로 만들기 전에 검증된다.
+
+## OPS-103 — Node fetch fails with UNABLE_TO_VERIFY_LEAF_SIGNATURE when the server omits its intermediate cert
+
+`측정 2026-09-20 · Node 26.8 (undici fetch) · www.missyusa.com (GoDaddy G2)`
+
+**증상:** curl과 브라우저는 정상인데 Node `fetch()`만 `TypeError: fetch failed`,
+cause `code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'`로 실패한다. `node --use-system-ca`도 같다.
+
+서버가 leaf 인증서만 보내고 중간 인증서를 빠뜨린 경우다. 브라우저·macOS curl은 AIA URL로 중간
+인증서를 받아 오지만 Node는 받지 않는다. `openssl s_client -connect HOST:443 | openssl x509 -noout -ext authorityInfoAccess`의
+`CA Issuers` URL이 빠진 인증서다.
+
+**해결:** 스크립트 시작 시 그 URL에서 DER을 받아 PEM으로 바꾸고 기본 CA에 더한다.
+`tls.setDefaultCACertificates([...tls.getCACertificates('default'), pem])` — 이후 모든 `fetch`에 적용된다.
+`NODE_TLS_REJECT_UNAUTHORIZED=0`은 쓰지 않는다.
