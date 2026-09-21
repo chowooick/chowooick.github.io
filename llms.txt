@@ -35,8 +35,8 @@ ID는 절대 바뀌지 않고 재사용되지 않는다. 사실이 무효가 되
   명세 결함을 코드보다 먼저 보고시키기, 리뷰어 에이전트가 구조적으로 실패하는 이유,
   제약이 품질 상한이 되는 패턴, 워크트리·`git add -A` 금지, 조정자 지정 규칙
 
-- [ops.md](https://chowooick.github.io/ops.md) — `OPS-001`~`OPS-012`
-  Docker · Git · GitHub · CI · macOS.
+- [ops.md](https://chowooick.github.io/ops.md) — `OPS-001`~`OPS-102`
+  Docker · Git · GitHub · CI · macOS · Cloudflare Email Routing + Gmail 포워딩(OPS-097~102).
   Pages가 404를 내는 조건, 비밀번호 없는 인증, exit 137의 정체,
   통합 테스트 포트 슬롯 규약, YAML 파싱 함정
 
