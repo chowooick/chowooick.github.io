@@ -2345,3 +2345,66 @@ cause `code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'`로 실패한다. `node --use-sys
 **해결:** 스크립트 시작 시 그 URL에서 DER을 받아 PEM으로 바꾸고 기본 CA에 더한다.
 `tls.setDefaultCACertificates([...tls.getCACertificates('default'), pem])` — 이후 모든 `fetch`에 적용된다.
 `NODE_TLS_REJECT_UNAUTHORIZED=0`은 쓰지 않는다.
+
+---
+
+## OPS-104 — Resend 무료 플랜의 하루 한도는 UTC 달력일로 센다. 배치 한 번은 요청 한 번이고, 기본(strict) 배치는 주소 하나만 틀려도 전부 거절된다
+
+`측정 2026-09-24 · Resend API (문서 확인) · 무료 플랜`
+
+**증상:** 하루 100통 한도를 "최근 24시간"으로 세면, 한국 시간 월요일 오전 8시에 보낸 주간 메일이 다음 날 오전 8시까지
+예산을 잡아먹는다. 실제 Resend 한도는 그보다 먼저 풀린다.
+
+Resend 공식 문서(knowledge-base/account-quotas-and-limits)의 원문은 이렇다. "The daily quota is a UTC calendar day
+(00:00–24:00 UTC) and resets at midnight UTC. It is not a rolling 24-hour window." 한국 시간으로는 **매일 오전 9시**에
+풀린다. 무료 플랜은 하루 100통·한 달 3,000통이고, 발송 데이터는 30일 동안 보관한다(모든 플랜 공통).
+배치 API(`POST /emails/batch`, 최대 100통)는 속도 제한(초당 10요청)에서 **요청 1건**으로 센다.
+한도 초과는 429 `daily_quota_exceeded` / `monthly_quota_exceeded`, 속도 초과는 429 `rate_limit_exceeded`다.
+
+기본 배치 검증은 strict다. 배열의 한 항목이라도 검증에 걸리면 **배치 전체가 거절**된다.
+`x-batch-validation: permissive` 헤더를 붙이면 유효한 항목만 보내고 `errors: [{index, message}]`를 돌려준다
+(2025-09 변경 로그). 이때 `data`가 거절된 항목을 빼고 돌려주는지는 공식 예시로 확인하지 못했다.
+
+**해결:** 예산은 `sent_at >= 오늘 00:00 UTC`로 센다. 한도 초과 뒤 멈춤은 다음 00:00 UTC까지다. 배치에는 permissive
+헤더를 붙이고, `errors[].index`로 실패 행을 먼저 가른다. `data`가 요청과 길이가 같으면 위치로, 다르면 실패하지 않은
+행에 순서대로 id를 붙인다. `Idempotency-Key`(24시간 유효)를 배치마다 붙여, 결과를 모르는 재시도가 같은 바이트로
+나가게 한다.
+
+---
+
+## OPS-105 — Worker의 "같은 출처 + JSON만" POST 관문이 메일의 원클릭 구독 해지(RFC 8058)를 막는다
+
+`측정 2026-09-24 · Cloudflare Workers · RFC 8058`
+
+**증상:** CSRF를 막으려고 모든 `/api/*` POST에 `Origin`이 사이트와 같고 `content-type: application/json`일 것을
+요구하면, Gmail·Yahoo가 `List-Unsubscribe-Post: List-Unsubscribe=One-Click` 헤더를 보고 보내는 해지 요청이
+403/415로 떨어진다. 메일함 제공자는 `Origin` 없이 `application/x-www-form-urlencoded` 본문
+`List-Unsubscribe=One-Click`만 POST한다. Gmail·Yahoo 대량 발송 규칙은 원클릭 해지를 요구한다.
+
+**해결:** 해지 경로만 관문 **앞에서** 처리한다. 권한은 URL의 서명 토큰(구독자 id만 담고 주소는 넣지 않는다)으로
+판정한다. 같은 URL의 **GET은 아무것도 바꾸지 않고** 설정 페이지로 303 한다. 링크 검사기가 GET을 미리 열어도
+구독이 해지되지 않는다. 확인(더블 옵트인) 링크도 같은 이유로 GET에서 확정하지 않고, 페이지의 버튼으로 POST한다.
+
+---
+
+## OPS-106 — Worker의 cron 로직을 임의 시각으로 로컬 D1에 돌려 보려면 `getPlatformProxy()`로 D1 바인딩을 Node에 가져온다
+
+`측정 2026-09-24 · wrangler 4.134.0 · Miniflare 로컬 D1`
+
+**증상:** `wrangler dev --test-scheduled`의 `/__scheduled`는 **지금 시각**으로만 돈다. "월요일 08:00 KST에 주간 메일"
+같은 로직은 실제 D1 SQL로는 확인할 수 없다. node:sqlite 테스트는 문법은 확인하지만 D1 바인딩 동작은 확인하지 못한다.
+
+**해결:** 같은 `worker/` 디렉터리에서 Node 스크립트로 바인딩을 가져와, 스케줄 함수에 시각을 인자로 넘긴다.
+`wrangler dev`가 같은 로컬 상태를 쓰는 동안에도 함께 돌았다.
+
+```js
+const { getPlatformProxy } = await import('<npx 캐시>/node_modules/wrangler/wrangler-dist/cli.js');
+const { runMail } = await import('./src/mail.js');   // (env, now)를 받게 만들어 둔다
+const proxy = await getPlatformProxy({ configPath: './wrangler.jsonc', persist: true });
+try { console.log(await runMail({ ...proxy.env }, Date.parse('2026-09-28T08:05:00+09:00'))); }
+finally { await proxy.dispose(); }
+```
+
+`.dev.vars`의 값도 `proxy.env`에 들어온다. 로컬 D1(Miniflare)은 `UPDATE … FROM json_each(?) … RETURNING`,
+`WINDOW` 절이 있는 윈도 함수, `INSERT … SELECT … WHERE … ON CONFLICT DO UPDATE … WHERE`, 부분 인덱스를 받는다.
+외부 메일 API는 `env`로 주소를 바꿀 수 있게 해 두고 로컬 목 서버로 돌린다.
