@@ -2526,3 +2526,29 @@ TXT는 따옴표)을 파일로 만들어 `$B upload 'input[type=file]' <파일>`
 **해결:** 한 계정이 "본인"과 "관리자"를 겸할 수 있으면, 본인용 쿼리는 전부 filter에 `partner = {:me}`를 명시한다.
 규칙은 보안 경계로만 쓰고, 화면에 보일 범위는 쿼리가 정한다. 권한을 넓히기 전에 `getList`·`getFullList`·
 `getFirstListItem` 중 filter 없는 호출을 grep으로 찾아 둔다. 목록 개수 배지(`getList(perPage: 1).totalItems`)도 같은 함정이다.
+
+---
+
+## OPS-113 — Flutter 웹 + PocketBase에서 두 서브도메인이 로그인 하나를 쓰려면: 토큰만 상위 도메인 쿠키에, OAuth 대기값도 쿠키에
+
+`측정 2026-09-24 · Flutter 3.38.5 web, PocketBase 0.40.4 + Dart SDK 0.25.1, Chromium (gstack browse)`
+
+**증상:** `AsyncAuthStore`를 SharedPreferences에 저장하면 웹에서는 origin별 localStorage라서 `a.example.com`에서
+로그인해도 `admin.a.example.com`은 로그아웃 상태다. Google 리디렉트 URI를 한 곳(`a.example.com/auth/callback`)만
+등록했다면, admin 쪽에서 시작한 로그인의 PKCE verifier와 state가 콜백 origin에 없다. 그래서 콜백은 "내 흐름이 아니다"로 판정한다.
+
+**해결:**
+1. 저장소의 `save`에서 **토큰만** `pb_token=<jwt>; Domain=a.example.com; Path=/; SameSite=Lax; Secure; Max-Age=…` 쿠키로 쓴다.
+   record JSON까지 넣으면 4KB 한도에 걸릴 수 있다. 시작할 때 쿠키 토큰으로 `{"token":…, "model":null}`을 만들어
+   `initial`에 넣고 `authRefresh()`로 record를 채운다(`model:null`은 빈 RecordModel로 들어간다). `clear`는 쿠키를 지운다.
+   이러면 한쪽에서 로그아웃하면 다른 쪽도 다음 로드부터 로그아웃된다.
+2. Google 대기값 `{state, verifier, admin}`도 같은 도메인 쿠키(`Max-Age` 15분)에 둔다. 콜백 페이지는 교환을 마친 뒤
+   `admin`이면 세션 쿠키를 **직접 한 번 더 쓰고** admin 사이트로 이동한다. `AsyncAuthStore.save`는 큐에서 비동기로 돌기 때문에
+   바로 `location.assign`하면 쿠키가 안 써졌을 수 있다. 실패 메시지는 5분짜리 쿠키로 넘겨 admin 쪽 로그인 화면에 띄운다.
+3. 전환 전에 localStorage에만 세션이 있던 사용자는 첫 로드 때 한 번만 쿠키로 옮긴다(`pb_cookie` 표시). 표시가 없으면
+   다른 쪽에서 로그아웃해도 localStorage 값이 쿠키를 되살린다.
+
+실측: 파트너 사이트 localStorage에 넣은 세션 → 쿠키 이전 → admin 사이트가 로그인 없이 워크스페이스를 연다.
+admin에서 로그아웃하면 두 사이트 모두 로그인 화면이다. admin에서 Google을 누른 뒤 파트너 사이트에서 `document.cookie`로
+`pb_oauth`가 읽혔다. 가짜 code로 콜백을 열면 admin 사이트로 돌아가 "Failed to fetch OAuth2 token."이 떴다.
+localhost에서는 `Domain`을 빼야 쿠키가 저장된다. `admin.localhost`와 `localhost`는 쿠키를 공유하지 않는다.
