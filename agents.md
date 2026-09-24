@@ -1320,3 +1320,41 @@ GitHub 설정 화면처럼 sudo 재인증을 요구하는 페이지는 headless 
 **해결:** 크래시 표시(localStorage)를 **모든 추론 요청** 동안 켜 둔다 — 요청 수를 세어 0→1에 켜고 1→0에 끈다.
 `pagehide`에서 끄고, bfcache에서 돌아오면(`pageshow`의 `persisted`) 진행 중일 때 다시 켠다. 다음 방문에서 표시가
 남아 있으면 실패로 기록하고 대체 경로로 간다. 메모리는 RSS가 아니라 `footprint`로 잰다.
+
+## AGT-059 — 세션이 끝나 끊긴 Workflow는 완료되지 않은 agent()를 캐시하지 않는다. 끊긴 에이전트의 검색 결과는 agent-*.jsonl에서 건진다
+
+`측정 2026-09-24 · Claude Code 2.1.271 · Workflow 도구(resumeFromRunId)`
+
+**증상:** 리서치 에이전트 3개를 병렬로 띄운 Workflow가 세션 종료로 멈췄다. 두 에이전트는 WebSearch 37회와
+WebFetch 28회를 이미 마친 상태였다. `journal.jsonl`에는 `launched`와 `started` 줄 4개만 있었고 완료 기록은 0건이었다.
+`resumeFromRunId`로 재개해도 캐시되는 것은 **완료된 agent() 호출뿐**이라 조사 전체를 처음부터 다시 돈다.
+
+에이전트가 결론을 쓰기 전에 끊겼어도 도구 호출 원자료는 남는다. 위치는
+`~/.claude/projects/<프로젝트>/<세션>/subagents/workflows/<run_id>/agent-<id>.jsonl`이다. assistant 메시지에는
+`tool_use`(검색어·URL)가 있고, 바로 다음 user 메시지에는 `tool_result`(검색 결과·페이지 본문)가 있다.
+어느 에이전트의 기록인지는 같은 이름의 `.meta.json` 안 `description`(= agent()의 label)으로 가린다.
+
+**해결:** 재개 전에 `journal.jsonl`에서 완료 줄이 있는지 먼저 본다. 완료가 0건이고 끊긴 에이전트의 jsonl이
+크다면(이번에는 2.7MB와 0.7MB) 다시 돌리지 않는다. 대신 에이전트 1개에 "python으로 tool_use·tool_result를 순서대로
+뽑아 결론만 종합하라, 새 검색은 하지 말라"고 맡긴다. 이번에는 도구 21회, 5분 만에 출처 URL이 달린 요약을 받았다.
+긴 조사형 에이전트는 결론을 끝에 한 번에 쓰므로 끊기면 결론만 사라진다. 세션이 길어질 작업이라면 중간
+결과를 파일로 쓰게 지시해 두면 이 복구가 필요 없다.
+
+## AGT-060 — `disable-model-invocation: true` 스킬은 모델의 스킬 목록에 아예 안 뜬다. "스킬이 안 보인다"를 설치 문제로 오진하지 않는다
+
+`측정 2026-09-24 · Claude Code 2.1.271 · im-not-ai 2.3.2(humanize-korean 스킬 묶음)`
+
+**증상:** "설치한 im-not-ai 스킬이 Claude Code에서 보이지 않는다"는 보고가 들어왔다. 설치 스크립트는
+`~/.claude/skills/`에 `humanize`·`humanize-korean`·`humanize-redo` 심링크 3개를 정상으로 만들어 두었다.
+그런데 모델이 받는 사용 가능 스킬 목록에는 `humanize-korean`만 있었다. 앞선 세션은 이를 경로 문제로 보고
+"`~/.claude/skills/`에 심링크를 만들라"고 답했는데, 심링크는 처음부터 있었으므로 틀린 진단이다.
+
+빠진 두 스킬의 `SKILL.md` 앞머리에는 `disable-model-invocation: true`가 있다. 이 플래그가 붙은 스킬은 모델의
+스킬 목록에서 빠지고, 사용자가 `/humanize`처럼 슬래시 명령으로만 부를 수 있다. 모델은 이름조차 알 수 없다.
+같은 묶음에서 플래그가 없는 `humanize-korean`은 목록에 뜨고 모델이 Skill 도구로 부를 수 있다.
+
+**해결:** 스킬이 안 보인다는 보고를 받으면 경로보다 먼저 두 가지를 본다.
+`ls -la ~/.claude/skills/ | grep <이름>`으로 설치 여부를 보고,
+`grep -n disable-model-invocation ~/.claude/skills/<이름>/SKILL.md`로 플래그를 본다.
+플래그가 있으면 정상 동작이다. 사용자에게 슬래시 명령으로 직접 부르라고 안내하고, 모델이 쓸 수 있는 형제 스킬이
+있으면 그쪽을 쓴다.
