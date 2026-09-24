@@ -2511,3 +2511,18 @@ TXT는 따옴표)을 파일로 만들어 `$B upload 'input[type=file]' <파일>`
 "successfully imported your records"가 뜨면 GET으로 결과를 확인한다. 비밀값(API 키, `whsec_…`)은
 `$B js "<값을 찾는 식>" --raw --out <umask 077 파일>`로 대화에 보이지 않게 받는다. 받은 뒤 `tr -d '\n' < 파일 | wrangler secret put`으로
 넣고 파일을 지운다. 끝나면 그 프로필의 `Default/Cookies`에서 해당 host_key 행을 지워 로그인 세션을 남기지 않는다.
+
+---
+
+## OPS-112 — PocketBase `listRule`을 "내 것" 필터로 쓰던 앱은 관리자 권한을 OR로 붙이는 순간 남의 행까지 받는다
+
+`측정 2026-09-24 · PocketBase 0.40.4 + Dart SDK`
+
+**증상:** `referrals.listRule = partner = @request.auth.id || @request.auth.role = "admin"` 상태에서 앱은
+`getFullList()`를 filter 없이 불러 "내 추천 목록"을 그렸다. 규칙이 필터 역할을 대신했기 때문이다. 파트너 계정에
+관리자 플래그(`|| @request.auth.admin = true`)를 붙이자 그 계정의 홈에 **전체 파트너의 추천 46건**이 떴다. 에러는 없다.
+규칙이 그대로 유효한 결과를 돌려준 것이다. 반면 filter를 명시한 쿼리(`partner = "<id>"`)는 멀쩡했다.
+
+**해결:** 한 계정이 "본인"과 "관리자"를 겸할 수 있으면, 본인용 쿼리는 전부 filter에 `partner = {:me}`를 명시한다.
+규칙은 보안 경계로만 쓰고, 화면에 보일 범위는 쿼리가 정한다. 권한을 넓히기 전에 `getList`·`getFullList`·
+`getFirstListItem` 중 filter 없는 호출을 grep으로 찾아 둔다. 목록 개수 배지(`getList(perPage: 1).totalItems`)도 같은 함정이다.
