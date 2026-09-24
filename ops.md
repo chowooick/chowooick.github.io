@@ -2408,3 +2408,36 @@ finally { await proxy.dispose(); }
 `.dev.vars`의 값도 `proxy.env`에 들어온다. 로컬 D1(Miniflare)은 `UPDATE … FROM json_each(?) … RETURNING`,
 `WINDOW` 절이 있는 윈도 함수, `INSERT … SELECT … WHERE … ON CONFLICT DO UPDATE … WHERE`, 부분 인덱스를 받는다.
 외부 메일 API는 `env`로 주소를 바꿀 수 있게 해 두고 로컬 목 서버로 돌린다.
+
+---
+
+## OPS-107 — PocketBase는 무효·회수된 토큰을 401이 아니라 guest로 처리한다: 쓰기 거절이 400·404로 와서 입력 오류와 구분되지 않는다
+
+`측정 2026-09-24 · PocketBase 0.40.4`
+
+**증상:** 레코드의 `tokenKey`가 바뀐 뒤(비밀번호 변경·관리자 교체 등) 옛 토큰으로 레코드 API를 부르면 401이 오지 않는다.
+토큰을 guest로 보고 규칙을 평가하므로 create는 `400`(규칙 불통과), delete는 `404`, list는 `200 totalItems: 0`이다.
+"401이면 다시 로그인" 분기는 실행되지 않고, 사용자에게는 "입력 오류"나 "빈 목록"이 보인다.
+
+`POST /api/collections/<auth 컬렉션>/auth-refresh`는 유효한 토큰을 요구하므로 같은 토큰에 `401`을 준다.
+
+**해결:** 쓰기가 400·404로 거절될 때만 같은 토큰으로 `auth-refresh`를 한 번 불러 401이면 만료로 처리한다.
+토큰 `exp`(초 단위)는 로컬에서 먼저 확인해 네트워크 없이 걸러낸다. 폼 중복 제출은 unique 인덱스가 걸린 nonce 필드로
+막는다. 두 번째 insert는 `400`이고 본문 `data.<필드>.code`가 `validation_not_unique`이므로 성공으로 취급할 수 있다.
+
+---
+
+## OPS-108 — PocketBase `authRule`의 서버 헤더 조건은 토큰 발급·갱신만 막는다: 발급된 토큰은 헤더 없이도 `@request.auth`만 보는 컬렉션에서 쓰인다
+
+`측정 2026-09-24 · PocketBase 0.40.4`
+
+**증상:** 사이트 서버만 아는 헤더(`@request.headers.x_...`)를 auth 컬렉션의 `authRule`에 넣어 "사이트를 거쳐야만
+로그인된다"고 믿었다. 새 컬렉션의 규칙을 `@request.auth.collectionName = "members" && @request.auth.id != ""`로만 두자,
+헤더를 붙여 받은 토큰을 헤더 없이 PocketBase에 직접 보내도 list 200, create 200, 본인 delete 204가 나왔다.
+헤더 없는 `auth-with-password`·`auth-refresh`만 403이었다. 사이트의 허용 목록(초대 이메일 등)이 서버 코드에만 있으면,
+목록에서 빠진 사람도 토큰 수명 동안 DB에 직접 접근한다. 쿠키에 HMAC 서명만 하고 암호화하지 않으면 본인 쿠키에서
+토큰을 그대로 꺼낼 수 있다.
+
+**해결:** 서버 전용 헤더 경계는 발급 규칙이 아니라 **모든 컬렉션의 list·view·create·update·delete 규칙**에 AND로 넣는다.
+기존 컬렉션의 규칙 문자열을 읽어 복사하고(비밀값을 소스에 두지 않음), 경계가 없으면 마이그레이션을 중단한다.
+적용 후 헤더 없는 요청이 list 0건, create 400, delete 404인지 확인한다.
