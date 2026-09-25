@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-24T22:01:47Z · 소스 커밋 `7e010c5` · 이 파일은 자동 생성물이다.
+생성 2026-09-25T00:25:22Z · 소스 커밋 `4a14c4c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6566,4 +6566,37 @@ TXT는 따옴표)을 파일로 만들어 `$B upload 'input[type=file]' <파일>`
 admin에서 로그아웃하면 두 사이트 모두 로그인 화면이다. admin에서 Google을 누른 뒤 파트너 사이트에서 `document.cookie`로
 `pb_oauth`가 읽혔다. 가짜 code로 콜백을 열면 admin 사이트로 돌아가 "Failed to fetch OAuth2 token."이 떴다.
 localhost에서는 `Domain`을 빼야 쿠키가 저장된다. `admin.localhost`와 `localhost`는 쿠키를 공유하지 않는다.
+
+---
+
+## OPS-114 — 옛 도메인을 거치는 OAuth 우회(OPS-109)는 일부 사용자에게 DNS 오류로 깨진다. PocketBase의 `/api/oauth2-redirect`를 `routerUse`로 가로채 앱 콜백으로 넘긴다
+
+`측정 2026-09-24 · PocketBase 0.40.4 (JSVM), Google OAuth, Chrome`
+
+**증상:** redirect_uri를 옛 도메인 `a.example.com/auth/callback`으로 고정하고 nginx 301로 새 도메인에 넘겼다(OPS-109).
+공용 DNS(8.8.8.8, 권한 NS)에서는 옛 이름이 풀렸다. 그런데 사용자 브라우저는 Google 로그인 직후
+`a.example.com의 DNS 주소를 찾을 수 없습니다 · DNS_PROBE_POSSIBLE`에서 멈췄다. 새 도메인과 API 호스트는 같은 브라우저에서
+정상이었다. 우리 쪽에서 확인할 수 없는 사용자 쪽 리졸버 문제라서, 사용자가 이미 쓰는 호스트가 아닌 이름에 로그인이
+기대면 안 된다.
+
+**해결:** PocketBase 자체 엔드포인트 `<pb>/api/oauth2-redirect`가 Google 클라이언트에 등록돼 있으면(SDK 기본값이라 흔히 등록돼 있다)
+그 주소를 redirect_uri로 쓴다. 앱이 authorize URL의 `state`를 자기 접두사가 붙은 값(`partners-<random>`)으로 바꾸고,
+훅에서 그 state만 앱 콜백으로 넘긴다. 나머지 state는 PocketBase 기본 처리(realtime 전달)를 그대로 탄다.
+
+```js
+routerUse((e) => {
+  if (e.request.method === "GET" && e.request.url.path === "/api/oauth2-redirect") {
+    const state = String(e.request.url.query().get("state") || "");
+    if (state.startsWith("partners-")) {
+      return e.redirect(302, "https://app.example.com/auth/callback?" + e.request.url.rawQuery);
+    }
+  }
+  return e.next();
+});
+```
+
+같은 경로에 `routerAdd`를 쓰면 기본 라우트와 겹친다. 가운데에 끼우는 middleware(`routerUse`)를 써야 한다. 코드 교환 때도 같은
+`<pb>/api/oauth2-redirect`를 redirect URL로 보낸다. 실측: 우리 state는 302로 넘어가고 쿼리는 그대로 유지됐다. 다른 state는
+기존처럼 307로 `/_/#/auth/oauth2-redirect-failure`에 갔다. Google 계정 선택 화면은 `continue to example.com`으로 이전과 같다.
+배포는 훅 파일 하나를 복사하는 것으로 끝났다(재시작 없이 hot-reload).
 
