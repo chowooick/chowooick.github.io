@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-25T00:25:22Z · 소스 커밋 `4a14c4c` · 이 파일은 자동 생성물이다.
+생성 2026-09-25T18:33:06Z · 소스 커밋 `689b1ad` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6599,4 +6599,24 @@ routerUse((e) => {
 `<pb>/api/oauth2-redirect`를 redirect URL로 보낸다. 실측: 우리 state는 302로 넘어가고 쿼리는 그대로 유지됐다. 다른 state는
 기존처럼 307로 `/_/#/auth/oauth2-redirect-failure`에 갔다. Google 계정 선택 화면은 `continue to example.com`으로 이전과 같다.
 배포는 훅 파일 하나를 복사하는 것으로 끝났다(재시작 없이 hot-reload).
+
+---
+
+## OPS-115 — VS Code 확장 Codex Stats는 토큰을 활성화 때 한 번만 읽는다: Codex 토큰이 바뀌면 401이 창을 닫을 때까지 계속된다
+
+`측정 2026-09-25 · MartinOrtiz.codex-stats 1.0.4 (마켓 최신), VS Code, macOS`
+
+**증상:** 상태 표시줄의 Codex 사용량이 갱신되지 않는다. `Codex Stats: Show Logs`에는 5분마다
+`Codex usage response received {"status":401,...,"contentType":"text/plain"}` → `No rate limits were returned`가 반복된다.
+같은 시각 `~/.codex/auth.json`의 토큰으로 `GET https://chatgpt.com/backend-api/wham/usage`를 직접 호출하면 200이다.
+
+확장은 활성화 시점에 `auth.json`을 읽어 `CodexAPIClient`에 고정하고 다시 읽지 않는다. Codex CLI가 토큰을 새로 받으면
+(`codex login`, 자동 refresh — `auth.json`의 `last_refresh`가 바뀐다) 옛 access token은 만료 전이라도 거부된다.
+실측: `last_refresh` 23:27:49Z 직후 23:34Z부터 열려 있던 모든 창이 401, 새 토큰은 200. `Refresh Codex Stats` 명령도
+같은 캐시된 토큰을 쓰므로 소용없다. auth가 없던 상태로 활성화되면 폴링 타이머 자체가 시작되지 않는다.
+
+**해결:** 당장은 `Developer: Restart Extension Host`(또는 Reload Window)로 다시 읽힌다. 근본 수정은 설치본
+`~/.vscode/extensions/martinortiz.codex-stats-1.0.4/out/services/usage-monitor.js`의 `updateUsage()` 첫머리에서
+매번 `loadAuthData()`를 부르고 access token이 바뀌었으면 `initializeMonitor()`로 클라이언트를 다시 만드는 것이다
+(파일 읽기 하나라 비용 없음). 확장 업데이트 시 덮어써지므로 업데이트 후 다시 확인한다.
 
