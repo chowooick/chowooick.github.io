@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-25T18:33:06Z · 소스 커밋 `689b1ad` · 이 파일은 자동 생성물이다.
+생성 2026-09-25T20:45:46Z · 소스 커밋 `855d738` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6619,4 +6619,24 @@ routerUse((e) => {
 `~/.vscode/extensions/martinortiz.codex-stats-1.0.4/out/services/usage-monitor.js`의 `updateUsage()` 첫머리에서
 매번 `loadAuthData()`를 부르고 access token이 바뀌었으면 `initializeMonitor()`로 클라이언트를 다시 만드는 것이다
 (파일 읽기 하나라 비용 없음). 확장 업데이트 시 덮어써지므로 업데이트 후 다시 확인한다.
+
+## OPS-116 — Cloudflare Workers AI 무료 플랜: 하루 10,000 뉴런, 큰 모델은 5035, 한도 초과는 4006
+
+`측정 2026-09-25 · Workers AI REST/바인딩, Workers Free 플랜, @cf/openai/gpt-oss-120b`
+
+**증상:** `@cf/moonshotai/kimi-k2.6`, `@cf/zai-org/glm-5.3`, `@cf/deepseek-ai/deepseek-v4-flash-0731` 호출이 곧바로
+`AiError: Model ... is not available on the Workers Free plan` (code 5035)으로 실패한다. 모델 목록 API(`/ai/models/search`)에는
+이 모델들이 그대로 나오므로 목록만 보고 고르면 배포 뒤에야 안다. 몇십 건 호출 뒤에는 모든 모델이
+`you have used up your daily free allocation of 10,000 neurons` (code 4006)으로 멈추고 00:00 UTC에 풀린다.
+
+- 무료 플랜에서 쓸 수 있는 것: gpt-oss-120b/20b, llama-4-scout, mistral-small-3.1, gemma-4-26b, qwen3 계열 등.
+- 응답의 `result.usage.neurons`로 건당 비용이 바로 나온다. 한국어 기사 1건(입력 약 1,000토큰) 요약 실측:
+  gpt-oss-120b 90~240뉴런(추론 토큰이 들쭉날쭉), mistral-small-3.1 40~57, llama-4-scout 54. 하루 10,000이면 gpt-oss-120b로 약 60건.
+- gpt-oss 추론 강도는 `reasoning: {effort: "low"}`이다(`reasoning_effort` 키는 스키마에 없다). low에서도 추론이 `max_tokens`를
+  다 쓰고 content가 비는 경우가 있어 3000 이상을 주고, JSON 파싱 실패 시 1회 재시도가 필요했다.
+- 정확도 차이: 같은 기사에서 mistral-small은 원문의 "22일"을 "2024년 10월 22일"로 지어냈고, gpt-oss-120b는 원문대로 옮겼다.
+- gemma-4-26b-a4b-it는 `max_tokens` 3000을 다 쓰고 빈 content를 돌려줬다.
+
+**해결:** 무료 플랜이면 호출 수를 하루 60건 안으로 제한하고(크론 1회당 상한), 4006을 받으면 그 실행을 멈추고 다음 실행에 맡긴다.
+밀린 작업을 한 번에 처리하거나 큰 모델을 쓰려면 Workers Paid(월 5달러, 이후 1,000뉴런당 0.011달러)가 필요하다.
 
