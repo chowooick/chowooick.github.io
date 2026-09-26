@@ -2625,3 +2625,19 @@ routerUse((e) => {
 
 **해결:** 무료 플랜이면 호출 수를 하루 60건 안으로 제한하고(크론 1회당 상한), 4006을 받으면 그 실행을 멈추고 다음 실행에 맡긴다.
 밀린 작업을 한 번에 처리하거나 큰 모델을 쓰려면 Workers Paid(월 5달러, 이후 1,000뉴런당 0.011달러)가 필요하다.
+
+## OPS-117 — Flutter web: 플러그인을 나중에 추가하면 `flutter build web`이 옛 플러그인 등록 파일을 계속 써서 `MissingPluginException`이 난다
+
+`측정 2026-09-25 · Flutter 3.38.5 stable, flutter build web --release, url_launcher 6.3.2 (url_launcher_web 2.4.3)`
+
+**증상:** 배포한 웹에서 링크 버튼을 누르면
+`MissingPluginException(No implementation found for method launch on channel plugins.flutter.io/url_launcher)`.
+`pubspec.lock`과 `.flutter-plugins-dependencies`에는 `url_launcher_web`이 있고, 빌드도 에러 없이 끝난다.
+`.dart_tool/flutter_build/<hash>/web_plugin_registrant.dart`를 열어 보면 플러그인을 추가하기 전 날짜 그대로이고
+`UrlLauncherPlugin.registerWith`가 없다. 같은 폴더의 `main.dart.js`만 새 날짜다.
+원인은 이 파일을 쓰는 `web_entrypoint` 타깃의 입력이 `flutter_tools/lib/src/build_system/targets/web.dart` 하나뿐이라는 점이다.
+pubspec·플러그인 목록이 바뀌어도 이 타깃은 최신으로 판정되어 다시 돌지 않는다. `flutter pub get`으로도 풀리지 않는다.
+
+**해결:** 빌드 직전에 `rm -f .dart_tool/flutter_build/*/web_entrypoint.stamp`를 지운다(`flutter clean`보다 싸다).
+배포 스크립트에 넣어 두면 재발하지 않는다. 확인: 빌드 뒤 `web_plugin_registrant.dart`에 새 플러그인이 있는지 보고,
+url_launcher라면 `main.dart.js`에 `noopener` 문자열이 생긴다(없던 상태에서 0 → 1).
