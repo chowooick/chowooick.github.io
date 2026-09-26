@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-26T12:50:42Z · 소스 커밋 `d96e1cf` · 이 파일은 자동 생성물이다.
+생성 2026-09-26T12:57:22Z · 소스 커밋 `5a384c0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6685,4 +6685,32 @@ networks:
 `/20` 하나도 계속 묶인다). 다른 스택과 겹치지 않게 쓰기 전에
 `docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' $(docker network ls -q)`로 사용 중 대역을 본다.
 사용: landgrab `172.16.40–41.0/24`.
+
+---
+
+## OPS-119 — VS Code "Claude Code Usage Tracker"가 `HTTP 429`로 한 시간씩 Error만 띄운다: `/api/oauth/usage`는 서드파티에 시간당 몇 번만 허용하고, 1.7.0은 429가 나면 마지막 값까지 버린다
+
+`측정 2026-09-26 · YahyaShareef.claude-code-usage-tracker 1.7.0 · VS Code · Claude Code 2.1.283 · Max 구독`
+
+**증상:** 상태 표시줄이 `Claude Error`, 툴팁은
+`HTTP 429 — Rate limited by Anthropic API. Retry at 07:21.`. 토큰은 정상이다(같은 토큰으로 다른 호출은 200).
+429 응답은 `retry-after: 3600`을 준다. 확장은 그 시각까지 막히고, 이 동안 `Claude: Refresh Usage`도 아무것도 하지 않는다.
+
+원인은 둘이다.
+- **요청 예산이 작다.** 확장 기본 폴링은 120초(시간당 30회)다. 업스트림 이슈 #16의 측정으로는 서드파티
+  User-Agent의 허용량이 거의 0이고, Claude Code 본체도 같은 엔드포인트를 부른다(바이너리에
+  `/api/oauth/usage?at_wall=1&skip_spend=1` 문자열이 있다). 한도 헤더(`ratelimit-*`)가 없어 남은 양을 알 수 없다.
+- **429가 나면 마지막 정상 값을 버린다.** `dist/extension.js`의 catch가 공유 캐시(`claudeUsage.cache.v2`)에
+  `data:null`을 쓴다. 호출한 창은 메모리 값으로 버티지만, 다른 창과 재시작한 창은 캐시에서 `null`을 읽고 차단이
+  풀릴 때까지 `Error`만 보인다. 캐시 상태는 `~/Library/Application Support/Code/User/globalStorage/state.vscdb`의
+  `YahyaShareef.claude-code-usage-tracker` 키에서 볼 수 있다.
+
+**해결:**
+1. `settings.json`에 `"claude-usage-monitor.refreshInterval": 600` (시간당 6회).
+2. `dist/extension.js`의 catch에서 401·403·토큰 없음이 아니면 이전 데이터를 캐시에 남긴다:
+   `let K={data:null,...},...,u(null,T)` →
+   `let P=/HTTP 40[13]|No OAuth token/.test(T)?null:o??ye(e.globalState.get(R))?.data??null,K={data:P,...},...,u(P,T)`.
+   가짜 vscode 모듈과 429를 돌려주는 https로 돌려 보면, 원본은 재시작 후 `Error`, 수정본은 `12% · 49m ⚠`(캐시 값 + 경고)다.
+   확장이 업데이트되면 덮어써진다.
+3. User-Agent를 `claude-code/<버전>`으로 바꾸면 통한다는 보고가 있다. 신원을 속여 접근 제한을 우회하는 것이라 쓰지 않는다.
 
