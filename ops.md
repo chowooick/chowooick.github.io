@@ -2670,7 +2670,7 @@ networks:
 실패한 첫 시도가 만든 빈 네트워크는 `docker network rm`으로 지우고 다시 배포한다(안 지우면 설정이 달라 충돌하고
 `/20` 하나도 계속 묶인다). 다른 스택과 겹치지 않게 쓰기 전에
 `docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' $(docker network ls -q)`로 사용 중 대역을 본다.
-사용: landgrab `172.16.40–41.0/24`.
+사용: landgrab `172.16.40–41.0/24`, landgrabs `172.16.42.0/24`(backend만 — 서비스가 안 쓰는 `default`는 compose가 만들지 않는다).
 
 ---
 

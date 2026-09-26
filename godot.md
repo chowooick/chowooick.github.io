@@ -1933,3 +1933,26 @@ rather than scaling it down (a 200x200 container became 400x400).
 **해결:** 같은 치수의 프리미티브는 메시 하나를 공유한다(`"box%s" % size` 같은 키로 캐시). 고유 메시 5,109개 →
 1,303개로 줄이자 WebKit에서 컨텍스트 손실이 사라졌다. 절차적 월드를 웹에 낼 때는 WebKit으로 한 번 띄워
 `webglcontextlost` 이벤트를 확인한다(FARM).
+
+## GDT-086 — gstack browse 기본(headless) Chromium에는 WebGL2가 없다: Godot 웹 빌드는 기능 누락 화면에서 멈춘다. `--headed`로 띄우고 캔버스는 합성 PointerEvent로 누른다
+
+`측정 2026-09-26 · Godot 4.7.2-stable Web export(Compatibility, 스레드 없음), gstack browse(Chromium), macOS`
+
+**증상:** 배포한 Godot 웹 페이지를 `$B goto`로 열면 HTTP 200인데 게임이 뜨지 않는다. 콘솔 원문:
+`The following features required to run Godot projects on the Web are missing: WebGL2 - Check web browser configuration and hardware support`.
+사이트 문제가 아니라 headless 데몬의 GPU 없는 렌더러 문제다. 이어서 `$B --headed goto ...`를 부르면 첫 호출은 창을 띄우지만,
+그 뒤 플래그 없이 부른 명령은 전부 `existing daemon has different config (proxy/headed mismatch)`로 실패한다.
+
+**해결:** `$B stop` 뒤 `$B --headed goto <url>`로 띄우고, **이후 모든 명령에도 `--headed`를 붙인다**.
+확인은 `$B --headed js "String(!!document.createElement('canvas').getContext('webgl2'))"` → `true`.
+Godot 캔버스는 DOM 요소가 없어 `click @ref`가 안 된다. CSS 좌표로 이벤트를 합성하면 Godot 버튼이 눌린다
+(누름과 뗌 사이 120ms — GDT-084의 사람 속도 클릭과 같은 이유):
+
+```sh
+$B --headed js "(()=>{const c=document.querySelector('canvas');const o={clientX:X,clientY:Y,bubbles:true,button:0,buttons:1,pointerId:1,pointerType:'mouse',isPrimary:true};
+for(const t of ['pointermove','pointerdown','mousedown'])c.dispatchEvent(t.startsWith('pointer')?new PointerEvent(t,o):new MouseEvent(t,o));
+setTimeout(()=>{const u={...o,buttons:0};c.dispatchEvent(new PointerEvent('pointerup',u));c.dispatchEvent(new MouseEvent('mouseup',u))},120)})()"
+```
+
+스크린샷 픽셀은 CSS 좌표가 아니다(headed 창은 `viewport` 설정이 먹지 않았고 dpr 2). `$B --headed js "innerWidth+'x'+innerHeight"`로
+실제 크기를 받아 `X = 스크린샷x × innerWidth / 스크린샷폭`으로 환산한다. 이 방법으로 로비 → 온라인 대화상자 → 방 참여까지 진행했다.
