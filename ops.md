@@ -2693,9 +2693,10 @@ networks:
 
 **해결:**
 1. `settings.json`에 `"claude-usage-monitor.refreshInterval": 600` (시간당 6회).
-2. `dist/extension.js`의 catch에서 401·403·토큰 없음이 아니면 이전 데이터를 캐시에 남긴다:
-   `let K={data:null,...},...,u(null,T)` →
-   `let P=/HTTP 40[13]|No OAuth token/.test(T)?null:o??ye(e.globalState.get(R))?.data??null,K={data:P,...},...,u(P,T)`.
-   가짜 vscode 모듈과 429를 돌려주는 https로 돌려 보면, 원본은 재시작 후 `Error`, 수정본은 `12% · 49m ⚠`(캐시 값 + 경고)다.
-   확장이 업데이트되면 덮어써진다.
+2. 실패한 폴링도 마지막 정상 값을 캐시에 남긴다. 업스트림 PR
+   https://github.com/yahyashareef48/claude-usage-monitor/pull/22 (`src/extension.ts`의 catch에서
+   `data: null` 대신 메모리 값과 캐시 값 중 `fetchedAt`이 최신인 쪽). 머지 전에는 그 브랜치를
+   `node esbuild.js --production`으로 빌드해 `~/.vscode/extensions/yahyashareef.claude-code-usage-tracker-1.7.0/dist/extension.js`에
+   덮어쓰고 창을 다시 불러온다. 가짜 vscode 모듈과 429를 돌려주는 https로 돌려 보면, 원본은 재시작 후 `Error`,
+   수정본은 `12% · 49m ⚠`(캐시 값 + 경고)다. 확장이 업데이트되면 덮어써진다.
 3. User-Agent를 `claude-code/<버전>`으로 바꾸면 통한다는 보고가 있다. 신원을 속여 접근 제한을 우회하는 것이라 쓰지 않는다.
