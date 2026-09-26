@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-26T03:13:05Z · 소스 커밋 `00c2512` · 이 파일은 자동 생성물이다.
+생성 2026-09-26T12:50:42Z · 소스 커밋 `d96e1cf` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6655,4 +6655,34 @@ pubspec·플러그인 목록이 바뀌어도 이 타깃은 최신으로 판정�
 **해결:** 빌드 직전에 `rm -f .dart_tool/flutter_build/*/web_entrypoint.stamp`를 지운다(`flutter clean`보다 싸다).
 배포 스크립트에 넣어 두면 재발하지 않는다. 확인: 빌드 뒤 `web_plugin_registrant.dart`에 새 플러그인이 있는지 보고,
 url_launcher라면 `main.dart.js`에 `noopener` 문자열이 생긴다(없던 상태에서 0 → 1).
+
+## OPS-118 — misa Docker 브리지 주소 풀이 바닥났다: 새 compose 스택은 네트워크 생성에서 죽는다. 서브넷을 compose에 직접 고정한다
+
+`측정 2026-09-26 · misa(Ubuntu, Docker 28.5.0), Dokploy raw compose`
+
+**증상:** Dokploy `compose.deploy`가 `composeStatus: error`로 끝난다. 배포 로그
+(`/etc/dokploy/logs/<appName>/*.log`) 원문:
+`failed to create network <appName>_backend: Error response from daemon: all predefined address pools have been fully subnetted`.
+이미지 빌드는 성공한 뒤라 빌드 문제처럼 보이지 않는다. misa에는 브리지 네트워크가 31개였고 기본 풀
+`172.17–31.0.0/16`(15개)과 `192.168.0.0/16`의 `/20` 조각 16개가 전부 할당돼 있었다. 스택마다 `_default`와
+`_backend` 두 개씩 먹는다. 남은 `/20` 하나를 첫 시도의 `_default`가 가져가고 `_backend`에서 실패했다.
+빈 `mars-ci-*_default` 같은 CI 잔여 네트워크도 풀을 차지한다. `172.30.1.0/24`는 호스트 LAN이라 풀에서 빠진다.
+
+**해결:** 데몬 설정(`default-address-pools`)을 바꾸면 dockerd 재시작이 필요해 전 서비스에 영향이 간다. 스택 쪽에서
+기본 풀 밖의 서브넷을 직접 지정하면 재시작 없이 뜬다. `172.16.0.0/16`은 Docker 기본 풀도 아니고 misa 호스트
+라우트도 아니다(`ip -4 route`로 확인).
+
+```yaml
+networks:
+  default:
+    ipam: {config: [{subnet: 172.16.40.0/24}]}
+  backend:
+    internal: true
+    ipam: {config: [{subnet: 172.16.41.0/24}]}
+```
+
+실패한 첫 시도가 만든 빈 네트워크는 `docker network rm`으로 지우고 다시 배포한다(안 지우면 설정이 달라 충돌하고
+`/20` 하나도 계속 묶인다). 다른 스택과 겹치지 않게 쓰기 전에
+`docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' $(docker network ls -q)`로 사용 중 대역을 본다.
+사용: landgrab `172.16.40–41.0/24`.
 
