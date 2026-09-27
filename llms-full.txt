@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:34:17Z · 소스 커밋 `8fb1cb9` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:41:24Z · 소스 커밋 `a49de49` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4014,6 +4014,14 @@ Measured in a scratch project, freeing the node before each callback ran:
 
 **해결:** For "do X to this node later", let the node own the delay (`node.create_tween().tween_interval(t)` then `tween_callback(node.method)`), so the callback cannot outlive it. When the callback has to live elsewhere, capture a `WeakRef`, not the node. An `is_instance_valid` check inside the lambda does not silence the error.
 
+## GDT-148 — Web export on WebKit: changing `scaling_3d_scale` at runtime more than once dropped the WebGL context; a scale fixed at startup did not
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (Compatibility, no threads) · Playwright WebKit and Chrome (ANGLE Metal) on macOS, machine load average 200–470`
+
+**증상:** A procedural 3D stage lowered `get_viewport().scaling_3d_scale` from 1.0 toward 0.5 whenever frame time rose. Under heavy machine load it changed the scale several times in one session, and WebKit then logged `WebGL: context lost` followed by shader link failures partway through a scripted game flow (the defense scene). WebKit runs in which the scale never changed finished the same flow without a loss. Chrome kept rendering through the same scale changes.
+
+**해결:** On WebKit/Safari, choose the scale once at startup and never change it; elsewhere, only lower it, at most twice. With that change the full flow (menu → lobby → day with an evidence prop → night → dawn → vote → defense → execution) ran in WebKit with zero context losses; the only warning left was the engine's `WEBGL_polygon_mode` notice. Test adaptive-resolution code in WebKit under CPU load, since an idle machine never triggers the changes.
+
 ---
 
 <!-- source: agents.md -->
@@ -5585,6 +5593,20 @@ e.g. Python `chr(92) + 'u' + '2028'` or `'\\u%04x' % 0x2028`, or build the regex
 For a file that must stay ASCII, such as a Nakama module, assert it in the unit tests
 (`/[^\x09\x0a\x0d\x20-\x7e]/.test(source) === false`) and run it through `esbuild --target=es5` before
 deploying; that reports the parse error the server would only show at startup.
+
+## AGT-072 — On a full disk a Bash call can come back with only `ENOSPC ... tasks/<id>.output`: nothing says which steps ran. Check each side effect with a pattern only the new content matches
+
+`측정 2026-09-27 · Claude Code (VS Code extension) · macOS, 926 GiB APFS container with ~100 MiB free while many sessions ran in parallel`
+
+**증상:** One Bash call ran three steps: a Python edit of `tests/integration.ts`, a `cat > tests/security.ts <<'EOF'` heredoc, and `npx tsc`. The whole tool result was one line:
+
+```
+ENOSPC: no space left on device, open '/private/tmp/claude-501/<project>/<session>/tasks/<id>.output'
+```
+
+That is the harness failing to create its own output file, not the command's error. The follow-up check `grep -c "ability-less" tests/integration.ts` printed `1` and was read as "the edit applied". It had not: the old line contained the same words, and the replacement line was never written. Hours later a unique check (`grep -n "includes(roleOf(other)))"`) showed the old code still in place; the heredoc had not run either. The integration test kept passing only because the random role deal never hit the case the edit was meant to fix. `df -h /` read 117 MiB free at the failure and 1.2 GiB a minute later: other sessions' swap and temporary files come and go on the same volume (see OPS-156).
+
+**해결:** Treat an `ENOSPC` result as "unknown progress". Before retrying, check every intended side effect with a pattern that only the new content can match (a string the edit adds, not a word the old line shares), or diff against what you expected; then redo only what is missing, one step per call while space is short. Check `df -h /` first: free space on a shared machine can swing by a gigabyte within a minute, so a retry can succeed without anyone freeing anything.
 
 ---
 
@@ -9402,4 +9424,19 @@ impulse halves it.
 `frequency`/`detune`, filter `frequency`/`Q`, panner `pan`). An LFO connected to a k-rate param is sampled once
 per 128 frames, which is inaudible for vibrato and filter sweeps. Keep reverb impulses around 2 s. With this and
 filter-free plucked notes, the heaviest track went from 21.8 % to 16.5 % of one core in the same setup.
+
+## OPS-169 — SpacetimeDB 2.8 TypeScript module: appending columns with `.default(...)` migrates a live database under `--delete-data=never`; `init` does not run again, so new scheduled tables start empty
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone · TypeScript module (spacetimedb npm 2.8.0) · spacetime CLI 2.8.0`
+
+**증상:** A game module in production needed new columns on existing tables (`room`, `player`, `secret_role`) and nine new tables. The deploy procedure forbids a data-deleting publish, and it was not known whether the TypeScript module could extend an existing table in place.
+
+Measured on a disposable local database seeded with the old module (a room in the middle of a timed game, five players, their private roles):
+
+- New columns were appended at the end of each table with a default: `t.u32().default(0)`, `t.string().default('fedora')`, `t.bool().default(false)`. `spacetime publish <db> --delete-data=never --yes` printed `Created table ...` for the new tables, then `!!! Warning: All clients will be disconnected due to breaking schema changes`, and `Updated database`. It did not refuse the publish.
+- Every existing row survived. `SELECT` on the old rows returned the declared defaults in the new columns.
+- The game already in progress kept going: the old module's scheduled row for the phase timer fired into the new reducer code, which moved the room to the next phase.
+- `init` ran only on the very first publish (`spacetime logs` shows `Invoking init reducer` once, and nothing like it for the update). A new scheduled table (a 1 s interval timer) therefore got its row only from the lazy insert the module does in `clientConnected`.
+
+**해결:** Keep the schema append-only: add tables freely, add columns only at the end of a table and always with `.default(...)`, and never reorder, retype or remove columns. Insert rows for new scheduled tables lazily (`if (!ctx.db.timer.count()) insert(...)`) from `clientConnected` and from the reducers that need them, not only from `init`. The publish disconnects every client, so release the regenerated client bindings at the same time.
 
