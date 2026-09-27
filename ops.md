@@ -3893,3 +3893,76 @@ read the database. The expected saving mostly did not happen.
 of server time instead of 987 ms. The docs list custom domains as having working cache operations (zone routes
 worked here too); a Worker with no route of its own is not in that list, so the placed Worker keeps no cache. Do not
 cache results that carry one member's data.
+
+## OPS-174 — ffmpeg `loudnorm` second pass with `linear=true` falls back to dynamic mode without an error when the measured LRA exceeds the target `LRA` (default 7) or is exactly 0; only the JSON `normalization_type` shows it
+
+`측정 2026-09-27 · ffmpeg 9.0.1 loudnorm · I=-16:TP=-1.5`
+
+**증상:** music normalised by two-pass `loudnorm` landed near −16 LUFS, but a 3.7 s defeat stinger with a long decaying
+tail (LRA 10.2) came out at **−17.54 LUFS** measured on the decoded MP3.
+
+Linear mode is used only when the measured LRA is at or below the target `LRA` and the linear gain keeps the true peak
+under `TP`. Otherwise the filter silently switches to dynamic mode:
+
+| Source (second pass, `linear=true`) | measured LRA | target LRA | `normalization_type` | output I |
+| --- | --- | --- | --- | --- |
+| sine with a 4.5 s exponential tail | 21.4 | 7 | `dynamic` | −16.36 |
+| same | 21.4 | 25 | `linear` | −15.64 |
+| constant sine | **0.00** | 7 | `dynamic` | −15.95 |
+| the stinger after shortening its tail | 0.9 | 7 | — | −16.58 (shipped) |
+
+A measured LRA of exactly 0 also blocks linear mode.
+
+**해결:** check `normalization_type` in the second pass's `print_format=json` output. When it says `dynamic`, either raise
+the target `LRA` above the measured value or reduce the source's range (shorter tails, trimmed silence). Verify the result
+by measuring the decoded output (OPS-132).
+
+## OPS-175 — Google Fonts CSS2 API: only 1 of 88 `@font-face` blocks for a Korean face carried a `/* subset */` comment; picking subsets by comment silently drops the rest
+
+`측정 2026-09-27 · fonts.googleapis.com/css2 · Black Han Sans`
+
+**증상:** a self-hosting script downloaded the subsets named in the `/* latin */`-style comments of the CSS2 response.
+For Black Han Sans the response held 88 `@font-face` blocks, and only 1 had a comment (`latin`). The other 87 Korean
+slices have no comment, so the script kept Latin only and dropped all Hangul without an error.
+
+**해결:** select blocks by `unicode-range`, or keep every block. The slice number is in the file URL (`….N.woff2`), not in
+a comment.
+
+## OPS-176 — Vite 8.3.1 `import.meta.glob` with no matching file returns `{}` and the build passes; a file added later is bundled as its own chunk with no code change
+
+`측정 2026-09-27 · Vite 8.3.1`
+
+**증상:** a client had to import a generated module (a local battle engine) that another parallel ticket had not produced
+yet. A static `import` breaks the build until the file exists.
+
+`import.meta.glob('../generated/engine.js')` returned `{}` while the file was missing, and `vite build` passed. When the
+file appeared, the next build emitted it as a lazy chunk (36.1 KB gzip) with no source edit.
+
+**해결:** when a parallel ticket codes against another ticket's future output, load it through `import.meta.glob` and
+handle the empty map (fall back to a stub).
+
+## OPS-177 — Deterministic GSAP frames in Playwright: `gsap.globalTimeline.pause()` + `.time(t)`, but awaiting a tween's promise while the clock is paused hangs until the test timeout
+
+`측정 2026-09-27 · GSAP 3.15 · Playwright 1.63 · Chrome`
+
+**증상:** screenshots of UI animations taken with `waitForTimeout` caught different frames on each run. Freezing the clock
+fixed that, but a later `page.evaluate` that awaited an animation's completion promise hung for the full 90 s test
+timeout.
+
+`gsap.globalTimeline.pause()` stops every tween; `gsap.globalTimeline.time(t)` then renders the exact frame at `t`
+seconds. Completion promises and `onComplete` callbacks only fire when the timeline reaches the end, so they never
+resolve while it is paused unless the test moves `time()` past the end.
+
+**해결:** pause, seek to each frame to photograph, then either seek past the end or `resume()` before awaiting any
+completion.
+
+## OPS-178 — Under a load average of 100–110, the Vite dev server took 27.7 s to start and the first page load exceeded Playwright's 30 s `goto` timeout; `vite build` + `vite preview` ran stably
+
+`측정 2026-09-27 · Vite 8.3.1 · Playwright 1.63 · macOS, many parallel sessions`
+
+**증상:** UI tests failed at the first `page.goto` with a timeout. The dev server's on-demand transform of the whole
+module graph on first load took longer than the default 30 s while other sessions kept the machine at load 100–110.
+
+**해결:** on a shared machine, run Playwright against a production build: `webServer.command: 'vite build && vite preview
+--port <own port> --strictPort'` with `timeout: 120_000` (own port per OPS-006). The preview server serves static files,
+so the first load does not pay transform time.

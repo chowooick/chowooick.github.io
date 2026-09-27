@@ -3364,3 +3364,57 @@ JavaScript's `JSON.stringify` writes the shortest round-tripping form, so the tw
 In the 4.7.2 engine loader (`godot.js`), `Engine.getMissingFeatures({ threads })` pushes `Secure Context` whenever `window.isSecureContext` is false, **before and independent of** the `threads` flag — `threads: false` only drops the Cross-Origin-Isolation and SharedArrayBuffer requirements. The default web shell (and any custom shell that copies its boot code) calls it and stops if anything is missing. Measured: the same image loaded as `http://button.test:8081` (mapped to 127.0.0.1) never booted, and booted in 5.2 s with 0 console errors once Chrome was told to treat that origin as secure.
 
 **해결:** serve over HTTPS, or use `localhost` (browsers treat it as potentially trustworthy). For a browser test of a non-localhost origin over HTTP, launch Chrome with `--unsafely-treat-insecure-origin-as-secure=http://host:port` (plus `--host-resolver-rules=MAP host 127.0.0.1` to route a made-up name). For a phone on the LAN, `adb reverse tcp:PORT tcp:PORT` and open `http://localhost:PORT` on the phone.
+
+## GDT-161 — Compatibility renderer: unshadowed `OmniLight3D`/`SpotLight3D` add no draw calls; six shadowed spots added 5
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility`
+
+**증상:** a 3D stage for a web export needed a key light, rim lights, footlights and spots, and the budget assumed every
+light costs extra passes in the Compatibility renderer.
+
+In a test scene, 0, 1, 3 and 6 unshadowed spot/omni lights all rendered in **4 draw calls**. Six spot lights with
+`shadow_enabled = true` added **5**. The finished stage (all lights unshadowed, glow and post on) measured 54 WebGL draw
+calls per frame in the web build at 1280×720 @2×, and 34–36 natively.
+
+**해결:** add fill, rim and accent lights freely when they cast no shadow. Fake contact shadows with blob or projected
+silhouette meshes and enable `shadow_enabled` only where it pays.
+
+## GDT-162 — Web export: `RenderingServer.render_loop_enabled = false` stops WebGL work completely (0 draw calls in 1.2 s) for a 3D iframe hidden behind an HTML UI
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (Compatibility, nothreads) · Chrome, macOS`
+
+**증상:** a Godot canvas sits in an iframe behind an HTML interface. On menu screens that cover the stage it still
+rendered every frame and competed with the page's animations.
+
+Setting `RenderingServer.render_loop_enabled = false` and `Engine.max_fps = 5` while the stage is covered, a test that
+wraps the WebGL2 draw functions counted **0 draw calls over 1.2 s**. JavaScriptBridge commands still arrive in that
+state, so the command that shows the stage again re-enables the loop.
+
+**해결:** drive `render_loop_enabled` from the page's view state (hidden → false, shown → true) instead of leaving the
+covered canvas rendering.
+
+## GDT-163 — Timelines advanced by `_process(delta)` ran 13% long on a loaded web build (3.45 s → 3.9 s); wall-clock deltas × `Engine.time_scale` with `run/delta_smoothing` off stayed at 1.00×
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (nothreads) · Chrome, macOS, busy host`
+
+**증상:** a cinematic authored at 3.45 s took 3.9 s in the web build while the host was loaded, overrunning the time
+budget the HTML side waited on before continuing. The timeline summed the `delta` passed to `_process` with the default
+`application/run/delta_smoothing = true`: under load, the summed delta trailed the wall clock.
+
+Advancing the same timelines by wall-clock deltas (`Time.get_ticks_usec()`) multiplied by `Engine.time_scale`, capped at
+0.5 s per frame, with `run/delta_smoothing = false`, replayed 48 battle events with a worst case of **1.00×** the
+authored length.
+
+**해결:** for fixed-length presentation (cut-ins, cameras, anything another system waits on), step the timeline with
+wall-clock deltas scaled by `Engine.time_scale` so slow motion still works, and turn delta smoothing off. The animation
+drops frames instead of stretching.
+
+## GDT-164 — `tween_property(material, "shader_parameter/x", …)` fails with "property does not exist" until `set_shader_parameter("x", …)` has run once
+
+`측정 2026-09-27 · Godot 4.7.2-stable`
+
+**증상:** tweening a `ShaderMaterial` uniform that still held its shader default logged that the tweened property does not
+exist, and nothing animated. After one `set_shader_parameter()` call with the same name, the identical tween worked.
+
+**해결:** when creating the material, seed every uniform you will tween with `set_shader_parameter(name, start_value)`,
+then tween `"shader_parameter/<name>"`.
