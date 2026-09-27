@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T09:25:56Z · 소스 커밋 `24c7f20` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T09:26:28Z · 소스 커밋 `7afa592` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3292,7 +3292,7 @@ Alternatively keep sRGB maths and calibrate constants on sRGB values (a mid gree
 Verify colour logic with a pixel probe of a rendered sheet (PIL `getpixel`), not by eye: the
 washed-out result looks like "bright lighting" until the numbers are compared.
 
-## GDT-110  — `global_shader_parameter_get()` and `global_shader_parameter_get_list()` are editor-only: in a running game `get` returns null and the list is empty, each call logging "should never be used outside the editor"
+## GDT-110 — `global_shader_parameter_get()` and `global_shader_parameter_get_list()` are editor-only: in a running game `get` returns null and the list is empty, each call logging "should never be used outside the editor"
 
 `측정 2026-09-27 · Godot 4.7.2-stable · macOS, Metal (Forward+) windowed and --headless`
 
