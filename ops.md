@@ -3487,3 +3487,28 @@ Quirks and standards mode gave the same numbers. Flex stretch still makes the se
 no-repeat` and `padding-right: 30px`; `select[multiple]{background-image:none}`. Any later rule that uses the
 `background` shorthand on a select (a light-theme override, a component rule) resets the image — use
 `background-color` there, or repeat the image after it. Measure select heights in WebKit, not only Chromium.
+
+## OPS-152 — `python3 -m http.server` on macOS resets connections when Chrome loads a page's ES modules in parallel: the listen backlog is 5
+
+`측정 2026-09-27 · Python 3.9.6 http.server (ThreadingHTTPServer) on macOS 27 · Chrome via Playwright 1.63, HTTP/1.1 to 127.0.0.1 and localhost`
+
+**증상:** A static page whose `app.js` is a module importing ~17 sibling modules failed to boot about half the time
+under `python3 -m http.server 8091 --directory web`. Nothing in the page's own code threw; the network log showed
+`net::ERR_CONNECTION_RESET` for a different set of `ui/*.js` files on each load (and sometimes for plain
+`<script src>` files), so the module graph never finished and the entry module never ran. It is not the disk,
+not IPv6 vs IPv4 and not logging: the same four loads against `127.0.0.1` failed 4/4 with the stock server and
+passed 4/4 when only the backlog was raised.
+
+`socketserver.TCPServer.request_queue_size` is 5. Chrome opens up to 6 parallel HTTP/1.1 connections per host as
+soon as it discovers the imports, and macOS answers connections beyond a full accept queue with RST (Linux drops
+the SYN and the client retries, which hides the problem there).
+
+**해결:** For local testing, raise the backlog (same directory listing, same MIME types):
+
+```sh
+python3 -c 'import http.server as h, functools as f; h.ThreadingHTTPServer.request_queue_size = 128; h.test(HandlerClass=f.partial(h.SimpleHTTPRequestHandler, directory="web"), ServerClass=h.ThreadingHTTPServer, port=8091, bind="127.0.0.1")'
+```
+
+or serve from the test itself with Node's `http.createServer` (default backlog 511). A random boot failure on a
+multi-module page under the stock Python server says nothing about the code; production servers (nginx) are not
+affected.
