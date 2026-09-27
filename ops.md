@@ -3216,3 +3216,40 @@ right for a figure facing the viewer). `VNDetectFaceLandmarksRequest` found the 
 the hips, arms from shoulder-elbow-wrist plus 0.45 of the forearm past the wrist for the fist, legs widened to the
 silhouette below the knees, head top from the mask above the face only). Joints put the wrist at the wrist, so open
 hands, gloves, bandaged hands and raised knees still need a look at a debug overlay and a hand-set box.
+
+## OPS-143 — SpacetimeDB 2.8: publishing every player move as its own transaction saturates one core at 60 players × 10 Hz; a private input table plus a 100 ms publish tick cut p95 from 1,260 ms to 12 ms
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone on an Apple M1 Max · Rust module · v1.json clients (Godot headless bots, barrier-synced per OPS-048)`
+
+**증상:** A shared-city game let each client call `move_player` at 10 Hz, and the reducer updated the public `pose` row
+that every client subscribes to (`SELECT * FROM pose WHERE zone = 0`). With 60 bots in 10 processes (6 each, decode
+skipped so the drivers were not the bottleneck, OPS-047):
+
+- each client received about 580 messages per second: one `TransactionUpdateLight` per move of every player;
+- move round trip p50 8–20 ms but **p95 about 1,260 ms and p99 about 1,540 ms**;
+- `spacetimedb-standalone` averaged 99 % of one core (peak 149 %).
+
+Every move was a transaction, and every transaction fanned out to every subscriber as a separate message.
+
+**해결:** Split input from publication.
+
+1. `move_player` validates the step and writes a **private** `pose_input` row (one per player, `dirty = true`).
+   Private tables have no subscribers, so this transaction sends nothing to anyone else.
+2. A scheduled `pose_tick` reducer (100 ms) copies every dirty input into the public `pose` table in one
+   transaction. Each client now gets one message per tick carrying all changed rows.
+3. Server-side teleports write both tables, so the next client step validates from the new position; distance
+   checks read the input table (the published pose can be one tick old).
+
+Measured with the same harness, 45–60 s windows:
+
+| Players | p50 | p95 (worst process) | p99 (worst process) | Server CPU avg (1 core = 100 %) | Msgs per client per s |
+|---:|---:|---:|---:|---:|---:|
+| 60, per-move publish | 8–20 ms | 1,260 ms | 1,540 ms | 99 % | 580 |
+| 60, 100 ms tick | 6.8 ms | 12 ms | 51 ms | 22 % | 65 |
+| 150, 100 ms tick | 7.1 ms | 30 ms | 116 ms | 43 % | 12 |
+| 300, 100 ms tick | 10.5 ms | 83 ms | 190 ms | 77 % | 14 |
+
+The first run right after `publish --delete-data` once showed a 2 s p95 in a single process; a repeat run was clean.
+Warm up for a few seconds before measuring. Beyond this point the next wall is the client: at 300 players every tick
+carries 300 rows to decode, so interest management (subscribe by map chunk) comes next.
+Reference: `~/work/cobramission/server/src/module.rs` (`move_player`, `pose_tick`), `scripts/load-test.sh`.
