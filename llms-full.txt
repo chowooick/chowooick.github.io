@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T13:54:59Z · 소스 커밋 `0a44102` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T13:56:00Z · 소스 커밋 `dfbaad6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3728,6 +3728,84 @@ Defaults as printed: `ui_accept` = Enter, Kp Enter, Space. `ui_cancel` = Escape.
 One synthetic E press, logged: `_input pressed proc=8 phys=11` → `_physics_process just_pressed proc=8 phys=12` → `_process just_pressed proc=8 phys=12`. Events are delivered before the physics steps of the same iteration. The physics counter increments before `_physics_process` runs.
 
 **해결:** At close, store `closed_proc = Engine.get_process_frames()` and `closed_phys = Engine.get_physics_frames()`. Keep `is_blocking()` true while `get_process_frames() <= closed_proc or get_physics_frames() <= closed_phys + 1`. That covers a frame without a physics step at high refresh rates. The next real press still reaches the game. For the opposite case (the press that opened a modal must not advance it), ignore events while `get_process_frames()` equals the frame the modal opened in. In headless tests, several process frames can pass without a physics tick. Wait on `physics_frame` twice before asserting that blocking ended, not on `process_frame`.
+
+---
+
+## GDT-134 — GL Compatibility linearises a custom shader's `ALBEDO` itself: writing `to_linear(COLOR.rgb)` into `ALBEDO` converts twice (coral `ff7a45` renders pure red)
+
+`측정 2026-09-27 · Godot 4.7.2-stable · GL Compatibility (OpenGL 4.1 Metal, Apple M1 Max) · windowed pixel probe`
+
+**증상:** A procedural character painted with vertex colours (`ff7a45` hood, `2b8a8e` suit) through a
+spatial shader that did `ALBEDO = to_linear(COLOR.rgb)` rendered deep red and dark teal. Level geometry
+using `source_color` uniforms written straight to `ALBEDO` looked right under the same light.
+
+Probe: a plane lit by one `DirectionalLight3D` pointing straight down, ambient and reflections off,
+`TONE_MAPPER_LINEAR`, centre pixel read back and converted to linear:
+
+| light energy | value written | StandardMaterial3D (`albedo_color` = sRGB of the value) | custom `diffuse_lambert` `ALBEDO = value` | custom `unshaded` |
+|---|---|---|---|---|
+| 1.0 | 0.100 | 0.0999 | 0.0080 | 0.0080 |
+| 1.0 | 0.214 | 0.2159 | 0.0369 | 0.0369 |
+| 1.0 | 0.500 | 0.5029 | 0.2159 | 0.2159 |
+| 0.25 | 0.500 | 0.1248 | 0.0529 | — |
+
+The custom column is exactly `srgb_to_linear(value) × energy`: the engine treats `ALBEDO` as sRGB,
+linearises it, lights it, and encodes the result. Together with GDT-109 (vertex `COLOR` and
+`source_color` uniforms arrive as raw sRGB), the consistent rule is: **keep colours in sRGB all the way
+into `ALBEDO`**. A manual `to_linear()` before `ALBEDO` is a second conversion. Same measured with
+`diffuse_burley`.
+
+**해결:** `ALBEDO = COLOR.rgb * tint.rgb;` with no conversion (do linear maths only for derived
+quantities such as luminance, as GDT-109 says). Check with a probe against a StandardMaterial3D of the
+same colour: after the fix a terrain shader and StandardMaterial3D both rendered `5cc43a` at energy 0.3
+as `2c611b` / `32711d`, while the double-converted shader gave `0f5107`.
+
+---
+
+## GDT-135 — A `MultiMesh` with `use_custom_data = true` and `use_colors = false` gives the shader `COLOR = 0` in GL Compatibility: vertex colours render black
+
+`측정 2026-09-27 · Godot 4.7.2-stable · GL Compatibility, native and Web export (Chromium)`
+
+**증상:** Instanced flowers and grass tufts (per-instance tint in `INSTANCE_CUSTOM`, per-vertex colours
+for stem vs. petal) rendered as black silhouettes. A false-colour pass (`ALBEDO = vec3(UV.y,
+INSTANCE_CUSTOM.r, COLOR.g)`) showed UV and custom data arriving correctly and `COLOR.g ≈ 0` on every
+vertex. MultiMeshes without custom data (blocks whose shader keys an emblem off `COLOR.a`) were fine.
+
+**해결:** Turn colours on as well and set every instance colour to white: `mm.use_colors = true`,
+`mm.use_custom_data = true`, then `set_instance_color(i, Color.WHITE)` and
+`set_instance_custom_data(i, tint)`. `COLOR` is then the vertex colour (× white) and `INSTANCE_CUSTOM`
+carries the tint.
+
+---
+
+## GDT-136 — `rendering/limits/global_shader_variables/buffer_size` set small floods the Web console with "uniform buffer that is too small"
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export (Compatibility, no threads), Chrome + ANGLE Metal`
+
+**증상:** With `limits/global_shader_variables/buffer_size=128` in `project.godot` (three global
+uniforms used), the native build was fine but the Web build printed an endless stream of
+`GL_INVALID_OPERATION: glDrawElements: It is undefined behaviour to use a uniform buffer that is too small.`
+The setting is a buffer size, not a variable count.
+
+**해결:** Remove the line (default 65536). The flood stopped and the scene rendered at 60 fps in the
+same headless Chrome run.
+
+---
+
+## GDT-137 — A pool of idle one-shot `CPUParticles3D` intermittently drew huge dark shapes after switching scenes; keep idle emitters hidden
+
+`측정 2026-09-27 · Godot 4.7.2-stable · GL Compatibility · windowed, 70 pooled one-shot emitters (opaque dithered puff material)`
+
+**증상:** Starting a second course in the same session sometimes covered most of the view with large
+dark 10–12-sided shapes (a screen-darkness probe read 82 % of sample points dark). Hiding the FX parent
+node removed them; the same course started first never showed them. The emitters had
+`emitting = false`, `one_shot = true`, `explosiveness = 1`, `local_coords = false`, and most had never
+fired.
+
+**해결:** Create emitters with `visible = false`, connect `finished` to `hide`, and set
+`visible = true` just before `restart()` in the burst call. Four consecutive course switches then
+read 0 % dark (the remaining dark share was the cave's own background). Hidden idle emitters also stop
+costing a draw call each.
 
 ---
 
