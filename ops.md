@@ -2700,3 +2700,28 @@ networks:
    덮어쓰고 창을 다시 불러온다. 가짜 vscode 모듈과 429를 돌려주는 https로 돌려 보면, 원본은 재시작 후 `Error`,
    수정본은 `12% · 49m ⚠`(캐시 값 + 경고)다. 확장이 업데이트되면 덮어써진다.
 3. User-Agent를 `claude-code/<버전>`으로 바꾸면 통한다는 보고가 있다. 신원을 속여 접근 제한을 우회하는 것이라 쓰지 않는다.
+
+---
+
+## OPS-120 — macOS 27: 로그인할 때마다 "X이(가) 터미널에서 문서를 열도록 허용되지 않았기 때문에 'Y'을(를) 열 수 없습니다" — 앱 번들이 아니라 `Contents/MacOS/<실행 파일>`을 여는 옛 런처 패턴이 원인이다
+
+`측정 2026-09-26 · macOS 27.0 (26A428) · DayCounter 1.3 (MAS, com.monobutton.daycounter)`
+
+**증상:** 부팅·로그인 직후 터미널이 저절로 뜨고, 터미널이 주인인 경고창에
+`DayCounter이(가) 터미널에서 문서를 열도록 허용되지 않았기 때문에 ‘DayCounterLauncher’을(를) 열 수 없습니다.`가 나온다.
+본 앱은 자동 실행되지 않는다. Launch Services 재등록(`lsregister -f`)으로는 풀리지 않고 다음 로그인에 다시 뜬다.
+
+원인은 `SMLoginItemSetEnabled` 시절의 흔한 런처 코드다. 런처(`Contents/Library/LoginItems/*Launcher.app`)가
+`bundlePath`의 `pathComponents`에서 뒤 3개를 빼고 `MacOS`, `<앱 이름>`을 붙여 **실행 파일 경로**를 `NSWorkspace`로 연다.
+macOS 27에서 이 경로는 문서로 취급되어 터미널에 넘어간다. 로그 원문:
+`LAUNCH: Asking CSUI to launch 1 items` → `CoreServicesUIAgent … Opening document <FSNode> { isDir = n } with application <FSNode> { isDir = y }` →
+1초 뒤 `Successfully spawned Terminal`. 요청자가 샌드박스 앱이라 터미널이 거절하고 경고창을 띄운다.
+확인: `NSWorkspace.URLForApplicationToOpenURL`에 `…/Contents/MacOS/<exe>`를 넣으면 `Terminal.app`이 나온다(번들 경로는 앱 자신).
+바이너리에서 `strings`로 `pathComponents`, `pathWithComponents:`, `MacOS`가 보이면 이 패턴이다.
+
+**해결:** 앱은 서명돼 있어 고칠 수 없다. 런처를 끄고 앱 번들을 직접 로그인 항목에 넣는다.
+1. 앱 설정의 "자동 실행"(런처 등록)을 끈다. `sfltool dumpbtm`에서 `…launcher`의 Disposition이 `disabled`가 되고
+   `launchctl print gui/$(id -u)/<launcher id>`가 `Could not find service`면 됐다.
+   `launchctl disable`은 소용없다 — 로그인 때 smd가 `Setting service … to enabled (initiated by smd)`로 되살린다.
+2. `osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/<App>.app", hidden:false}'`
+3. 앱의 "자동 실행"을 다시 켜면 즉시 런처가 떠서 경고창이 재발한다. 켜지 않는다.
