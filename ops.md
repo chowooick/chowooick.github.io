@@ -3376,3 +3376,110 @@ Also measured:
 service binding with `fetch` (not RPC). Let it do all of a page's reads and return one compact result, gzipped when
 large. On kyomincenter.com this cut story pages from 2.5–3.5 s to 0.28–0.45 s and region pages from 1.05 s to
 0.36 s (server time).
+
+## OPS-148 — Inline JavaScript kept in a non-raw Python string: `'\n'` becomes a real line break, the whole `<script>` block is discarded, and a fail-closed server hides it for a month
+
+`측정 2026-09-27 · Python 3.9 · Flask 3.1 (templates as module-level strings, render_template_string) · Chromium 153 and WebKit 26.6 via Playwright 1.63`
+
+**증상:** On two pages of a Flask app, buttons did nothing visible or ended on a bare `400` text page. No user saw
+a JavaScript error; the server log only showed the 400s, which the server raises on purpose (a fail-closed check
+for missing fields). It had been that way for 31 days. A browser crawl that records `pageerror` found it at once:
+Chromium `Invalid or unexpected token`, WebKit `Unexpected EOF`.
+
+The page templates were ordinary triple-quoted Python strings. A script inside them had
+`window.prompt('first line\nsecond line', '')`. Python turned `\n` into a newline before Jinja or the browser saw
+it; a JavaScript single-quoted string cannot span lines, so the script element failed to parse and **every
+function defined in that block was undefined**. The inline handlers (`onclick="return _qh(this.form,1,1)"`,
+`onsubmit="return _sub(this)"`) then threw `ReferenceError` — and an exception in an inline handler does not
+cancel the default action, so the forms still submitted, without the client-side work (field filling, the
+evidence prompt). The server's own checks refused those half-filled forms, which kept the data clean and made the
+breakage look like user error.
+
+`\s` in the same scripts survived only because Python keeps unknown escapes (with a DeprecationWarning); `\n`,
+`\t`, `\b`, `\f`, `\r`, `\v`, `\a` and `\'` do not.
+
+**해결:** Write `\\n` in the Python source (or use raw strings / real template files), and anchor it with a test
+that cannot know which page is next: extract every `<script>` from every string constant that holds one
+(`ast.walk` over the module, plus `templates/*.html`) and fail on any quoted JavaScript string cut by a raw line
+break (a 60-line lexer that skips comments, template literals and regex literals is enough). Belt and braces: fetch
+every page and run each inline script through `node --check`, and have the browser crawl fail on `pageerror`.
+
+## OPS-149 — `overflow-wrap: anywhere` on table cells lets a two-syllable header break per syllable: the min-content width of every `th` becomes one character
+
+`측정 2026-09-27 · Chromium 153 / WebKit 26.6 (Playwright 1.63) · Korean text, 12–13px, tables inside 320–390px cards`
+
+**증상:** In narrow tables (a 2-column profile table on a phone, a 5-column table at 320px) short Korean headers
+rendered as 「네 / 기둥」, 「타고 / 난 / 그릇」, 「사인· / 도수」: one or two syllables per line, while the data column
+next to them had room to spare. A shared stylesheet set `td,th{overflow-wrap:anywhere}` (and the body had
+`word-break:keep-all`).
+
+`overflow-wrap: anywhere` (unlike `break-word`) lowers the element's **min-content** size to a single character.
+Table auto layout gives columns their min-content width first and hands the spare width to the columns that want
+more, so the label column is squeezed to one or two characters and the long data cell takes the rest.
+`word-break: keep-all` does not prevent it: `anywhere` still counts as a soft wrap opportunity for min-content.
+
+**해결:** `th{white-space:nowrap}` (or `overflow-wrap:normal` on the header cells) and let the data cells keep
+`anywhere`. Before applying it to a wide table, add up the header widths against the narrowest container (five
+2–5 character headers at 12px with 6px padding came to 216px against a 242px card at 320px, so no overflow). For a
+label that pairs a name with a secondary value (「자시 23:30–01:29」), put the secondary part on its own line below
+600px (`th .muted{display:block}`) instead of letting the pair set the column width. The same min-content collapse
+hits scale options and chips in flex rows (「늘 / 그렇다」): `white-space:nowrap` on each option, and let the row wrap.
+
+## OPS-150 — Measuring pages with Playwright: smooth scroll fakes end-of-page geometry, `offsetParent` is null for fixed elements, WebKit reports aborted polls as page errors, and an `ssh -L` tunnel dies silently in long runs
+
+`측정 2026-09-27 · Playwright 1.63 (Chromium 153, WebKit 26.6) on macOS · app on a remote Docker host reached through ssh -f -N -L · 272 page views per image`
+
+**증상:** An all-page layout audit (34 page states × 8 engine/width/theme combinations, two images compared)
+produced four kinds of wrong numbers before the harness was fixed:
+
+1. "What sits under the floating button at the end of the page" found content on pages that had enough bottom room.
+   The pages set `html{scroll-behavior:smooth}`, so `window.scrollTo(0, scrollHeight)` starts an animation and the
+   `getBoundingClientRect()` read on the next line is still at the old position.
+2. A visibility guard `if (!el.offsetParent) skip` skipped the floating button on every page: `offsetParent` is
+   `null` for `position: fixed` elements in Chromium.
+3. WebKit reported `pageerror: Fetch API cannot load … due to access control checks` on the next page when the
+   previous page had a status poll in flight during navigation — even though every poll was inside `try/catch`.
+   It is the aborted request, not CORS and not an unhandled error in the app.
+4. Partway through a long run (while the controlling session was paused), every later view failed with
+   `ERR_CONNECTION_REFUSED` / `Could not connect to the server`: the `ssh -f -N -L` tunnels had died without a message. An earlier run that
+   wrote results only at the end lost 40 minutes when WebKit's browser process died
+   (`Target page, context or browser has been closed`).
+
+**해결:** `window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'})` (or run the context
+with `reducedMotion: 'reduce'`, which these pages honour); test visibility with `getBoundingClientRect()` size plus
+computed `display`/`visibility`/`opacity`; filter the WebKit "due to access control checks" message and 404 console
+lines on pages that are 404 by design; open tunnels with `-o ServerAliveInterval=15 -o ServerAliveCountMax=4`,
+check them before each batch, write results after every page, relaunch the browser when it reports it was closed,
+and count failed views separately from findings. Split the matrix over 4 processes per image, not 8: on a shared
+10-core Mac with other sessions running, 8 processes made each one slower (load average up to 195) rather than the
+run shorter.
+
+## OPS-151 — Desktop WebKit draws a `<select>` 23px tall as soon as it has any border, radius or background, ignoring the author's `min-height` and `padding`; `appearance: none` restores them
+
+`측정 2026-09-27 · WebKit 26.6 and Chromium 153 via Playwright 1.63 on macOS · standards and quirks mode, 16px text`
+
+**증상:** A form stylesheet gave every control `min-height:48px;padding:12px 14px;border:1px solid …;border-radius:8px;
+background:…`. In Chromium every select was 48px, level with the text inputs. In WebKit every select was **23px** tall
+beside 48px inputs, and `getComputedStyle(select).minHeight` read `18px` with `padding-top: 0px` — the author values
+were replaced, not overridden by specificity. The same select with only `min-height` and `padding` (no border, radius
+or background) was 49px in WebKit.
+
+One select, `min-height:48px;padding:12px 14px;font-size:16px` plus one extra declaration:
+
+| Extra declaration | Chromium | WebKit |
+|---|---:|---:|
+| none | 48 | 49 |
+| `border:1px solid` | 48 | 23 |
+| `border-radius:8px` | 48 | 23 |
+| `background:#fff` or `background-color:#fff` | 48 | 23 |
+| border + radius + background | 48 | 23 |
+| the same + `appearance:none` | 48 | 48 |
+
+Quirks and standards mode gave the same numbers. Flex stretch still makes the select taller (a select in a row of
+48px items came out 50px), which hides the problem on some screens and not others.
+
+**해결:** Give selects `appearance:none; -webkit-appearance:none` and draw the arrow yourself: an inline SVG chevron as
+`background-image` with `background-position: right 12px center`, `background-size: 12px`, `background-repeat:
+no-repeat` and `padding-right: 30px`; `select[multiple]{background-image:none}`. Any later rule that uses the
+`background` shorthand on a select (a light-theme override, a component rule) resets the image — use
+`background-color` there, or repeat the image after it. Measure select heights in WebKit, not only Chromium.
