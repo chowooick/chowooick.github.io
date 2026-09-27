@@ -3505,3 +3505,19 @@ controls: check `control.get_parent() is Container` and skip the position part.
 **해결:** rename (`rules`, `_fetch`). Avoid `_get`, `_set`, `_get_property_list`, `_notification`, `_init` and `_to_string`
 as ordinary method names; a parse check that loads each script on its own (`load(path).can_instantiate()` in a small
 SceneTree script) names the file that is actually broken.
+
+## GDT-170 — Web export: `DisplayServer.keyboard_get_keycode_from_physical()` is unsupported and logs an engine error on every call; `DisplayServer.get_name()` is `"Web"`
+
+`측정 2026-09-27 · Godot 4.7.2-stable · web_nothreads_release · Chrome (headless, channel chrome)`
+
+**증상:** A UI that draws key prompts by mapping each action's physical key to the player's layout
+(`keyboard_get_keycode_from_physical(physical_keycode)` then `OS.get_keycode_string`) worked natively and
+flooded the browser console in the Web export, one pair per prompt drawn:
+`ERROR: Not supported by this display server.` / `at: keyboard_get_keycode_from_physical (servers/display/display_server.cpp:1224)`.
+The call returns the code unchanged, so the prompts looked right and only the console showed it. The headless display
+server behaves the same way.
+
+**해결:** skip the call where it is unsupported:
+`if DisplayServer.get_name() not in ["headless", "Web"]: code = DisplayServer.keyboard_get_keycode_from_physical(code)`.
+Measured: errors in the console went from dozens per screen to 0 on the same page flow. `"Web"` is the exact name
+(capital W) the web display server reports.
