@@ -2981,3 +2981,56 @@ Measured facts:
 - Pass `-s <fixed number>`, for example the CRC32 of the file name, to get byte-identical rebuilds.
 - Encode to a temporary path, then write the bytes to the final path (or `cp` it), so `du`
   matches the real size.
+
+## OPS-133 — Reading research sources when sites block agents or WebSearch is exhausted: GameFAQs and MobyGames answer 403; Wikipedia `?action=raw`, Wayback `id_` snapshots and the Fandom MediaWiki API still return the text
+
+`측정 2026-09-27 · curl 8.x, WebFetch, web.archive.org, en.wikipedia.org, *.fandom.com`
+
+**증상:** `curl` to `gamefaqs.gamespot.com/...` and `www.mobygames.com/game/...` returns HTTP 403 (checked
+directly). WebFetch refused theguardian.com, wired.com, polygon.com and gamesindustry.biz, and Fandom
+pages answered 402, during a research run on an old PC game.
+
+What still worked (the research agents read full page text this way; the Wikipedia call was re-checked):
+
+- **Wikipedia:** `https://en.wikipedia.org/wiki/<Title>?action=raw` returns the wikitext itself, with
+  every `<ref>` URL and access date, which is faster than scraping the rendered page for primary sources.
+- **Archived copies:** `https://web.archive.org/web/<timestamp>id_/<original url>` returns the archived
+  bytes without the Wayback toolbar. Find a timestamp first with
+  `https://archive.org/wayback/available?url=<url>`; an empty `archived_snapshots` means that exact URL
+  was never saved (try the other URL forms the site has used).
+- **Fandom wikis:** the MediaWiki API (`https://<wiki>.fandom.com/api.php?action=parse&page=<Title>&format=json`)
+  answers when the page itself returns 402.
+- **News sites WebFetch refuses:** `curl` with a normal browser `User-Agent` header returned the article body.
+
+**해결:** Try these before re-searching. Check robots rules first (OPS-095).
+
+## OPS-134 — SpacetimeDB 2.8 `v1.json.spacetimedb`: snapshot rows are named objects but live updates from others are `TransactionUpdateLight` with positional arrays, even without `light=true`
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone, Rust module, Godot 4.7.2 WebSocketPeer client`
+
+**증상:** A GDScript client subscribed with `Subscribe {query_strings: ["SELECT * FROM world_clock"]}` on
+`/v1/database/<db>/subscribe?compression=None` (no `light` parameter). Raw frames, printed as received:
+
+- `InitialSubscription`: each row is a JSON **string of an object** with column names,
+  `{"id":0,"hour":11.62,"rate":0.0083,"weather":2,...}`.
+- A change made by a scheduled reducer (not by this client) arrived as **`TransactionUpdateLight`**,
+  not `TransactionUpdate`, and its rows are JSON **strings of positional arrays**,
+  `"[0,11.63808,0.008333334,2,0.98155856,1790493580513]"`. An update is a delete and an insert with the
+  same primary key in one `updates` entry.
+- Calls made by this client come back as full `TransactionUpdate` with `status`, `reducer_call.request_id`,
+  `caller_identity` and a `timestamp` object (`{"__timestamp_micros_since_unix_epoch__": n}`). That
+  timestamp gives an NTP-style clock offset: `server_ts - (send_time + receive_time) / 2`.
+
+A decoder that only handles one row shape silently drops the other half of the traffic.
+
+Also measured in the same project:
+- `SELECT * FROM inventory WHERE owner = :sender` works in a v1 `Subscribe`; each client receives only
+  its own rows. (2.8 does not enforce row-level security on public tables, so this is a bandwidth
+  filter, not access control.)
+- In `#[reducer(init)]`, `ctx.sender()` is the identity of the CLI that published, so `init` can seed an
+  admin table; admin-only reducers then work through `spacetime call` from the same `--root-dir`.
+
+**해결:** Map positional arrays to column names from `GET /v1/database/<db>/schema?version=9`
+(`typespace.types[table.product_type_ref].Product.elements[i].name.some`) and accept both shapes. Handle
+`TransactionUpdate` and `TransactionUpdateLight` alike. Reference implementation:
+`~/work/cobramission/client/core/net/spacetime_client.gd`.

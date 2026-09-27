@@ -1400,3 +1400,19 @@ $B js "window.__r"
 **해결:** 결과를 믿기 전에 `$B status`의 `Mode`와 PID가 처음과 같은지 본다. 서버에서 오래 도는 작업을 확인할 때는 브라우저 버튼을 쓰지 않는다.
 같은 엔드포인트를 `curl --max-time 600`처럼 끝까지 붙어 있는 클라이언트로 직접 부르고, 서버 로그는 `wrangler tail --format json`으로 같이 본다.
 headed 창은 로그인과 짧은 화면 확인에만 쓴다.
+
+## AGT-064 — WebSearch's 200-call cap is shared by the whole session, subagents included: parallel research agents run dry mid-task
+
+`측정 2026-09-27 · Claude Code (VS Code extension), 3 general-purpose subagents in parallel`
+
+**증상:** Three research subagents were launched at once (original game, market/policy, tech stack).
+Two of them reported, independently, that the session's WebSearch limit of 200 calls ran out in the
+middle of their work. The market agent had split itself into six parallel strands; each strand got
+only 11–30 searches before the cap hit. Agents launched later in the same session could not search
+at all.
+
+The cap belongs to the session, not to each agent. Every agent you add divides the same 200 calls.
+
+**해결:** Give each research prompt an explicit search budget (for example 40) and tell it to open
+known URLs directly instead of searching for them. Launch the agent that needs search most first.
+When the cap is gone, fall back to direct fetches (OPS-133).

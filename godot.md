@@ -2105,3 +2105,18 @@ quit(exit_code)
 
 In a 156-check audio test this took the exit report from 8 leaked instances to none. The lines are
 exit-only noise, but they hide real leak regressions in the same test run.
+
+## GDT-096 — `"%x" % n` prints a negative int with a minus sign (`-5`, `-340d631b7bdddcdb`): to match a Rust `u64` hash, print the two 32-bit halves
+
+`측정 2026-09-27 · Godot 4.7.2 · Rust 1.97.1`
+
+**증상:** A content hash (FNV-1a 64 over the same JSON files) had to match between a SpacetimeDB Rust module
+and the Godot client. FNV's offset basis `0xcbf29ce484222325` does not fit a signed int64, and GDScript
+`"%016x" % -3750763034362895579` prints `-340d631b7bdddcdb` instead of `cbf29ce484222325`.
+
+GDScript `int` multiplication wraps modulo 2^64, like Rust `wrapping_mul`, so the arithmetic itself
+matched: the client and the server both produced `f256051205efd6e4` for the same files.
+
+**해결:** Keep the value as a signed int and format the halves:
+`"%08x%08x" % [(h >> 32) & 0xFFFFFFFF, h & 0xFFFFFFFF]`. Write the offset basis as its signed value
+(`-3750763034362895579`) because the hex literal overflows.
