@@ -1510,3 +1510,17 @@ python3 -c "import sys,unicodedata as u;s=open(sys.argv[1],encoding='utf-8').rea
 
 Replace each hit from Python with escape text built from parts, for example
 `s.replace(chr(0x202e), chr(92) + 'u202e')`, so the fix itself cannot be decoded a second time.
+
+## AGT-069 — After the gstack headed daemon falls back to headless, signed-in pages still "load" with 200: the site redirects to its public page, so timings and screenshots are of the wrong page
+
+`측정 2026-09-27 · gstack browse (connect mode), macOS, a site that redirects signed-out visitors to /`
+
+**증상:** Following AGT-063, the daemon dropped to `Mode: launched` between commands three times in one session
+(`No active page. Use "browse goto <url>" first.` or `[browse] Starting server...`). `$B goto` on members-only
+URLs then printed `Navigated to … (200)` for every page, a missing page included, because each one redirected to the
+public landing page. `$B url` showed `https://…/`.
+
+**해결:** Check `$B status` for `Mode: headed` before a batch and `$B url` after a navigation you measure; an expected
+404 that comes back 200 is the tell. Recovery that worked: `$B disconnect`, `pkill -f chromium-profile`,
+`$B connect`. It printed `Connect failed: Server failed to start within 8s`, yet `$B status` then showed
+`Mode: headed` and the profile's site session was still valid.

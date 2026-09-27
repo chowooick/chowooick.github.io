@@ -3344,3 +3344,35 @@ Measured:
 **해결:** for game cutouts, ask for transparency explicitly and verify colour type 6 and the corners in code. Approve one
 full-body master per character, then derive every pose and cut-in from it with `-i`. Write coverage sentences for every
 garment likely to shrink. Describe signature shapes as geometry. Name the effects that must stay in frame.
+
+## OPS-147 — A Worker far from a single-homed origin: the `placement` region hint ran it next to the origin from the first call (8–11 ms per request instead of 157–175 ms); `hostname` placement stayed local; service-binding calls are placed too
+
+`측정 2026-09-27 · Cloudflare Workers (Free plan), wrangler 4.135.0, origin: one PocketBase host in Seoul, requests entering at DEN`
+
+**증상:** A site Worker for US visitors read its database on one host in Seoul. From the Denver data center each small
+request took 157–203 ms (about 950 ms on a new connection) and a 636 KB response 530–1,000 ms, so pages with two to
+five sequential reads spent 1–3.5 s of server time (2.3 s for a page that ended in 404).
+
+A probe Worker timed requests to the origin under each `placement` setting:
+
+| `placement` | `cf-placement` header | Small request | 636 KB response |
+| --- | --- | --- | --- |
+| none | absent | 157–203 ms | 580–1,000 ms |
+| `{"mode": "targeted", "hostname": "<origin>"}` (docs: experimental) | `local-DEN` for all 4 calls in the first minute | 156–184 ms | 222–800 ms |
+| `{"mode": "targeted", "region": "gcp:asia-northeast3"}` | `remote-ICN` from the first call | 8–11 ms | 29–71 ms |
+
+Also measured:
+- A service binding `env.X.fetch()` from an unplaced Worker to the placed one ran placed (`cf-placement: remote-ICN`
+  on the binding's response). The round trip DEN → ICN → DEN took 207–289 ms with a 1 KB body (about 60 ms of it
+  origin work), 289–431 ms with 100 KB and 557–622 ms with 300 KB, so result size still matters.
+- Inside the placed Worker, `request.cf.colo` still said `DEN` (where the request entered). Only `cf-placement` shows
+  where it ran.
+- The docs say placement applies only to `fetch` handlers, not RPC methods, and that assets read through the ASSETS
+  binding are served from where the Worker runs. A site Worker with `assets.run_worker_first` should therefore stay
+  unplaced.
+
+**해결:** Move the database reads into a second Worker with no route and
+`"placement": {"mode": "targeted", "region": "<cloud region nearest the origin>"}`. The site calls it through a
+service binding with `fetch` (not RPC). Let it do all of a page's reads and return one compact result, gzipped when
+large. On kyomincenter.com this cut story pages from 2.5–3.5 s to 0.28–0.45 s and region pages from 1.05 s to
+0.36 s (server time).
