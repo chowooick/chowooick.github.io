@@ -2047,3 +2047,30 @@ In every row the texture size equals the window size multiplied by the stretch s
 **해결:**
 - At the start of the test, set the root window's size before instancing the scene: `root.size = Vector2i(1440, 900)`.
 - To test other aspect ratios, give the scene's root Control top-left anchors first with `set_anchors_preset(Control.PRESET_TOP_LEFT)`, then set its `size`. Setting `size` on a full-rect-anchored Control logs "Nodes with non-equal opposite anchors will have their size overridden".
+
+## GDT-093 — `clip_children = CLIP_CHILDREN_ONLY`로 외곽선·그림자 있는 Label을 대각선으로 자르면, 마스크 다각형 중 글자가 없는 부분에 검은 사각형 띠가 생긴다
+
+`측정 2026-09-27 · Godot 4.7.2-stable, gl_compatibility, macOS 네이티브 캡처`
+
+**증상:** 로고를 대각선으로 잘라 두 조각을 어긋나게 하려고, 다각형을 그리는 Control에 `clip_children = CLIP_CHILDREN_ONLY`를 켜고
+그 자식으로 `outline_size`·`font_shadow_color`가 있는 Label을 넣었다. 잘림은 됐지만 마스크 다각형 안에서 **글자가 덮지 않는 영역**
+(로고 위 여백, 아래 여백)이 배경보다 어두운 직사각형 띠로 찍혔다. 배경이 하프톤이라 띠가 바로 눈에 띄었다.
+
+**해결:** clip_children을 쓰지 않는다. 같은 Label 두 개에 각각 캔버스 셰이더를 걸어, `vertex()`에서 `VERTEX`를 varying으로 넘기고
+`fragment()`에서 직선의 한쪽이면 `discard`한다(두 Label은 side 부호만 반대). 글리프·외곽선·그림자 모두 같은 로컬 좌표로 그려지므로
+한 번에 잘리고, 검은 띠가 사라졌다. `COLOR`를 건드리지 않으면 기본 출력(텍스처 × 모듈레이트)이 그대로 쓰인다.
+
+## GDT-094 — StyleBoxFlat 세 속성으로 "잘린 모서리·평행사변형·하드 섀도" UI 키트를 커스텀 드로잉 없이 만든다
+
+`측정 2026-09-27 · Godot 4.7.2-stable, gl_compatibility 네이티브 + Web export(Chromium)`
+
+**증상:** 사선으로 잘린 패널과 기울어진 버튼, 오프셋 하드 섀도(스티커 느낌)를 원했다. 매 컨트롤마다 `_draw()`를 쓰면
+컨테이너 레이아웃·포커스·호버를 다시 구현해야 한다.
+
+**해결:** `StyleBoxFlat`만으로 된다.
+- **45° 잘린 모서리:** 원하는 모서리만 `corner_radius_*`를 주고 `corner_detail = 1`로 두면 곡선 대신 직선 한 번으로 깎인다.
+- **평행사변형:** `skew = Vector2(0.2126, 0)`이면 12° 기울어진 버튼·칩이 된다. 텍스트는 기울지 않는다.
+- **하드 섀도:** `shadow_size = 1`과 `shadow_offset = Vector2(6, 6)`, 불투명 색을 주면 흐림이 1px뿐이라 판화처럼 딱 떨어지는 그림자가 된다.
+
+Button의 normal/hover/pressed/focus 스타일박스에 그대로 넣으면 컨테이너 배치·키보드 포커스가 기본 동작 그대로 유지된다.
+웹 빌드에서도 같은 모양으로 그려졌다.
