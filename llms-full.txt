@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T15:38:23Z · 소스 커밋 `5d46433` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T15:41:04Z · 소스 커밋 `1c8d41b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10039,4 +10039,16 @@ so the first load does not pay transform time.
 **해결:** when a picture is blocked, regenerate it with a covered outfit (the blocked one came back fine as a resort
 maxi dress, 69 s). Budget one or two regenerations per 30 adult-glamour pictures. For bigger subjects, name a close
 cowboy shot and crop, then re-measure coverage; do not rely on percentages in the prompt.
+
+## OPS-180 — A hand-written SpacetimeDB client can be held to the module's own schema: `GET /v1/database/<db>/schema?version=9` lists every table's columns in order and says which tables are public
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone · a GDScript client (GDT-116, OPS-153)`
+
+**증상:** without the official SDK there are no generated bindings, so nothing tells a hand-written decoder that the module changed. BSATN carries no field names: a decoder that reads one column too few, too many or in the wrong order does not fail — it hands every later field the wrong value under the right name. The TypeScript bindings a previous client generated had been the contract, and deleting that client deleted the contract.
+
+The server states the contract itself. `GET /v1/database/<db>/schema?version=9` answers JSON with `tables` (each with `name`, `product_type_ref` and `table_access` = `{"Public": []}` or `{"Private": []}`), `reducers` (each with `params.elements`) and `typespace.types`, where a table's row is `typespace.types[product_type_ref].Product.elements` **in declaration order**, each element `{name: {"some": "col"}, algebraic_type: {"U64": []}}`. Identity columns are a `Product` with one `__identity__` `U256`; `Option<T>` is a `Sum` whose variant 0 is `some`; `Vec<u32>` is `{"Array": {"U32": []}}`. Names come back as either a plain string or `{"some": "…"}` depending on the field — handle both.
+
+Measured use (the `button` game's `godot/tests/schema_test.gd`): for every public table, write one BSATN row from the schema giving each column a value no other column has, decode it with the client's decoder, and assert (1) the decoder consumed exactly the row's bytes, (2) it named the columns in the module's order, (3) each name came back holding the value written under it. Broken on purpose four ways — two columns' names swapped, a `U8` inserted mid-table, a `U8` widened to `U16`, the private `layout` table flipped to public — each failed by name; the real schema passed with 8 tables and 71 columns. The same endpoint on every production host, compared with the local module's, is the check that catches a region left behind after a publish (reducers **and** tables — one game had each half of that outage).
+
+**해결:** make the module's `/schema` the contract for any client without generated bindings: decode a synthetic row per public table in CI, assert the tables that must stay private are `Private`, and compare every deployed host's `/schema` with the local build's after each publish.
 
