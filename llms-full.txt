@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T15:46:10Z · 소스 커밋 `4ffc06e` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T16:06:34Z · 소스 커밋 `73b3b0c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -909,6 +909,23 @@ decode, and the server drops the connection instead of answering with an error. 
 **해결:** Send every metadata value as a string: `JSON.stringify(value)` on the client, and in the match handler
 decode it (`pcall(nk.json_decode, metadata.look)` in Lua). Data that changes after the join (appearance, display name)
 is better sent as match data after joining than packed into the join.
+
+## NKM-041 — Nakama answers browser CORS preflights with `Access-Control-Allow-Origin: *`, so an end-to-end harness can serve the web build on one port and talk to a disposable Nakama on another without a proxy
+
+`측정 2026-09-27 · Nakama 3.37.0 (docker, default config) · @heroiclabs/nakama-js 2.8.0 · Chrome via Playwright`
+
+**증상:** a web client that computes its server from `location.origin` needs nginx in front of Nakama in production. For local end-to-end tests that meant either running the production nginx image or writing a reverse proxy with WebSocket upgrade.
+
+A preflight to the REST API from another origin:
+
+```
+OPTIONS /v2/account/authenticate/device  Origin: http://127.0.0.1:5555
+→ 200 OK · Access-Control-Allow-Origin: * · Access-Control-Allow-Headers: Authorization,Content-Type
+```
+
+With the page on `http://127.0.0.1:<static port>` and `window.LEGEND_NAKAMA_URL = 'http://127.0.0.1:<nakama port>'` set by `page.addInitScript` before the client bundle loads, device authentication, RPCs (save/load progress), the realtime socket and match data all worked in four full runs: two browser contexts saw each other and a reload restored the saved position.
+
+**해결:** give the web client an override for its Nakama endpoint (a global read before connecting), serve the build with any static server, and point the override at the test container (`docker compose -p <unique> ... up -d --wait` on a free port). No proxy is needed; keep the production path (same origin through nginx) as the default.
 
 ---
 
@@ -4489,6 +4506,50 @@ What worked, both architectures:
 - Timing: the import and export took seconds natively on arm64, and **22.0 s** for the x86 editor under emulation on an M1 Max. The resulting `index.wasm` is the template's `godot.wasm` byte for byte (39,514,754), and served with nginx `brotli_static` it went out as 6,902,599 bytes.
 
 **해결:** vendor the one template file with its own SHA-512, download the editor per `TARGETARCH` against the release's SHA-512, import then export, and keep the three version pins (project, editor download, template) moving in one commit.
+
+## GDT-173 — `(dict[k] as PackedVector3Array).append(x)` appends to a throwaway copy, and `set("prop", untyped_array)` on an `Array[Color]` export does nothing without an error
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS · headless SceneTree script`
+
+**증상:** a baked mesh came out empty although the loop that filled its vertex lists ran, and a character that received its palette through `node.set("colors", [...])` rendered white. Neither printed an error.
+
+Measured in one script (`d := {"k": PackedVector3Array()}`, a node whose script has `@export var colors: Array[Color] = []`):
+
+| Statement | Result |
+| --- | --- |
+| `(d["k"] as PackedVector3Array).append(Vector3.ONE)` | `d["k"].size()` stays **0** |
+| `var a: PackedVector3Array = d["k"]` then `a.append(...)` | `d["k"].size()` becomes 1 (the typed local shares the array) |
+| `d["k"].append(...)` | appends in place |
+| `h.set("colors", [Color.RED, Color.BLUE])` (untyped literal) | `h.colors.size()` stays **0**, no message |
+| `h.colors = [Color.RED, Color.BLUE]` (same untyped value) | `SCRIPT ERROR: Invalid assignment of property or key 'colors' with value of type 'Array'` |
+| `h.set("colors", typed)` with `var typed: Array[Color]` | works |
+
+The `as` cast produces a temporary; the call mutates it and the result is dropped. `Object.set()` reports a failed typed-array conversion by returning silently, where the direct assignment of the very same value raises.
+
+**해결:** mutate packed arrays through a typed local or directly on the container (`d[k].append`), never through `(x as Packed…Array)`. Pass typed arrays to `set()` (`var c: Array[Color] = [...]`, or `Array(untyped, TYPE_COLOR, "", null)`), or assign the property directly so a mismatch fails loudly; after bulk `set()` calls, read one property back in a test.
+
+## GDT-174 — Testing a Godot web build's touch controls in headless Chrome: `OS.has_feature("web_ios")` follows the User-Agent, and CDP `Input.dispatchTouchEvent` reaches Godot as screen touches
+
+`측정 2026-09-27 · Godot 4.7.2 web export (nothreads) · Playwright 1.63 · Chrome channel headless with Metal ANGLE · macOS`
+
+**증상:** a Playwright phone context `{viewport: 390×844, isMobile: true, hasTouch: true}` loaded the game but showed the desktop HUD without a joystick. The game picks the touch layout at start when `OS.has_feature("web_ios") or OS.has_feature("web_android")`, falling back to `DisplayServer.is_touchscreen_available()` together with `matchMedia('(pointer: coarse)')`. In that context the whole check was false (which half of the fallback failed was not isolated).
+
+Adding an iPhone Safari `userAgent` to the same context made `web_ios` true: the touch layout appeared on the first frame. Godot derives the `web_*` platform features from the User-Agent string, so device emulation without a mobile UA is a desktop to the game.
+
+Driving the controls: `page.touchscreen.tap` only taps. A CDP session drives drags:
+
+```js
+const cdp = await context.newCDPSession(page);
+const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+await touch('touchStart', 95, 700);                     // left half: floating joystick
+for (let i = 1; i <= 8; i++) await touch('touchMove', 95, 700 - i * 8);
+for (let i = 0; i < 90; i++) { await touch('touchMove', 95 + (i % 2), 636); await page.waitForTimeout(25); }
+await touch('touchEnd', 0, 0);
+```
+
+Godot received these as `InputEventScreenTouch` / `InputEventScreenDrag`; the traveler walked 9.1–14.9 m in five runs. Holding a stationary touch needs the alternating 1 px move — without new move events the joystick sees no drag.
+
+**해결:** give phone contexts a real mobile User-Agent as well as `isMobile`/`hasTouch`, and drive drags through `Input.dispatchTouchEvent`, asserting on a position the game reports rather than on the screenshot.
 
 ---
 
@@ -10103,4 +10164,17 @@ The server states the contract itself. `GET /v1/database/<db>/schema?version=9` 
 Measured use (the `button` game's `godot/tests/schema_test.gd`): for every public table, write one BSATN row from the schema giving each column a value no other column has, decode it with the client's decoder, and assert (1) the decoder consumed exactly the row's bytes, (2) it named the columns in the module's order, (3) each name came back holding the value written under it. Broken on purpose four ways — two columns' names swapped, a `U8` inserted mid-table, a `U8` widened to `U16`, the private `layout` table flipped to public — each failed by name; the real schema passed with 8 tables and 71 columns. The same endpoint on every production host, compared with the local module's, is the check that catches a region left behind after a publish (reducers **and** tables — one game had each half of that outage).
 
 **해결:** make the module's `/schema` the contract for any client without generated bindings: decode a synthetic row per public table in CI, assert the tables that must stay private are `Private`, and compare every deployed host's `/schema` with the local build's after each publish.
+
+## OPS-181 — A windowed Godot capture on a shared desktop takes real input: the operator's keys and mouse reach the game, and the first synthetic click is spent on mouse capture
+
+`측정 2026-09-27 · Godot 4.7.2 · macOS 27 · windowed `godot --path . --script res://tools/play_capture.gd` while other sessions use the same machine`
+
+**증상:** scripted captures that drive input with `Input.action_press` and `Input.parse_input_event` gave different pictures run to run:
+
+- one run of four froze with the player in mid-air for the whole script; logging `paused` and the open menu showed `paused=true menu=map`. Nothing in the script presses the map action (bound to `M` and the gamepad Back button only); the next run with the same script was normal.
+- the bow-aim shot looked straight down at the grass although the script set the camera pitch to −0.05 right before it. The game rotates the camera from `InputEventMouseMotion.relative` once the mouse is captured, and the first synthetic left click was consumed by the "click to capture the mouse" handler, after which desktop mouse motion steered the camera.
+
+A new Godot window takes focus when it opens, so keystrokes and mouse movement meant for another app land in it.
+
+**해결:** in capture scripts, neutralise the desk: set camera sensitivity to 0, mark the mouse as already captured (so clicks are attacks, not capture), and print `get_tree().paused` and the open menu next to every screenshot so a stray menu is visible in the log instead of in a wrong image. Re-run any capture whose log shows `paused=true` that the script did not cause. Prefer headless tests for pass/fail and use windowed captures only for pictures.
 
