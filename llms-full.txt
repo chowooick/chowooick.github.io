@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:27:12Z · 소스 커밋 `b733fd1` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:28:55Z · 소스 커밋 `ccbb463` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3109,6 +3109,36 @@ fallback. For every other locale, use Pretendard first. The chains are shared `F
 resources referenced by the Theme, so changing `base_font` and `fallbacks` once at a locale change
 updates every Control. Display chains need the same swap (Dela Gothic One before Black Han Sans for
 `ja`).
+
+---
+
+## GDT-107 — `has_method()` on a loaded GDScript resource sees its `static func`s: a data layer can probe optional helpers without `class_name`
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS · --headless · script with no class_name, loaded with load()`
+
+**증상:** A data layer loads table scripts lazily (`var s = load("res://scripts/data/items.gd")`, no
+`class_name`, per GDT-027/035/036) and wants to call a helper such as `s.display_name(id, data)` only
+if the table script defines it, falling back to plain dictionary reads otherwise. It is not obvious
+from the docs whether `Object.has_method()` on the Script resource itself (not an instance) sees
+`static func`s. If it did not, the fallback would run silently and nobody would notice.
+
+Measured on a data script with `extends RefCounted`, `const ITEMS := {...}` and static helpers:
+
+| call on `s = load(path)` | result |
+|---|---|
+| `s.has_method("display_name")` (a `static func`) | `true` |
+| `s.has_method("no_such_func")` | `false` |
+| `s.display_name("hoe", {"lv": 2})` | the helper's return value |
+| `s.get_script_constant_map()["ITEMS"].size()` | 556 |
+| `load()` time for the 136 KB script (556 nested const entries) | 33–36 ms, 3 runs |
+
+A `static var` cache inside the same script (filled on first call, reused later) also works when
+the script is only preloaded.
+
+**해결:** The pattern `if s != null and s.has_method("f"): return s.f(args)` is safe for optional
+static helpers on `load()`ed scripts. Read constants with `get_script_constant_map()`, call static
+funcs directly on the Script object. A catalogue of several hundred items as one `const` Dictionary
+is fine to load at startup; keep values free of `null` (GDT-028).
 
 ---
 
