@@ -2219,9 +2219,10 @@ in a headless script before judging its look.
 
 `측정 2026-09-27 · Godot 4.7.2-stable · 16-bit PCM WAV loops written by Python with a `smpl` chunk (loop start 0, end = frames − 1, per the RIFF spec)`
 
-**증상:** Seamless music and ambience loops rendered sample-exact still had a faint periodic tick at the loop point
-in game. Inspecting the imported `AudioStreamWAV` showed `loop_end` = frames − 1: the RIFF `smpl` chunk stores the
-*inclusive* index of the last frame, and the importer uses it as the *exclusive* end. One sample is skipped per loop.
+**증상:** Music and ambience loops were rendered sample-exact with a `smpl` loop chunk. The imported
+`AudioStreamWAV` reported `loop_end` = frames − 1: the RIFF `smpl` chunk stores the *inclusive* index of the last
+frame, and the importer uses it as the *exclusive* end, so one sample is skipped per loop. (Measured on the stream
+values; audibility of the one-sample skip was not tested.)
 
 **해결:** Override it at load time: `stream.loop_mode = AudioStreamWAV.LOOP_FORWARD`, `stream.loop_begin = 0`,
 `stream.loop_end = <total frame count>` (for 16-bit PCM, `stream.data.size() / (2 * channels)`). Alternatively omit the
