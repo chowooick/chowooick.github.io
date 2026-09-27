@@ -2754,7 +2754,7 @@ PickUp right hand −0.73. The same `get_bone_global_rest()` / `get_bone_rest()`
 new poses, for example arms aimed along a model-space direction with
 `Quaternion(current_dir, wanted_dir)`, and bake them into an Animation.
 
-## GDT-125 — Depth-of-field substitute in `gl_compatibility`: `hint_screen_texture, filter_linear_mipmap` + `textureLod` gives a real mip blur, native and in the Web export
+## GDT-128 — Depth-of-field substitute in `gl_compatibility`: `hint_screen_texture, filter_linear_mipmap` + `textureLod` gives a real mip blur, native and in the Web export
 
 `측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · Apple M1 Max (native) and Chrome 1243 WebGL2 (Web export)`
 
@@ -2772,7 +2772,7 @@ Probe: a 1152 × 648 frame of an 80 × 80 checkerboard, left half sampled at LOD
 
 **해결:** for tilt-shift, scale the LOD with the distance from a horizontal focus band (`smoothstep(band, band + 0.3, abs(uv.y - focus))`, max LOD about 2.5) and average 4–5 taps offset by `SCREEN_PIXEL_SIZE * exp2(lod)` to hide the blockiness of a single mip sample. Put the layer below the UI layer so text stays sharp. Related: GDT-015.
 
-## GDT-126 — `SurfaceTool` fixes the vertex format at the first vertex: later vertices that add `set_uv()` or `set_custom()` log an error per vertex and the attribute is silently dropped
+## GDT-129 — `SurfaceTool` fixes the vertex format at the first vertex: later vertices that add `set_uv()` or `set_custom()` log an error per vertex and the attribute is silently dropped
 
 `측정 2026-09-27 · Godot 4.7.2-stable · SurfaceTool (terrain mesh builder)`
 

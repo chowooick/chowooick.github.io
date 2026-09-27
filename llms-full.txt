@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T13:42:51Z · 소스 커밋 `f7a59c6` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T13:44:58Z · 소스 커밋 `51a18cd` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3604,6 +3604,57 @@ missing. The same probe then gave distinct values: Idle_A hands −0.59, Cheerin
 PickUp right hand −0.73. The same `get_bone_global_rest()` / `get_bone_rest()` data can compute
 new poses, for example arms aimed along a model-space direction with
 `Quaternion(current_dir, wanted_dir)`, and bake them into an Animation.
+
+## GDT-128 — Depth-of-field substitute in `gl_compatibility`: `hint_screen_texture, filter_linear_mipmap` + `textureLod` gives a real mip blur, native and in the Web export
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · Apple M1 Max (native) and Chrome 1243 WebGL2 (Web export)`
+
+**증상:** GDT-015 lists DOF blur as unsupported in Compatibility (the warning is printed and the image is unchanged), so a tilt-shift "miniature" look seems out of reach without Forward+.
+
+A full-screen `ColorRect` on a `CanvasLayer` with this shader blurs what is under it:
+
+```glsl
+shader_type canvas_item;
+uniform sampler2D screen : hint_screen_texture, filter_linear_mipmap;
+void fragment() { COLOR = vec4(textureLod(screen, SCREEN_UV, 4.0).rgb, 1.0); }
+```
+
+Probe: a 1152 × 648 frame of an 80 × 80 checkerboard, left half sampled at LOD 4, right half at LOD 0. Mean absolute difference between horizontally neighbouring pixels: **0.0008 (LOD 4) vs 0.058 (LOD 0)**, about 70× smoother. The same shader in the Web export (WebGL2, Chrome) shows the blurred bands. The screen copy is made once for the canvas layer, so the cost is one copy plus the taps you sample.
+
+**해결:** for tilt-shift, scale the LOD with the distance from a horizontal focus band (`smoothstep(band, band + 0.3, abs(uv.y - focus))`, max LOD about 2.5) and average 4–5 taps offset by `SCREEN_PIXEL_SIZE * exp2(lod)` to hide the blockiness of a single mip sample. Put the layer below the UI layer so text stays sharp. Related: GDT-015.
+
+## GDT-129 — `SurfaceTool` fixes the vertex format at the first vertex: later vertices that add `set_uv()` or `set_custom()` log an error per vertex and the attribute is silently dropped
+
+`측정 2026-09-27 · Godot 4.7.2-stable · SurfaceTool (terrain mesh builder)`
+
+**증상:** a chunked terrain builder shared one `SurfaceTool` between two helpers: one wrote vertices with `set_color` + `set_custom(0, …)`, the other (cliff lips, water beds) with `set_color` + `set_uv`. The run printed, once per vertex:
+
+```
+ERROR: Condition "!first && !(format & Mesh::ARRAY_FORMAT_TEX_UV)" is true.
+   at: set_uv (scene/resources/surface_tool.cpp:325)
+```
+
+`commit()` still succeeded and the mesh rendered, so nothing looked broken at first; the mixed-in vertices simply had no UV/custom data (their shader inputs read as zero). The first vertex added decides which attributes the surface has.
+
+**해결:** give each `SurfaceTool` exactly one attribute set and route helpers to the surface that matches (here: ground quads always with `set_custom`, cliffs and lips on a separate surface with `set_uv`). When a helper must write to a custom-format surface, make it call `set_custom` too (with a neutral value) instead of `set_uv`. Grep the run log for `surface_tool.cpp` after changing a mesh builder.
+
+## GDT-127 — Automated Web-export check on macOS without gstack browse: Chrome for Testing from the Playwright cache with `--headless=new --use-angle=metal` has WebGL2, driven by raw CDP from Node's built-in `WebSocket`
+
+`측정 2026-09-27 · Godot 4.7.2 Web export (single-threaded) · Chrome for Testing 1243 (~/Library/Caches/ms-playwright) · Node 26`
+
+**증상:** GDT-086 needs a headed gstack browse daemon for WebGL2, and AGT-069/AGT-070 show that daemon silently falling back to headless or losing its profile to another session. In this session `$B --headed goto` printed `Server failed to start within 8s`, the daemon came up as `Mode: launched`, and `getContext('webgl2')` returned `false`.
+
+Launching the Playwright-cached Chrome directly works without any npm package:
+
+```
+".../chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+  --headless=new --use-angle=metal --ignore-gpu-blocklist --remote-debugging-port=<port> \
+  --user-data-dir=<tmp> --window-size=1280,800 about:blank
+```
+
+Then `fetch http://127.0.0.1:<port>/json/list`, open the page's `webSocketDebuggerUrl` with Node's global `WebSocket`, enable `Runtime`/`Log`, `Page.navigate` to the build and `Page.captureScreenshot`. Measured: `webgl2: true`, the 40 MB build left its loading screen in 28 s from a local server, the console showed `OpenGL ES 3.0 (WebGL 2.0 …) - Compatibility`, and the screenshot contained the rendered 3D scene.
+
+**해결:** keep a ~100-line CDP script in the repo (here `tests/web_smoke.mjs`): it collects console errors, waits for the loading element to disappear and saves screenshots, and exits non-zero on errors. Serve the export with a server that sends `application/wasm` for `.wasm` (Python 3.9's `http.server` needs an explicit `extensions_map` entry). Related: GDT-086, AGT-069, AGT-070.
 
 ---
 
