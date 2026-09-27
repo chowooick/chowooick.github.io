@@ -2838,3 +2838,55 @@ pre-existing, not the release's. Then hash the failing test in source and in the
 add the current test to the overlay so the next image is clean. Also: a Flask login redirect built with
 `url_for(..., next='/admin')` comes back as `/login?next=/admin` (slash not percent-encoded) — assert on the
 prefix, not on `%2F`.
+
+## OPS-127 — macOS Vision on anime illustrations: the foreground instance mask holds, person segmentation and face detection fail silently on some images, and a white sticker border on light grey is missed
+`measured 2026-09-27 · macOS 27 (Darwin 27.0.0) · Vision called from Swift 6.4 (swiftc -O) · 18 generated anime key visuals 1536×1024, 5 sticker sprites 1024×1024`
+
+**Symptom:** a game needed the heroine's silhouette and a face crop from generated anime illustrations.
+`VNGeneratePersonSegmentationRequest` (`.accurate`) returned a near-empty mask (0.9–4.9% of pixels while the character
+covered 30–53%) on 3 of 18 images and less than half of the character on 5 more. No error, just a mostly black mask.
+`VNDetectFaceRectanglesRequest` found the face on 14 of 18 (confidence 0.67–0.81) and nothing on 4; on those 4,
+`VNDetectHumanBodyPoseRequest` found head joints once, and `VNDetectHumanRectanglesRequest` found a person on only 6
+of all 18. Upscaled 2x/3x crops of the head did not help.
+
+`VNGenerateForegroundInstanceMaskRequest` + `generateScaledMaskForImage(forInstances:from:)` worked on all 18: one
+instance, the character including held props (skateboard, wrench, floating book, saber), already at the input size.
+The output is deterministic: rebuilding every mask from scratch gave byte-identical files.
+
+On opaque sticker art (white die-cut border on a flat light-grey background) the foreground mask edge lies on the
+black outline inside the white border. Used as alpha, it cuts off or half-fades the border.
+
+**Fix:** use the foreground instance mask as the silhouette. With several instances, take the one with the largest
+overlap with the person mask, or the largest one when the person mask is empty. For the face crop fall back to
+body-pose head joints, then to the top of the mask inside a ±12%-of-width window around the torso axis (median x of
+mask pixels at 45–70% of the height), which ignores raised arms and held props. For stickers on a flat background
+skip Vision: flood-fill background-coloured pixels from the image edge, set edge alpha = distance from the
+background / distance of white from the background (the white border is the outermost colour), remove the
+background with `C = (I - (1 - a)·B) / a` using that alpha, and only then choke the alpha by 1 px.
+
+## OPS-128 — `codex exec` image generation for character key art: shot words set the frame fill, capes overshoot, outfits drift to garter straps
+`measured 2026-09-27 · codex-cli 0.154.0 built-in image tool · 18 landscape 1536×1024 + 5 square 1024×1024 generations`
+
+**Symptom:** "full body, occupying about 40% of the frame" produced a character covering 11.7% of the image.
+A percentage alone does not size the subject; the shot type does. Coverage measured with the Vision foreground mask
+(OPS-127), share of a 216×144 grid:
+
+| Prompt framing | Coverage |
+| --- | --- |
+| full body, "about 40% of the frame" | 11.7% |
+| cowboy shot cropped at mid-thigh, head just below the top edge, close camera, "covers roughly 40-50%" | 42.8-50.4% (11 images) |
+| same, character in a long coat or a wide cape | 53.9%, 56.9% |
+| + "the coat hangs close to her body ... about 40%" | 52.0%, 52.3% |
+| + "compact ... background visible on both sides below the waist ... only about 35-40%" | 30.0%, 46.0% |
+| + "moderately compact ... about 42%" | 45.1% |
+
+The model also changed outfits against the prompt: "shorts over leggings" came back as thigh-high stockings with
+garter straps, and "a fitted flight suit" as shorts with a bare-thigh band and thigh straps (2 of 18). "Camera at eye
+level" reduced low angles but did not remove them. Sticker prompts that asked for "a plain, flat light-grey
+background" returned RGBA with a transparent background in 3 of 5 (46-49% transparent pixels, see OPS-076).
+Three parallel runs took 68-109 s per image over 23 generations with no rate-limit errors.
+
+**Fix:** name the shot and the crop, then tune the fill per character: add a size note only for wide costumes and
+expect about ±8 points of spread between runs of the same prompt. Spell out what covers the legs and list the
+exclusions ("full-length leggings to the ankles; no stockings, no garter straps, no bare thighs"). Measure every
+candidate and look at it at full size; hands and outfit details do not show in thumbnails.
