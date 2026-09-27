@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:30:07Z · 소스 커밋 `e933f0a` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:33:21Z · 소스 커밋 `32d4272` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9293,4 +9293,86 @@ helper still reported success, so no fallback ran.
 **해결:** Select links explicitly — `a[href], area[href]` — never a bare `[href]` (SVG `<use>`, `<image>`, `<a>` in SVG
 and `<link>` all carry `href`). When a helper moves focus, confirm it with `document.activeElement === target` before
 treating the move as done.
+
+---
+
+## OPS-165 — Firefox `DynamicsCompressorNode` crushes short transients: a 13 ms blip comes out ~12 dB quieter than in Chrome/WebKit, so a master compressor makes SFX loudness browser-dependent
+
+`측정 2026-09-27 · Firefox 153, Chrome 153, WebKit (Safari 26.6) · Playwright 1.63 headless · OfflineAudioContext 48 kHz`
+
+**증상:** A game's short UI sounds (click, hover, 12–30 ms envelopes) rendered 7.5 dB quieter in Firefox than in
+Chrome through the same master chain; sounds longer than ~1 s matched within 1 dB.
+
+Same raw graph in all three engines (sine, 1 ms attack, 12 ms decay, −20 dBFS peak), with and without a
+`DynamicsCompressorNode` (threshold −16, knee 10, ratio 3, attack 0.004, release 0.25). Output relative to input:
+
+| | Chrome / WebKit | Firefox |
+|---|---|---|
+| blip, no compressor | −0.1 dB | −0.1 dB |
+| blip at t = 0.05 s (fresh compressor) | −0.4 dB | −7.9 dB |
+| blip at t = 2.0 s (settled) | +4.4 dB | −8.1 dB |
+| 20 ms attack / 200 ms decay note at t = 0.05 s | +1.4 dB | −0.7 dB |
+
+The input never reaches the threshold. Chrome and WebKit add their automatic makeup gain (and start clamped,
+OPS-162); Firefox cuts the transient instead.
+
+**해결:** Do not put a `DynamicsCompressorNode` on a master bus whose per-sound levels are calibrated. A
+`WaveShaperNode` soft clipper (unity below 0.6, tanh knee to 0.95, input pre-scaled by 1/4 so overs up to +12 dB
+still bend smoothly) renders identically: 38 one-shots within 0.3 dB between Chrome and WebKit, the short ones
+within 0.1 dB in Firefox. Calibrate levels with no compressor in the chain.
+
+---
+
+## OPS-166 — Firefox throws `NotSupportedError` on `setValueAtTime` inside a still-running `setValueCurveAtTime`, even right after `cancelScheduledValues`
+
+`측정 2026-09-27 · Firefox 153, Chrome 153, WebKit (Safari 26.6)`
+
+**증상:** Music crossfades worked in Chrome and Safari. In Firefox, changing tracks within 1.5 s of the previous
+change left the music silent. The fade-out did `g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(v, now);
+g.gain.setValueCurveAtTime(...)` while the fade-in `setValueCurveAtTime` (started before `now`) was still running.
+Chrome and WebKit cancel the active curve, as the spec says ("any active automations whose automation event time
+is less than cancelTime are also cancelled"). Firefox keeps it, then rejects `setValueAtTime` inside the curve's
+span with `NotSupportedError`. The half-finished switch had already recorded the new track as current, so it
+never started.
+
+Minimal check: `g.gain.setValueCurveAtTime(new Float32Array([0, 0.5, 1]), 0, 1.5); g.gain.cancelScheduledValues(0.5);
+g.gain.setValueAtTime(0.4, 0.5)` throws in Firefox only.
+
+**해결:** Never re-automate a param that may still be inside a curve. Put the fade-in curve and the fade-out
+curve on two `GainNode`s in series (the second has no events until the fade-out), so a fade-out that starts
+mid-fade-in is just a product of two curves. Or use `setTargetAtTime` / linear ramps, which have no such span.
+
+---
+
+## OPS-167 — Firefox `BiquadFilterNode` warns "channel count changes may produce audio glitches" when a bus input flips between mono and stereo
+
+`측정 2026-09-27 · Firefox 153`
+
+**증상:** Console warning `BiquadFilterNode channel count changes may produce audio glitches.`, 6 times in a
+25 s session. Bus-level biquads (a music duck lowpass, a reverb-send highpass) summed voices that were mono
+(oscillator → gain) or stereo (through a `StereoPannerNode`), so their computed input channel count changed as
+voices started and ended. Firefox resets the filter state on each change.
+
+**해결:** Pin bus nodes to a fixed layout: `node.channelCount = 2; node.channelCountMode = "explicit"` on the bus
+biquads and the master gain. Levels do not change (mono up-mixes to L = R either way) and the warning is gone.
+
+---
+
+## OPS-168 — Web Audio CPU: a-rate LFO into oscillator `detune` costs 3.7× and automated biquads 2×; `automationRate = "k-rate"` removes most of it
+
+`측정 2026-09-27 · Chrome 153 headless · OfflineAudioContext 48 kHz, 20 s renders · share of one core, Apple Silicon Mac under load (ratios are the point)`
+
+**증상:** A generative music engine (detuned-saw strings and brass with vibrato LFOs, swept filters) used up to
+22 % of one core per track in offline renders.
+
+Per 100 nodes: sine oscillator 4.2 % (k-rate) vs 4.5 % (a-rate); sawtooth with an LFO into `detune` 4.8 % (k-rate)
+vs 17.7 % (a-rate); `BiquadFilterNode` with a frequency ramp 14.5 % (k-rate) vs 29.2 % (a-rate); `GainNode` running
+`setTargetAtTime` 5.1 % vs static 1.8 %; `StereoPannerNode` 3.2 %; looping noise `AudioBufferSourceNode` 4.2 %.
+`ConvolverNode` cost grows linearly with impulse length: stereo 2.8 s 8.5 %, 2.0 s 6.1 %, 1.5 s 4.4 %, and a mono
+impulse halves it.
+
+**해결:** Set `param.automationRate = "k-rate"` on every param that is not audio-rate FM (oscillator
+`frequency`/`detune`, filter `frequency`/`Q`, panner `pan`). An LFO connected to a k-rate param is sampled once
+per 128 frames, which is inaudible for vibrato and filter sweeps. Keep reverb impulses around 2 s. With this and
+filter-free plucked notes, the heaviest track went from 21.8 % to 16.5 % of one core in the same setup.
 
