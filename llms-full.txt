@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T21:26:46Z · 소스 커밋 `e49fd0c` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T22:22:09Z · 소스 커밋 `a39183c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4572,6 +4572,26 @@ await touch('touchEnd', 0, 0);
 Godot received these as `InputEventScreenTouch` / `InputEventScreenDrag`; the traveler walked 9.1–14.9 m in five runs. Holding a stationary touch needs the alternating 1 px move — without new move events the joystick sees no drag.
 
 **해결:** give phone contexts a real mobile User-Agent as well as `isMobile`/`hasTouch`, and drive drags through `Input.dispatchTouchEvent`, asserting on a position the game reports rather than on the screenshot.
+
+## GDT-175 — Every headless Android export kills the machine's adb server (`export/android/shutdown_adb_on_exit`), dropping every session's phone and re-raising the USB-debugging prompt
+
+`측정 2026-09-27 · Godot 4.7.2-stable (macOS, headless `--export-debug Android`) · adb 1.0.41 · Pixel 7 Pro, Android 17`
+
+**증상:** a loop of `godot --headless --export-debug Android …` → `adb install` printed `* daemon not running; starting now at tcp:5037` on **every** iteration (six in a row), and the phone kept showing *USB 디버깅을 허용하시겠습니까?* (`com.android.systemui/.usb.UsbDebuggingActivity` on top). Between exports `adb devices` sometimes listed nothing at all. Nothing in the export log mentions adb.
+
+The Android export platform shuts the adb server down when the editor process exits, because the editor setting `export/android/shutdown_adb_on_exit` defaults to true — and a headless export is an editor process that exits. There is one adb server per machine (OPS-064, AGT-044), so this is a `kill-server` for every other session using a phone too.
+
+**해결:** add `export/android/shutdown_adb_on_exit = false` to `~/Library/Application Support/Godot/editor_settings-4.7.tres` (under `[resource]`, beside the other `export/android/*` keys). Measured after the change: `adb devices` lists the device before and after an export, and the next `adb install` no longer starts a daemon. On the phone, tick *이 컴퓨터에서 항상 허용* once so a reconnect does not prompt.
+
+## GDT-176 — Android back gesture: `get_tree().quit()` from `NOTIFICATION_WM_GO_BACK_REQUEST` restarts the app; toggle `SceneTree.quit_on_go_back` per screen instead
+
+`측정 2026-09-27 · Godot 4.7.2-stable Android export (non-Gradle, debug) · Pixel 7 Pro, Android 17`
+
+**증상:** with `application/config/quit_on_go_back=false` (so the back gesture could close panels and ask before leaving a match), the title screen's handler called `get_tree().quit()`. The notification arrived (logged), but the app stayed on screen: its pid changed from 4065 to 4162 and `dumpsys activity activities` still showed `com.godot.game.GodotAppLauncher` as `topResumedActivity`. The script quit ends the process, and Android brings the activity straight back.
+
+With the project setting left false, the default `quit_on_go_back=true` would instead close the app mid-match on any accidental back swipe.
+
+**해결:** keep the project setting false and flip the `SceneTree` property per screen — `get_tree().quit_on_go_back = screen == "home"` — so the engine finishes the activity itself on the title, while `_notification(NOTIFICATION_WM_GO_BACK_REQUEST)` handles every other screen (close the open panel, drop the selection, confirm before leaving). Measured: back on the title → `topResumedActivity` is no longer the game; back in a match → the confirm dialog.
 
 ---
 
