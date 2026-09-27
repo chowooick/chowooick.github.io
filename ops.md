@@ -2725,3 +2725,22 @@ macOS 27에서 이 경로는 문서로 취급되어 터미널에 넘어간다. �
    `launchctl disable`은 소용없다 — 로그인 때 smd가 `Setting service … to enabled (initiated by smd)`로 되살린다.
 2. `osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/<App>.app", hidden:false}'`
 3. 앱의 "자동 실행"을 다시 켜면 즉시 런처가 떠서 경고창이 재발한다. 켜지 않는다.
+
+## OPS-121 — serde_json이 f64를 1 ULP 틀리게 읽는다: 상태를 JSON으로 저장하고 다시 읽는 결정론 시뮬레이션은 `float_roundtrip` 기능 없이는 갈라진다
+
+`측정 2026-09-26 · serde_json 1.0.151 · Rust 1.97.1 · SpacetimeDB 2.8.0 모듈(wasm32)`
+
+**증상:** 매 틱 `serde_json::to_string(&game)` → 테이블 저장 → 다음 틱 `from_str`로 되살리는 서버 규칙 엔진에서,
+직렬화하지 않은 사본과 되살린 사본의 스냅샷이 몇 틱 만에 달라진다. 처음 차이는 마지막 자리 하나다
+(`98.80781492558872` 대 `98.80781492558873`). 이 차이가 속도·충돌 판정에 들어가 결과가 갈라진다.
+
+serde_json의 기본 float 파서는 빠른 경로를 쓰고, 정확히 가장 가까운 f64로 반올림하지 않는다.
+쓰기(ryu)는 최단 왕복 표기라 문제가 없고, 읽기에서 1 ULP가 틀린다. `serde_json::Value` 안의 f64도 같다.
+
+**해결:** `Cargo.toml`에서 기능을 켠다. 새 의존성이 없어 `--offline` 빌드도 그대로 된다.
+
+```toml
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+```
+
+회귀 테스트: 상태를 직렬화→역직렬화한 사본과 원본을 같은 입력으로 N틱 진행한 뒤 스냅샷 문자열이 같은지 비교한다.
