@@ -2407,3 +2407,36 @@ build as well.
   moved `shaped_text_get_line_breaks` at 300 px from "…퍼센트 | 에 들어갑니다" to
   "…실루엣만 | 퍼센트에 들어갑니다", and the string width stayed 374.0 px.
 - A project that enables `include_text_server_data` needs GDT-104 for Korean on the web too.
+
+---
+
+## GDT-109 — GL Compatibility passes vertex `COLOR` and `source_color` uniforms to spatial shaders as raw sRGB: a luminance taken from `COLOR.rgb` is about 2–3× the linear value
+
+`측정 2026-09-27 · Godot 4.7.2-stable · GL Compatibility (OpenGL 4.1 Metal, Apple M1 Max) · windowed contact-sheet render`
+
+**증상:** A shared spatial shader recolours foliage and grass by brightness:
+`float lum = dot(COLOR.rgb, vec3(0.3, 0.55, 0.15)); base = grass_color.rgb * (lum / 0.17);`.
+The 0.16–0.17 reference is the *linear* luminance of a mid green. In the Compatibility renderer
+every grass mesh rendered white-yellow in all seasons, and fall foliage (`foliage_color` set to
+`d27a32` with `set_shader_parameter`) rendered pale yellow instead of orange. Plain albedo looked
+correct, so nothing pointed at colour space.
+
+Measured with boxes of known vertex colours (top-face pixel of the render, same light for all):
+
+| vertex colour | plain albedo | grass branch as written | grass branch, `lum` from `to_linear(COLOR.rgb)` |
+|---|---|---|---|
+| `3d6a3c` | `4d8246` | `ffffb4` | `618432` |
+| `56823f` | `6c9f49` | `fffffe` | `95c850` |
+
+The written result matches a model where `COLOR`, the shader-source default of a `source_color`
+uniform, and a colour set with `set_shader_parameter()` all arrive as the raw sRGB numbers and
+lighting runs on them directly: for `3d6a3c`, sRGB luminance 0.336 / 0.17 = 1.98 × `(0.46, 0.62, 0.28)`
+× the measured light gain 1.27 → `ffffb3` (observed `ffffb4`). The linear reading (luminance 0.100)
+predicts a dark green. Fall foliage checks out the same way: predicted `ffff7a`, observed `ffff7c`.
+
+**해결:** In a Compatibility-renderer shader, convert before any colour arithmetic that assumes
+linear values: `float lum = dot(to_linear(COLOR.rgb), vec3(0.3, 0.55, 0.15));` (with
+`to_linear(c) = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c))`).
+Alternatively keep sRGB maths and calibrate constants on sRGB values (a mid green is ~0.35–0.45).
+Verify colour logic with a pixel probe of a rendered sheet (PIL `getpixel`), not by eye: the
+washed-out result looks like "bright lighting" until the numbers are compared.
