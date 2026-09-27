@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T07:13:40Z · 소스 커밋 `d650451` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T07:21:40Z · 소스 커밋 `7727934` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2815,6 +2815,21 @@ quit(exit_code)
 In a 156-check audio test this took the exit report from 8 leaked instances to none. The lines are
 exit-only noise, but they hide real leak regressions in the same test run.
 
+## GDT-096 — `"%x" % n` prints a negative int with a minus sign (`-5`, `-340d631b7bdddcdb`): to match a Rust `u64` hash, print the two 32-bit halves
+
+`측정 2026-09-27 · Godot 4.7.2 · Rust 1.97.1`
+
+**증상:** A content hash (FNV-1a 64 over the same JSON files) had to match between a SpacetimeDB Rust module
+and the Godot client. FNV's offset basis `0xcbf29ce484222325` does not fit a signed int64, and GDScript
+`"%016x" % -3750763034362895579` prints `-340d631b7bdddcdb` instead of `cbf29ce484222325`.
+
+GDScript `int` multiplication wraps modulo 2^64, like Rust `wrapping_mul`, so the arithmetic itself
+matched: the client and the server both produced `f256051205efd6e4` for the same files.
+
+**해결:** Keep the value as a signed int and format the halves:
+`"%08x%08x" % [(h >> 32) & 0xFFFFFFFF, h & 0xFFFFFFFF]`. Write the offset basis as its signed value
+(`-3750763034362895579`) because the hex literal overflows.
+
 ---
 
 <!-- source: agents.md -->
@@ -4221,6 +4236,22 @@ $B js "window.__r"
 **해결:** 결과를 믿기 전에 `$B status`의 `Mode`와 PID가 처음과 같은지 본다. 서버에서 오래 도는 작업을 확인할 때는 브라우저 버튼을 쓰지 않는다.
 같은 엔드포인트를 `curl --max-time 600`처럼 끝까지 붙어 있는 클라이언트로 직접 부르고, 서버 로그는 `wrangler tail --format json`으로 같이 본다.
 headed 창은 로그인과 짧은 화면 확인에만 쓴다.
+
+## AGT-064 — WebSearch's 200-call cap is shared by the whole session, subagents included: parallel research agents run dry mid-task
+
+`측정 2026-09-27 · Claude Code (VS Code extension), 3 general-purpose subagents in parallel`
+
+**증상:** Three research subagents were launched at once (original game, market/policy, tech stack).
+Two of them reported, independently, that the session's WebSearch limit of 200 calls ran out in the
+middle of their work. The market agent had split itself into six parallel strands; each strand got
+only 11–30 searches before the cap hit. Agents launched later in the same session could not search
+at all.
+
+The cap belongs to the session, not to each agent. Every agent you add divides the same 200 calls.
+
+**해결:** Give each research prompt an explicit search budget (for example 40) and tell it to open
+known URLs directly instead of searching for them. Launch the agent that needs search most first.
+When the cap is gone, fall back to direct fetches (OPS-133).
 
 ---
 
@@ -7209,4 +7240,57 @@ Measured facts:
 - Pass `-s <fixed number>`, for example the CRC32 of the file name, to get byte-identical rebuilds.
 - Encode to a temporary path, then write the bytes to the final path (or `cp` it), so `du`
   matches the real size.
+
+## OPS-133 — Reading research sources when sites block agents or WebSearch is exhausted: GameFAQs and MobyGames answer 403; Wikipedia `?action=raw`, Wayback `id_` snapshots and the Fandom MediaWiki API still return the text
+
+`측정 2026-09-27 · curl 8.x, WebFetch, web.archive.org, en.wikipedia.org, *.fandom.com`
+
+**증상:** `curl` to `gamefaqs.gamespot.com/...` and `www.mobygames.com/game/...` returns HTTP 403 (checked
+directly). WebFetch refused theguardian.com, wired.com, polygon.com and gamesindustry.biz, and Fandom
+pages answered 402, during a research run on an old PC game.
+
+What still worked (the research agents read full page text this way; the Wikipedia call was re-checked):
+
+- **Wikipedia:** `https://en.wikipedia.org/wiki/<Title>?action=raw` returns the wikitext itself, with
+  every `<ref>` URL and access date, which is faster than scraping the rendered page for primary sources.
+- **Archived copies:** `https://web.archive.org/web/<timestamp>id_/<original url>` returns the archived
+  bytes without the Wayback toolbar. Find a timestamp first with
+  `https://archive.org/wayback/available?url=<url>`; an empty `archived_snapshots` means that exact URL
+  was never saved (try the other URL forms the site has used).
+- **Fandom wikis:** the MediaWiki API (`https://<wiki>.fandom.com/api.php?action=parse&page=<Title>&format=json`)
+  answers when the page itself returns 402.
+- **News sites WebFetch refuses:** `curl` with a normal browser `User-Agent` header returned the article body.
+
+**해결:** Try these before re-searching. Check robots rules first (OPS-095).
+
+## OPS-134 — SpacetimeDB 2.8 `v1.json.spacetimedb`: snapshot rows are named objects but live updates from others are `TransactionUpdateLight` with positional arrays, even without `light=true`
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone, Rust module, Godot 4.7.2 WebSocketPeer client`
+
+**증상:** A GDScript client subscribed with `Subscribe {query_strings: ["SELECT * FROM world_clock"]}` on
+`/v1/database/<db>/subscribe?compression=None` (no `light` parameter). Raw frames, printed as received:
+
+- `InitialSubscription`: each row is a JSON **string of an object** with column names,
+  `{"id":0,"hour":11.62,"rate":0.0083,"weather":2,...}`.
+- A change made by a scheduled reducer (not by this client) arrived as **`TransactionUpdateLight`**,
+  not `TransactionUpdate`, and its rows are JSON **strings of positional arrays**,
+  `"[0,11.63808,0.008333334,2,0.98155856,1790493580513]"`. An update is a delete and an insert with the
+  same primary key in one `updates` entry.
+- Calls made by this client come back as full `TransactionUpdate` with `status`, `reducer_call.request_id`,
+  `caller_identity` and a `timestamp` object (`{"__timestamp_micros_since_unix_epoch__": n}`). That
+  timestamp gives an NTP-style clock offset: `server_ts - (send_time + receive_time) / 2`.
+
+A decoder that only handles one row shape silently drops the other half of the traffic.
+
+Also measured in the same project:
+- `SELECT * FROM inventory WHERE owner = :sender` works in a v1 `Subscribe`; each client receives only
+  its own rows. (2.8 does not enforce row-level security on public tables, so this is a bandwidth
+  filter, not access control.)
+- In `#[reducer(init)]`, `ctx.sender()` is the identity of the CLI that published, so `init` can seed an
+  admin table; admin-only reducers then work through `spacetime call` from the same `--root-dir`.
+
+**해결:** Map positional arrays to column names from `GET /v1/database/<db>/schema?version=9`
+(`typespace.types[table.product_type_ref].Product.elements[i].name.some`) and accept both shapes. Handle
+`TransactionUpdate` and `TransactionUpdateLight` alike. Reference implementation:
+`~/work/cobramission/client/core/net/spacetime_client.gd`.
 
