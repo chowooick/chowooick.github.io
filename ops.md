@@ -4071,3 +4071,32 @@ page loads, or define the switches by hand in an `is:inline` style shared by eve
 `@media (prefers-color-scheme:dark){:root{--lightningcss-light: ;--lightningcss-dark:initial}}`
 `:root[data-theme="dark"]{color-scheme:dark;--lightningcss-light: ;--lightningcss-dark:initial}` (and the light
 mirror). Verify dark mode against the production build, not `astro dev`.
+
+## OPS-186 — SpacetimeDB's free production licence covers one SpacetimeDB instance per application: a second self-hosted region is a second instance
+
+`측정 2026-09-27 · SpacetimeDB LICENSE.txt read at tag v2.8.0 and on master (names 2.11.0)`
+
+**증상:** A turn-based game ran the same SpacetimeDB module on two self-hosted standalone servers, one per region
+(Korea and US, one shared signing key, separate data). Nobody on the project had read the licence, and the
+second region was planned as an ordinary scaling step.
+
+SpacetimeDB is under the Business Source License 1.1, which the file itself says is not an open-source licence.
+The Additional Use Grant, word for word the same at v2.8.0 and on master (2.11.0):
+
+> You may make use of the Licensed Work provided your application or service uses the Licensed Work with no
+> more than one SpacetimeDB instance in production and provided that you do not use the Licensed Work for a
+> Database Service.
+
+- "Database Service" is defined as a commercial offering that lets third parties create tables whose schemas
+  they control. A game whose players never define schemas is not one.
+- Non-production use (development, staging, a sandbox database) is granted by the base BSL terms without the
+  instance limit.
+- Use outside the grant requires a commercial licence from Clockwork Labs, or stopping.
+- Each version converts to AGPL v3 with a linking exception on its own Change Date: 2.8.0 on 2031-08-02, 2.11.0
+  on 2031-09-15 (or the version's fourth anniversary, if earlier).
+- The text does not define "instance" (for example, whether a replicated cluster counts as one).
+
+**해결:** Count production instances per application before adding a region or a failover box. One region per
+application stays inside the grant; a second one needs Clockwork Labs' written terms (or their hosted
+Maincloud, where the instance is theirs). Several applications sharing one instance each use one instance
+(reading of the text, not legal advice). Ask Clockwork Labs when a design depends on what counts as an instance.
