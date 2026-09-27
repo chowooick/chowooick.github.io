@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T04:37:36Z · 소스 커밋 `18638e4` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T04:44:44Z · 소스 커밋 `29cdce7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2665,6 +2665,19 @@ setTimeout(()=>{const u={...o,buttons:0};c.dispatchEvent(new PointerEvent('point
 
 스크린샷 픽셀은 CSS 좌표가 아니다(headed 창은 `viewport` 설정이 먹지 않았고 dpr 2). `$B --headed js "innerWidth+'x'+innerHeight"`로
 실제 크기를 받아 `X = 스크린샷x × innerWidth / 스크린샷폭`으로 환산한다. 이 방법으로 로비 → 온라인 대화상자 → 방 참여까지 진행했다.
+
+## GDT-087 — 삼항식으로 만든 배열을 `Array[float]` 변수에 넣으면 SCRIPT ERROR가 나고 그 함수만 조용히 중단된다. 테스트 러너의 종료 코드는 0으로 남는다
+
+`측정 2026-09-26 · Godot 4.7.2-stable, --headless --script 테스트 러너`
+
+**증상:** `var spreads: Array[float] = [0.0] if stage == 1 else [-0.22, 0.0, 0.22]` 한 줄이 실행될 때마다
+`SCRIPT ERROR: Trying to assign an array of type "Array" to a variable of type "Array[float]".`가 찍힌다.
+그 함수는 그 줄에서 멈추지만 호출한 쪽은 계속 돌아간다. 그래서 `_check` 기반 테스트는 "75 checks, 0 failures"로 통과했고,
+이 분기(보스의 조준 사격)만 한 번도 일어나지 않았다. 밸런스 측정에서 "탄에 맞은 횟수 0"이 나와서야 알았다.
+리터럴을 바로 대입하면 타입이 추론되지만 삼항식의 결과는 타입 없는 `Array`로 취급된다.
+
+**해결:** 삼항식 결과를 받는 변수는 `var spreads: Array = ...`처럼 타입 없는 Array로 선언하거나, `Array[float](...)`로 감싼다.
+테스트를 돌릴 때는 `2>&1 | grep -E "SCRIPT ERROR|checks"`처럼 출력에서 `SCRIPT ERROR`를 함께 거른다. 통과 개수만 보면 이 오류를 놓친다.
 
 ---
 
@@ -6781,4 +6794,16 @@ serde_json = { version = "1.0", features = ["float_roundtrip"] }
 ```
 
 회귀 테스트: 상태를 직렬화→역직렬화한 사본과 원본을 같은 입력으로 N틱 진행한 뒤 스냅샷 문자열이 같은지 비교한다.
+
+## OPS-122 — macOS Vision `VNGeneratePersonSegmentationRequest`로 사람 마스크를 추가 설치 없이 만들 수 있다. 출력은 입력 비율과 무관하게 2016×1512다
+
+`측정 2026-09-26 · macOS 27, Swift 컴파일러(swiftc) 기본 설치, qualityLevel .accurate`
+
+**증상:** 게임 스테이지용 인물 실루엣 마스크가 필요했지만 Python에 rembg·torch가 없었다. 모델을 받으면 수백 MB다.
+Vision 요청을 쓰는 20줄짜리 Swift(`VNImageRequestHandler(cgImage:)` → `results.first.pixelBuffer` → `NSBitmapImageRep(ciImage:)` → PNG)를
+`swiftc -O`로 빌드해 돌리면 1536×1024 입력에서 약 1초 만에 결과가 나온다. 결과 PNG는 입력이 3:2인데도 **2016×1512(4:3)**다.
+픽셀 좌표를 그대로 겹치면 어긋난다.
+
+**해결:** 마스크를 입력 크기로 리사이즈한다(PIL `mask.resize(image.size)`). Vision 출력은 이미지 전체를 늘려 덮으므로 정규화 좌표가 일치한다.
+머리카락 가장자리는 회색 값이라 셀 격자로 줄일 때는 `Image.BOX` 평균 뒤 128 이상을 사람으로 친다.
 
