@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:33:39Z · 소스 커밋 `70ad1db` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:34:17Z · 소스 커밋 `8fb1cb9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9049,6 +9049,13 @@ check them before each batch, write results after every page, relaunch the brows
 and count failed views separately from findings. Split the matrix over 4 processes per image, not 8: on a shared
 10-core Mac with other sessions running, 8 processes made each one slower (load average up to 195) rather than the
 run shorter.
+
+When the workstation itself is saturated (load average 300–500 later the same day), run the browsers on the server
+next to the app instead: `docker run --rm --network host --ipc=host mcr.microsoft.com/playwright:v1.63.0-noble`
+with the harness mounted and `npm i playwright@1.63.0` inside (the image carries the browsers, not the package).
+Three containers at `--cpus 2` measured 228 Chromium views in about 9 minutes on a 12-vCPU arm64 host, against
+about 40 minutes on the Mac. Keep Safari-specific checks (select heights, OPS-151) on macOS WebKit: the image's
+WebKit is the Linux port.
 
 ## OPS-151 — Desktop WebKit draws a `<select>` 23px tall as soon as it has any border, radius or background, ignoring the author's `min-height` and `padding`; `appearance: none` restores them
 
