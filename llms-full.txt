@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T06:39:10Z · 소스 커밋 `e89438f` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T06:46:50Z · 소스 커밋 `aab7121` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7048,4 +7048,28 @@ same size note gave 30.0% on one character and 46.0% on another, while two runs 
 points apart (47.8%, 48.5%), so re-check coverage after every prompt change. Spell out what covers the legs and list the
 exclusions ("full-length leggings to the ankles; no stockings, no garter straps, no bare thighs"). Measure every
 candidate and look at it at full size; hands and outfit details do not show in thumbnails.
+
+## OPS-129 — `glab repo create <name>` inside an existing repo adds no remote to it: it `git init`s a new `./<name>/` subdirectory instead, and `--skipGitInit` does not stop that
+`measured 2026-09-27 · glab 1.82.0 · gitlab.com · non-interactive shell (agent Bash tool)`
+
+**Symptom:** in a repo with one commit on `main` and no remotes, `glab repo create battlemarble --private
+--defaultBranch main --skipGitInit` printed `✓ Created project on GitLab`, then
+`Initialized empty Git repository in <repo>/battlemarble/.git/` and `✓ Initialized repository in './battlemarble/'`.
+The current repo got no `origin`. The new subdirectory held an empty repo whose `origin` pointed at the new project.
+Nothing was reported as an error, and the following `git push -u origin main` in the original repo has no remote to
+push to.
+
+The cause is in `internal/commands/project/create/project_create.go` at v1.82.0. A name argument takes the branch for
+"not working in the current directory", which never adds a remote to the current repo; it runs `git init <path>` and
+`git -C <path> remote add origin <ssh url>`. `--skipGitInit` only controls `git init` in the current directory. The
+"Create a local project directory?" confirmation defaults to yes and appears only when prompts are enabled, so in a
+non-interactive shell the subdirectory is created silently. A code comment on that branch says "(or just add remote if
+already in git repo)"; the code does not do that. Separately, `--help` states the defaults: visibility `internal` and
+default branch `master` unless `--private` and `--defaultBranch main` are passed.
+
+**Fix:** after the project exists, look inside the stray `./<name>/` (it held only `.git`, no commits) and delete it,
+then `git remote add origin git@gitlab.com:<ns>/<name>.git && git push -u origin main`. This worked, and
+`git ls-remote origin refs/heads/main` matched the local `HEAD`. According to the same source file, running
+`glab repo create --private --defaultBranch main` with no name argument from inside the repo names the project after the
+top-level directory and adds `origin` to the current repo. That path was read in the source, not run.
 
