@@ -3424,11 +3424,11 @@ then tween `"shader_parameter/<name>"`.
 `측정 2026-09-27 · Godot 4.7.2-stable (standard single-precision build) · Rust 1.97.1 · SpacetimeDB module port of a GDScript rules engine`
 
 **증상:** a deterministic GDScript rules engine (floats for positions, `Vector2` for a few helpers such as
-`Vector2(a, b).distance_to(c)`, summing capture centres, nearest-point searches) was ported to Rust with `f64`
-throughout. A trace test that compares both engines record by record diverged wherever a value passed through
-`Vector2`: in a standard Godot build `Vector2` stores `real_t = float` (32-bit), so `distance_to()`, `+=` on a
-`Vector2` and every component read back from it are rounded to single precision, while plain GDScript `float`
-variables stay 64-bit.
+`Vector2(a, b).distance_to(c)`, summing capture centres, nearest-point searches) had to be ported to Rust so the
+server could run the same game. In a standard Godot build `Vector2` stores `real_t = float` (32-bit), so
+`distance_to()`, `+=` on a `Vector2` and every component read back from it are rounded to single precision, while
+plain GDScript `float` variables stay 64-bit. An `f64`-everywhere port therefore computes different values at those
+spots, and a bit-exact comparison cannot pass.
 
 **해결:** in the port, use `f32` exactly where the GDScript builds or combines a `Vector2`, and `f64` everywhere
 else; convert at the same points the GDScript does. With that, 2,025 trace records over 10 stages (solo and two
