@@ -2928,3 +2928,23 @@ fired.
 `visible = true` just before `restart()` in the burst call. Four consecutive course switches then
 read 0 % dark (the remaining dark share was the cave's own background). Hidden idle emitters also stop
 costing a draw call each.
+
+## GDT-138 — A `godot --script` runner whose preloaded script fails to parse never exits: the call into it errors before `quit()` and the headless SceneTree idles forever
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS · godot --headless --path <proj> --script res://main.gd`
+
+**증상:** A headless check script (`extends SceneTree`, `const X = preload("res://x.gd")`, `quit()` at the
+end of `_initialize`) ran past a 120-second tool timeout with no output at all. `x.gd` had a
+`:=` inference parse error (`Cannot infer the type of "u0" variable`). Godot prints
+`Parse Error` → `Failed to compile depended scripts` → `Failed to load script "res://main.gd" with error
+"Compilation failed"`, **and then still runs `_initialize`**. The first call into the broken script
+fails (`Invalid call. Nonexistent function ...`), the function aborts before `quit()`, and the process
+keeps idling. Piping the output through `grep | head` hides even the error lines, because nothing is
+flushed until the process ends. Minimal repro (broken.gd = `var x := d["a"]`, main.gd calls it then
+`quit(0)`): `timeout 25 godot --headless --script res://main.gd` → exit 124 after 26 s, output ends at
+the error.
+
+**해결:** Wrap every `--script` run in `timeout N` and treat 124 as a failure. Parse-check changed
+dependencies first with `timeout 40 godot --headless --path <proj> --check-only --script res://x.gd`,
+which prints the parse error and exits. Write runner output to a file instead of piping it into
+`head`, then grep the file for `SCRIPT ERROR|Parse Error`.
