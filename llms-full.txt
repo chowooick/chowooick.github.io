@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T06:59:17Z · 소스 커밋 `f5eddf0` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T07:13:40Z · 소스 커밋 `d650451` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2783,6 +2783,37 @@ In every row the texture size equals the window size multiplied by the stretch s
 
 Button의 normal/hover/pressed/focus 스타일박스에 그대로 넣으면 컨테이너 배치·키보드 포커스가 기본 동작 그대로 유지된다.
 웹 빌드에서도 같은 모양으로 그려졌다.
+
+## GDT-095 — A headless run that quits while `AudioStreamPlayer`s are still playing reports leaked `AudioStreamPlaybackOggVorbis` instances; stopping them in `_exit_tree()` makes it worse
+
+`측정 2026-09-27 · Godot 4.7.2-stable, --headless (Dummy audio driver)`
+
+**증상:** A headless test that ends with `quit()` while OGG music or one-shot effects are still
+sounding prints `WARNING: N ObjectDB instances were leaked at exit` and
+`ERROR: M resources still in use at exit`. `--verbose` lists `AudioStreamPlaybackOggVorbis`,
+`OggPacketSequencePlayback` and the `.ogg` resources that were playing.
+
+- The count depends on what is sounding at the moment of quit: 26 to 34 across runs of the same
+  UI test.
+- Adding an `_exit_tree()` to the audio node that calls `stop()` on every player and clears its
+  `stream` raised the count to 44.
+- Calling `stop()` and then waiting 0.1 s before freeing removed the lines entirely. That fits the
+  playbacks being released on a later audio mix step, which teardown never reaches.
+
+**해결:** At the end of a test, stop the players, give the audio server a moment, then free and quit:
+
+```gdscript
+for child in audio_node.get_children():
+    if child is AudioStreamPlayer:
+        child.stop()
+await create_timer(0.1).timeout
+audio_node.queue_free()
+await process_frame
+quit(exit_code)
+```
+
+In a 156-check audio test this took the exit report from 8 leaked instances to none. The lines are
+exit-only noise, but they hide real leak regressions in the same test run.
 
 ---
 
@@ -7146,4 +7177,36 @@ top-level directory and adds `origin` to the current repo. That path was read in
 
 **해결:** 무료 플랜이라는 이유만으로 작업을 잘게 쪼개지 않는다. 먼저 `wrangler tail --format json`으로 실제 `cpuTime`과 `outcome`을 잰다.
 다만 1회 측정이고 보장된 동작이 아니다. 한도에 걸리면 실행이 기록 없이 끊겨 "실행 중" 상태가 남으니 그런 상태를 감지하는 점검을 따로 둔다.
+
+## OPS-132 — `oggenc` (vorbis-tools) for game assets: decoded peaks move up to +1.6 dB, every run gets a random stream serial, and the written files over-allocate on APFS
+
+`측정 2026-09-27 · vorbis-tools 1.4.3 (libvorbis 1.3.7), oggdec, macOS APFS`
+
+**증상:** A generator normalised 34 mono sound effects to exactly -3.0 dBFS sample peak and encoded them
+with `oggenc -q 5`. After decoding with `oggdec`, most peaks were within ±0.4 dB, but not all of them:
+
+- A bass-heavy explosion (sub boom plus noise) came back at -1.4 dBFS, +1.6 dB.
+- A dense, saturated square-wave buzz came back with 0 dBFS (clipped) samples and a 4x-oversampled
+  true peak of +3.4 dBTP.
+
+Rebuilding the same audio produced files with different md5 even though they decoded to identical
+samples. `du -sh` reported 7.5 MB for an audio folder whose files summed to 5.69 MB.
+
+Measured facts:
+
+- **Length is exact.** All 44 files decoded to exactly the rendered sample count, loops up to
+  4,167,450 samples, so sample-exact loop points survive the round trip.
+- **Random serial.** `oggenc` picks a random Ogg stream serial on every run. That alone makes
+  rebuilds differ byte for byte.
+- **APFS over-allocation.** A 1,448,267-byte `.ogg` written by `oggenc` held 4,224 × 512-byte
+  blocks (2.16 MB). A `cp` of the same file allocated normally (1,984 blocks for a 1,014,433-byte
+  file).
+
+**해결:**
+- Measure peaks on the decoded file, not the WAV you fed in. Correct the gain by the measured
+  difference and re-encode; one or two passes land within ±0.4 dB. Keep dense, saturated sounds
+  off full scale before encoding.
+- Pass `-s <fixed number>`, for example the CRC32 of the file name, to get byte-identical rebuilds.
+- Encode to a temporary path, then write the bytes to the final path (or `cp` it), so `du`
+  matches the real size.
 
