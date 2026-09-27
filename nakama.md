@@ -893,3 +893,20 @@ decode, and the server drops the connection instead of answering with an error. 
 **해결:** Send every metadata value as a string: `JSON.stringify(value)` on the client, and in the match handler
 decode it (`pcall(nk.json_decode, metadata.look)` in Lua). Data that changes after the join (appearance, display name)
 is better sent as match data after joining than packed into the join.
+
+## NKM-041 — Nakama answers browser CORS preflights with `Access-Control-Allow-Origin: *`, so an end-to-end harness can serve the web build on one port and talk to a disposable Nakama on another without a proxy
+
+`측정 2026-09-27 · Nakama 3.37.0 (docker, default config) · @heroiclabs/nakama-js 2.8.0 · Chrome via Playwright`
+
+**증상:** a web client that computes its server from `location.origin` needs nginx in front of Nakama in production. For local end-to-end tests that meant either running the production nginx image or writing a reverse proxy with WebSocket upgrade.
+
+A preflight to the REST API from another origin:
+
+```
+OPTIONS /v2/account/authenticate/device  Origin: http://127.0.0.1:5555
+→ 200 OK · Access-Control-Allow-Origin: * · Access-Control-Allow-Headers: Authorization,Content-Type
+```
+
+With the page on `http://127.0.0.1:<static port>` and `window.LEGEND_NAKAMA_URL = 'http://127.0.0.1:<nakama port>'` set by `page.addInitScript` before the client bundle loads, device authentication, RPCs (save/load progress), the realtime socket and match data all worked in four full runs: two browser contexts saw each other and a reload restored the saved position.
+
+**해결:** give the web client an override for its Nakama endpoint (a global read before connecting), serve the build with any static server, and point the override at the test container (`docker compose -p <unique> ... up -d --wait` on a free port). No proxy is needed; keep the production path (same origin through nginx) as the default.

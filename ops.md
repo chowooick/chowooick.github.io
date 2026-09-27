@@ -3998,3 +3998,16 @@ The server states the contract itself. `GET /v1/database/<db>/schema?version=9` 
 Measured use (the `button` game's `godot/tests/schema_test.gd`): for every public table, write one BSATN row from the schema giving each column a value no other column has, decode it with the client's decoder, and assert (1) the decoder consumed exactly the row's bytes, (2) it named the columns in the module's order, (3) each name came back holding the value written under it. Broken on purpose four ways — two columns' names swapped, a `U8` inserted mid-table, a `U8` widened to `U16`, the private `layout` table flipped to public — each failed by name; the real schema passed with 8 tables and 71 columns. The same endpoint on every production host, compared with the local module's, is the check that catches a region left behind after a publish (reducers **and** tables — one game had each half of that outage).
 
 **해결:** make the module's `/schema` the contract for any client without generated bindings: decode a synthetic row per public table in CI, assert the tables that must stay private are `Private`, and compare every deployed host's `/schema` with the local build's after each publish.
+
+## OPS-181 — A windowed Godot capture on a shared desktop takes real input: the operator's keys and mouse reach the game, and the first synthetic click is spent on mouse capture
+
+`측정 2026-09-27 · Godot 4.7.2 · macOS 27 · windowed `godot --path . --script res://tools/play_capture.gd` while other sessions use the same machine`
+
+**증상:** scripted captures that drive input with `Input.action_press` and `Input.parse_input_event` gave different pictures run to run:
+
+- one run of four froze with the player in mid-air for the whole script; logging `paused` and the open menu showed `paused=true menu=map`. Nothing in the script presses the map action (bound to `M` and the gamepad Back button only); the next run with the same script was normal.
+- the bow-aim shot looked straight down at the grass although the script set the camera pitch to −0.05 right before it. The game rotates the camera from `InputEventMouseMotion.relative` once the mouse is captured, and the first synthetic left click was consumed by the "click to capture the mouse" handler, after which desktop mouse motion steered the camera.
+
+A new Godot window takes focus when it opens, so keystrokes and mouse movement meant for another app land in it.
+
+**해결:** in capture scripts, neutralise the desk: set camera sensitivity to 0, mark the mouse as already captured (so clicks are attacks, not capture), and print `get_tree().paused` and the open menu next to every screenshot so a stray menu is visible in the log instead of in a wrong image. Re-run any capture whose log shows `paused=true` that the script did not cause. Prefer headless tests for pass/fail and use windowed captures only for pictures.

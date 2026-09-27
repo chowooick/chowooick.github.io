@@ -3573,3 +3573,47 @@ What worked, both architectures:
 - Timing: the import and export took seconds natively on arm64, and **22.0 s** for the x86 editor under emulation on an M1 Max. The resulting `index.wasm` is the template's `godot.wasm` byte for byte (39,514,754), and served with nginx `brotli_static` it went out as 6,902,599 bytes.
 
 **해결:** vendor the one template file with its own SHA-512, download the editor per `TARGETARCH` against the release's SHA-512, import then export, and keep the three version pins (project, editor download, template) moving in one commit.
+
+## GDT-173 — `(dict[k] as PackedVector3Array).append(x)` appends to a throwaway copy, and `set("prop", untyped_array)` on an `Array[Color]` export does nothing without an error
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS · headless SceneTree script`
+
+**증상:** a baked mesh came out empty although the loop that filled its vertex lists ran, and a character that received its palette through `node.set("colors", [...])` rendered white. Neither printed an error.
+
+Measured in one script (`d := {"k": PackedVector3Array()}`, a node whose script has `@export var colors: Array[Color] = []`):
+
+| Statement | Result |
+| --- | --- |
+| `(d["k"] as PackedVector3Array).append(Vector3.ONE)` | `d["k"].size()` stays **0** |
+| `var a: PackedVector3Array = d["k"]` then `a.append(...)` | `d["k"].size()` becomes 1 (the typed local shares the array) |
+| `d["k"].append(...)` | appends in place |
+| `h.set("colors", [Color.RED, Color.BLUE])` (untyped literal) | `h.colors.size()` stays **0**, no message |
+| `h.colors = [Color.RED, Color.BLUE]` (same untyped value) | `SCRIPT ERROR: Invalid assignment of property or key 'colors' with value of type 'Array'` |
+| `h.set("colors", typed)` with `var typed: Array[Color]` | works |
+
+The `as` cast produces a temporary; the call mutates it and the result is dropped. `Object.set()` reports a failed typed-array conversion by returning silently, where the direct assignment of the very same value raises.
+
+**해결:** mutate packed arrays through a typed local or directly on the container (`d[k].append`), never through `(x as Packed…Array)`. Pass typed arrays to `set()` (`var c: Array[Color] = [...]`, or `Array(untyped, TYPE_COLOR, "", null)`), or assign the property directly so a mismatch fails loudly; after bulk `set()` calls, read one property back in a test.
+
+## GDT-174 — Testing a Godot web build's touch controls in headless Chrome: `OS.has_feature("web_ios")` follows the User-Agent, and CDP `Input.dispatchTouchEvent` reaches Godot as screen touches
+
+`측정 2026-09-27 · Godot 4.7.2 web export (nothreads) · Playwright 1.63 · Chrome channel headless with Metal ANGLE · macOS`
+
+**증상:** a Playwright phone context `{viewport: 390×844, isMobile: true, hasTouch: true}` loaded the game but showed the desktop HUD without a joystick. The game picks the touch layout at start when `OS.has_feature("web_ios") or OS.has_feature("web_android")`, falling back to `DisplayServer.is_touchscreen_available()` together with `matchMedia('(pointer: coarse)')`. In that context the whole check was false (which half of the fallback failed was not isolated).
+
+Adding an iPhone Safari `userAgent` to the same context made `web_ios` true: the touch layout appeared on the first frame. Godot derives the `web_*` platform features from the User-Agent string, so device emulation without a mobile UA is a desktop to the game.
+
+Driving the controls: `page.touchscreen.tap` only taps. A CDP session drives drags:
+
+```js
+const cdp = await context.newCDPSession(page);
+const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+await touch('touchStart', 95, 700);                     // left half: floating joystick
+for (let i = 1; i <= 8; i++) await touch('touchMove', 95, 700 - i * 8);
+for (let i = 0; i < 90; i++) { await touch('touchMove', 95 + (i % 2), 636); await page.waitForTimeout(25); }
+await touch('touchEnd', 0, 0);
+```
+
+Godot received these as `InputEventScreenTouch` / `InputEventScreenDrag`; the traveler walked 9.1–14.9 m in five runs. Holding a stationary touch needs the alternating 1 px move — without new move events the joystick sees no drag.
+
+**해결:** give phone contexts a real mobile User-Agent as well as `isMobile`/`hasTouch`, and drive drags through `Input.dispatchTouchEvent`, asserting on a position the game reports rather than on the screenshot.
