@@ -910,3 +910,23 @@ OPTIONS /v2/account/authenticate/device  Origin: http://127.0.0.1:5555
 With the page on `http://127.0.0.1:<static port>` and `window.LEGEND_NAKAMA_URL = 'http://127.0.0.1:<nakama port>'` set by `page.addInitScript` before the client bundle loads, device authentication, RPCs (save/load progress), the realtime socket and match data all worked in four full runs: two browser contexts saw each other and a reload restored the saved position.
 
 **해결:** give the web client an override for its Nakama endpoint (a global read before connecting), serve the build with any static server, and point the override at the test container (`docker compose -p <unique> ... up -d --wait` on a free port). No proxy is needed; keep the production path (same origin through nginx) as the default.
+
+## NKM-042 — Nakama 3.37 logs `"level":"error"` "Error registering Prometheus metric … previously registered descriptor" when the JS runtime pool grows. The module is fine; filter it out before judging a deploy by its error lines
+
+`측정 2026-09-27 · Nakama 3.37.0 JS runtime (js_min_count 2, js_max_count 8) · Docker, local and production`
+
+**증상:** A deploy check that greps the Nakama log for `"level":"error"` finds lines like:
+
+```
+{"level":"error","caller":"server/metrics.go:148","msg":"Error registering Prometheus metric","error":"a previously registered descriptor with the same fully-qualified name as Desc{fqName: \"nakama_count\", ...
+```
+
+Measured on a fresh container: 28 such lines, cycling through the same four names (`nakama_count`,
+`nakama_recv_bytes`, `nakama_sent_bytes`, `nakama_latency`). None appear at boot; they appear in the same
+milliseconds as the first burst of RPCs, when the runtime adds VMs to its pool. The module had logged its load
+line before them, and a full end-to-end run (authentication, a complete match through 98 revisions, rewards,
+a two-player room) passed on that server. The production server with the same image logged them too and passed
+the same run.
+
+**해결:** exclude `Error registering Prometheus metric` when counting errors after a deploy, then look at what is
+left. Judge the module by its own load line and an end-to-end call, not by an error count that includes this.
