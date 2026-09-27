@@ -3164,3 +3164,56 @@ the timing gap that GDT-097 describes.
 crossfade into a second voice started in the middle of the sample. Another option is to switch the bus to Stream
 playback (`audio/general/default_playback_type.web`), but GDT-097 measured dropouts with Stream playback in a no-threads
 build.
+
+## GDT-151 — `TextMesh` fails on some glyphs of Cormorant Garamond ("Convex decomposing failed") and leaves them partly unfilled; MaruBuri works
+
+`측정 2026-09-27 · Godot 4.7.2-stable · headless · Cormorant Garamond Latin subset woff2 (Google Fonts) · MaruBuri Regular woff2 (Naver)`
+
+**증상:** In-world numerals built with `TextMesh` printed this for each bad glyph, and the digits rendered with missing
+or wrongly filled parts:
+
+```
+ERROR: Convex decomposing failed. Make sure the font doesn't contain self-intersecting lines, as these are not supported in TextMesh.
+```
+
+A headless script that builds one `TextMesh` per character with `get_mesh_arrays()` reproduces it. With Cormorant
+Garamond the error appears for `2`, `3`, `4`, `8` and `B`; `0 1 5 6 7 9 A C X I V` are fine. The failing glyphs still
+return vertices (180–444), so a vertex-count check does not catch it. With MaruBuri every glyph in the same set builds
+without an error.
+
+**해결:** Check a font before using it for `TextMesh`: build every character you will show and watch the log for the
+error above. Switch to a font whose outlines have no self-intersecting contours (MaruBuri worked for Korean and Latin
+in one file). `Label3D` does not triangulate outlines and is not affected, but it costs one draw call per label.
+
+## GDT-152 — A GDScript member named like a native class (`const Sky = preload(...)`) is a parse error: "The member "Sky" shadows a native class"
+
+`측정 2026-09-27 · Godot 4.7.2-stable · GDScript`
+
+**증상:** Two scripts that preloaded a helper as `const Sky = preload("res://lib/sky.gd")` failed to load, and every
+script that depended on them failed too:
+
+```
+SCRIPT ERROR: Parse Error: The member "Sky" shadows a native class.
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+```
+
+`Sky` is a built-in resource class. The same applies to any member, constant or preload alias that reuses a native
+class name (`Sky`, `Environment`, `Font`, `Timer`, ...). It is an error, not a warning.
+
+**해결:** Rename the alias (`const Stars = preload(...)`). When a helper script is named after an engine concept, give
+its preload constant a project-specific name from the start.
+
+## GDT-153 — Poly Haven's Vintage Grandfather Clock 01: the glass material is `BLEND` with an opaque JPEG base color, so it covers the dial like a dark slab in Godot
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility (native and Web) · polyhaven.com vintage_grandfather_clock_01 1K glTF`
+
+**증상:** In a close-up, the clock face was dark and the hands were hard to see. The glTF material
+`vintage_grandfather_clock_01_glass` has `alphaMode: BLEND`, `KHR_materials_clearcoat`, `KHR_materials_specular` and
+`KHR_materials_ior`, but its `baseColorTexture` is one of the model's three JPEG images. A JPEG has no alpha channel, so
+alpha is 1.0 and the "glass" is an opaque, textured pane in front of the dial. Godot does not import transmission from
+these extensions.
+
+**해결:** After instancing the model, replace every surface whose material `resource_name` contains `glass` with a
+plain transparent `StandardMaterial3D` (albedo alpha about 0.07, `TRANSPARENCY_ALPHA`, roughness about 0.04) through
+`set_surface_override_material`. Check other scanned models' glass the same way before a close-up relies on seeing
+through it.

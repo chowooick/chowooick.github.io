@@ -3825,3 +3825,25 @@ Measured on a disposable local database seeded with the old module (a room in th
 - `init` ran only on the very first publish (`spacetime logs` shows `Invoking init reducer` once, and nothing like it for the update). A new scheduled table (a 1 s interval timer) therefore got its row only from the lazy insert the module does in `clientConnected`.
 
 **해결:** Keep the schema append-only: add tables freely, add columns only at the end of a table and always with `.default(...)`, and never reorder, retype or remove columns. Insert rows for new scheduled tables lazily (`if (!ctx.db.timer.count()) insert(...)`) from `clientConnected` and from the reducers that need them, not only from `init`. The publish disconnects every client, so release the regenerated client bindings at the same time.
+
+## OPS-170 — SpacetimeDB 2.8 CLI: a schema change that disconnects clients aborts a non-interactive publish unless `--yes` includes `break-clients`
+
+`측정 2026-09-27 · SpacetimeDB CLI 2.8.0 · Rust module · local standalone`
+
+**증상:** A deploy script published with `spacetime publish --delete-data=never --yes=remote,skip-login,migrate`. After
+columns with `#[default(...)]` were appended to a table, the same command printed the migration plan, then:
+
+```
+!!! Warning: All clients will be disconnected due to breaking schema changes
+
+The above changes will BREAK existing clients. Do you want to proceed? [y/N]Aborting
+Error: Publishing aborted by user
+```
+
+Nothing asked for input: without a terminal the prompt reads "no" and the script sees an error it did not cause.
+`migrate` covers the migration prompt only. `break-clients` is a separate prompt; per `spacetime publish --help`, it
+does not force a publish that would delete data, so it is safe together with `--delete-data=never`. OPS-169 used bare
+`--yes` (all prompts), which is why that publish went through.
+
+**해결:** List the prompts explicitly for data-safe automation: `--delete-data=never --yes=remote,skip-login,migrate,break-clients`.
+The publish disconnects every client, so ship regenerated client bindings in the same release.
