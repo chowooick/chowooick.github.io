@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:59:37Z · 소스 커밋 `9362a8e` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T09:04:46Z · 소스 커밋 `1fd1c87` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -788,6 +788,62 @@ other value.
 (`{matchId, createdAt}`, written right after `matchCreate`, used only if younger than 3 s), then create. After the
 fix, back-to-back presses landed in one room 5 of 5 times. Two RPCs fired at the same instant still made two rooms
 (0 of 5): both read the record before either wrote it.
+
+---
+
+## NKM-036 — The JS runtime freezes module globals: a global `/g` regex throws inside `replace`, and a throw in any match handler stops the whole match
+
+`측정 2026-09-27 · Nakama 3.37.0 JS runtime · runtime.js_read_only_globals left at its default (true)`
+
+**증상:** a text sanitizer kept its regex in a module global, `var UNSAFE = /[<>]/g;`, and `matchJoinAttempt`
+called `name.replace(UNSAFE, "")`. Unit tests that ran the module in Node `vm` passed. On the real server the first
+join destroyed the room; the client only saw `{code: 5, message: "Match join rejected"}`. Server log:
+
+```
+"msg":"Stopping match after error from match_join_attempt execution","tick":0,
+"error":"TypeError: Cannot assign to read only property 'lastIndex' at replace (native)"
+```
+
+Two facts combine:
+
+- `nakama --help`: `runtime.js_read_only_globals` "marks all Javascript runtime globals as read-only to reduce
+  memory footprint. Default true." A regex with the `g` (or `y`) flag has to write `lastIndex`, so `replace`,
+  `exec` and `test` on a global one throw. Global regexes without `g` used with `test()` ran fine on the same server.
+- An exception from a match handler does not only fail that call. Nakama stops the match and every player in it is
+  dropped; the joiner that triggered it gets the generic "Match join rejected".
+
+**해결:** create `g` regexes inside the function (a regex literal is a new object on every evaluation). Wrap match
+handler work per message in `try/catch` with a log line so one bad input cannot close a room, and have
+`matchJoinAttempt` return `{accept: false}` from its `catch`. To get the same failure in unit tests, deep-freeze the
+module's globals after loading it in `vm`: V8 then throws the same
+`TypeError: Cannot assign to read only property 'lastIndex' of object '[object RegExp]'`.
+
+---
+
+## NKM-037 — JS runtime RPC errors keep their gRPC code over HTTP (3 and 9 → 400, 14 → 503, 16 → 401), and the error body carries the module's stack trace
+
+`측정 2026-09-27 · Nakama 3.37.0 JS runtime · HTTP RPC through nakama-js 2.8.0 and curl`
+
+`throw {message, code}` from a JS RPC reaches an HTTP caller with the standard gRPC-gateway status: code 3 → 400,
+9 → 400, 14 → 503, 16 → 401 (compare NKM-007: over the socket every code becomes 7). The body also contains the
+JS stack, so any client can read the module's function names and line numbers:
+
+```
+{"code":3,"error":{"stackTrace":"[object Object]\n\tat rpcError (main.js:41:36(6))\n\tat invalid (main.js:104:34(12))\n..."},"message":"invalid_progress:hearts"}
+```
+
+nakama-js 2.8.0 rejects an HTTP RPC with the fetch `Response` itself (`error.status`, body via `await error.json()`),
+a request timeout with the bare string `"Request timed out."`, and a refused `joinMatch` with
+`{code: 5, message: <rejectMessage>}` — `matchJoinAttempt` returning `rejectMessage: "world_full"` arrives as
+`message: "world_full"`.
+
+A room registry kept in a version-checked storage record (read it; if its match is gone, take a lock with the
+record's version, `matchCreate`, write the match id) answered 30 simultaneous `join_world` calls on a freshly
+restarted server with 1 success and 29 `503 world_preparing`.
+
+**해결:** branch on the message identifier (as in NKM-007) or on the HTTP status, never on the gRPC code alone.
+Retry 503 after a short pause: 250–750 ms steps were enough for the registry case. Treat everything in a thrown
+runtime error, including the stack, as public.
 
 ---
 
@@ -4947,6 +5003,32 @@ The daemons are per repository, but the profile is not: all of them launch with
 `CHROMIUM_PROFILE=<scratch dir>/chromium-<repo> $B --headed goto …` (`resolveChromiumProfile()` in
 `browse/src/config.ts`). For WebGL work that needs no visible window, GDT-117 avoids the daemon altogether. Do not
 kill another session's Chromium to get the lock back.
+
+## AGT-071 — `\u2028`/`\u202e`-style escapes in tool parameters arrive as the literal characters (Write content and Bash commands alike): U+2028 inside a JS regex literal is a line break, so the file no longer parses
+
+`측정 2026-09-27 · Claude Code (Opus 5.5) · esbuild 0.28.2`
+
+**증상:** a Nakama JS module written with the Write tool contained the regex
+`/[\u0000-\u001f\u007f-\u009f<>\u2028\u2029\u202a-\u202e\u2066-\u2069]/g`, typed as escapes. On disk the first four
+escapes were still six-character escapes, but `\u2028 \u2029 \u202a \u202e \u2066 \u2069` had become the characters
+themselves (`od -c` shows `342 200 250` for U+2028). `esbuild --target=es5` failed with
+`Unterminated regular expression`: U+2028 is a JavaScript line terminator, so the regex literal ended in the middle
+of the line and a spec-compliant runtime cannot load the file. A test file written the same way got literal
+U+202E and U+2066 (bidi override and isolate) inside string literals: still valid syntax, but invisible characters
+that reorder text in editors and diffs.
+
+It is not only the Write tool. The same escapes typed into a Bash command, inside a quoted heredoc feeding a Python
+raw string, also reached the file as the literal characters (this entry's first draft was damaged that way), while
+the NUL–0x1F escapes in the same command survived. AGT-057 saw NUL–0x1F escapes turn into control bytes, so which
+escapes survive varies. Treat every `\uXXXX` typed into any tool parameter as unreliable.
+
+**해결:** never type the escape itself. Generate it from the code point in the program that writes the file,
+e.g. Python `chr(92) + 'u' + '2028'` or `'\\u%04x' % 0x2028`, or build the regex from code points at runtime
+(`new RegExp('[' + '\\u' + (0x2028).toString(16) + ...)`). Then list what is not plain ASCII:
+`python3 -c "import sys; s=open(sys.argv[1]).read(); print(sorted({hex(ord(c)) for c in s if ord(c) > 0x7e}))" <file>`.
+For a file that must stay ASCII, such as a Nakama module, assert it in the unit tests
+(`/[^\x09\x0a\x0d\x20-\x7e]/.test(source) === false`) and run it through `esbuild --target=es5` before
+deploying; that reports the parse error the server would only show at startup.
 
 ---
 
