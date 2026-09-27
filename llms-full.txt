@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:18:46Z · 소스 커밋 `3706b3e` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:21:23Z · 소스 커밋 `c004d8c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3887,6 +3887,78 @@ A 6-second game at 60 Hz is 360 steps, or 15–60 ms. Games that stall until a t
 - Budget statistical tests in steps, not in games: steps = games × average length × 60.
 - Give every simulated game a short time cap (15–40 s), and exclude timed-out games from the outcome checks.
 - Spend large seed counts only on the borderline case you are asserting (for example 200 seeds at the threshold difficulty, 24 elsewhere).
+
+---
+
+## GDT-141 — `Image.fix_alpha_edges()` takes 11.5 s on a 1792 × 1008 icon atlas
+
+`측정 2026-09-27 · Godot 4.7.2-stable, --headless --script, Apple Silicon`
+
+**증상:** A UI built its icon atlas at runtime: 145 SVG icons rasterised and blitted into one
+1792 × 1008 RGBA8 image. It called `fix_alpha_edges()` before `generate_mipmaps()` to stop dark
+fringes. The build took 14 s. The same call on an empty 1792 × 1008 image measured 11,535 ms.
+For comparison, 100 `blend_rect()` calls of a 104 px icon took 161 ms, and 91 ThorVG rasterisations
+took 1,405 ms.
+
+**해결:** Do not call `fix_alpha_edges()` at runtime. Bake the atlas offline to a PNG and import it
+with `process/fix_alpha_border=true` and `mipmaps/generate=true`, which does the same edge
+bleeding at import time. A runtime fallback atlas can skip edge bleeding.
+
+---
+
+## GDT-142 — `const float TAU = …` in a Godot shader is a compile error ("Redefinition of 'TAU'"), and `--headless` runs never show it
+
+`측정 2026-09-27 · Godot 4.7.2-stable, gl_compatibility, windowed vs --headless`
+
+**증상:** Canvas shaders that declared `const float TAU = 6.28318530718;` compiled "fine" in every
+headless test: no error, and all checks passed. The first windowed run printed
+`SHADER ERROR: Redefinition of 'TAU'` and `Shader compilation failed` at
+`material_storage.cpp` `set_code`, and the affected rects drew nothing. `TAU`, `PI` and `E` are
+built-in constants of the Godot shading language. `--headless` uses the dummy renderer, which never
+compiles shaders.
+
+**해결:** Use the built-in `TAU`, `PI` and `E` and never redeclare them. Validate every `.gdshader`
+in at least one windowed run, for example a SubViewport screenshot harness, and grep its log for
+`SHADER ERROR`. A headless test cannot catch shader errors.
+
+---
+
+## GDT-143 — The 4.7.2 Web template has ThorVG and Brotli: runtime `Image.load_svg_from_string()` and `.woff2` fonts both work on the Web
+
+`측정 2026-09-27 · Godot 4.7.2-stable export templates (web_nothreads_release.zip)`
+
+**증상:** It was not clear whether SVG icons could be rasterised at runtime in a Web build, or
+whether WOFF2 fonts would load. `strings godot.wasm` of the nothreads release template lists
+`modules/svg/image_loader_svg.cpp`, `load_svg_from_string` and "The ThorVG Project", as well as
+the Brotli decoder (`BROTLI_DECODER_RESULT_SUCCESS`).
+
+Measured:
+- A Noto Sans KR 500 subset (KS X 1001 Hangul + ASCII + symbols, fontTools, `flavor=woff2`) is
+  153 KB. Godot imports it as a `FontFile`, and `has_char()` answers correctly.
+- Runtime SVG rasterisation costs about 15 ms per 104 px icon (91 icons in 1.4 s, native headless).
+
+**해결:** WOFF2 subsets are the smallest font payload: three Korean faces came to 427 KB. SVG is a
+good source format for icons, but bake the atlas offline and keep runtime rasterisation only as a
+fallback when the baked file is missing or stale. Hash the SVG sources into the baked file name to
+detect a stale bake.
+
+---
+
+## GDT-144 — Without `class_name`, type a member with the preloaded script constant (`var th: Th`); an untyped member breaks every `:=` that uses it
+
+`측정 2026-09-27 · Godot 4.7.2-stable`
+
+**증상:** A project that bans `class_name` stored a helper object in an untyped member (`var th`).
+Every `var ml := safe.position.x + th.px(34)` then failed to parse with
+`Cannot infer the type of "ml" variable because the value doesn't have a set type`. A ternary
+whose operands came from a Dictionary failed with the `inference_on_variant` warning, which is an
+error by default. One parse error also fails every script that preloads that one
+("Failed to compile depended scripts").
+
+**해결:** Use the preload constant as the type: `const Th := preload("res://ui/theme.gd")`, then
+`var th: Th` and `func setup(theme: Th)`. Calls then return typed values, so `:=` works again.
+Type the results of `Dictionary.get()` and ternaries explicitly (`var big: bool = ...`). Before
+running anything, check with `godot --headless --path . --check-only --script <file>`.
 
 ---
 
