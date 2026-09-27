@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T20:24:32Z · 소스 커밋 `3b99ba6` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T21:26:46Z · 소스 커밋 `e49fd0c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10319,4 +10319,36 @@ that were never scrolled into view never fire `load`.
 **해결:** build the context with a tiny timeout, then raise it for the asset fetches that follow:
 `const ctx = await createContext(root, { ...options, timeout: 1 }); ctx.timeout = 5000; await domToCanvas(ctx)`.
 The same capture then took 1.4–1.5 s. Images on screen that are still loading render empty; that is the trade-off.
+
+## OPS-189 — PocketBase JSVM: a `.pb.js` top-level `const` is not visible inside hooks, and `e.request` is undefined in `onRecordCreateRequest`
+
+`측정 2026-09-27 · PocketBase 0.40.4`
+
+**증상:** a record create through the REST API answered `400 "Something went wrong while processing your request."`
+with no detail. The request log (`/api/logs`, filter `data.url~"<collection>"`) held the real error:
+`ReferenceError: FEEDBACK_KINDS is not defined` for a `const` declared at the top of the same `.pb.js` file, and after
+that was fixed, `TypeError: Cannot read property 'header' of undefined` from `e.request.header.get("User-Agent")` inside
+`onRecordCreateRequest`.
+
+Each handler runs in its own VM, so file-level constants and functions do not exist when the handler runs, even though
+the file loads without error. Shared code has to live in a module that every handler `require(`${__hooks}/lib.js`)`s
+itself. In the record request hook, `e.request` was undefined, while `e.requestInfo()` worked.
+
+**해결:** inline constants in the handler or export them from a `require`d module; read headers with
+`e.requestInfo().headers["user_agent"]` (lower case, dashes become underscores). When a hook returns a bare 400,
+read `/api/logs` as a superuser before guessing.
+
+## OPS-190 — Flutter web in headless Chromium without WebGL: images and `RepaintBoundary.toImage` captures render blank
+
+`측정 2026-09-27 · Flutter 3.38.5 web (release, --no-web-resources-cdn) · gstack browse (Playwright Chromium)`
+
+**증상:** QA of an in-app screenshot feature in headless browse showed an empty thumbnail and an empty full-size preview,
+and the page's own `Image.asset` hero photo was also blank. The console only said
+`WARNING: Falling back to CPU-only rendering. WebGL support not detected.` No error was thrown. The same build in
+headed Chrome (`browse --headed`) showed the hero photo, and the captured PNG uploaded to the server (417 KB) was a
+correct image of the page.
+
+**해결:** do not judge image rendering or canvas capture of a Flutter web build from headless Chromium without WebGL.
+Run the check with `browse --headed` (every command needs the flag, or run `browse stop` first), or fetch the uploaded
+file and look at it directly.
 
