@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:52:00Z · 소스 커밋 `f9fb3c6` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:53:39Z · 소스 커밋 `ee9c00f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4133,6 +4133,57 @@ these extensions.
 plain transparent `StandardMaterial3D` (albedo alpha about 0.07, `TRANSPARENCY_ALPHA`, roughness about 0.04) through
 `set_surface_override_material`. Check other scanned models' glass the same way before a close-up relies on seeing
 through it.
+
+## GDT-154 — `HFlowContainer` and autowrapping `Label` report their real height only after a layout pass: same-frame minimum heights are 0 and 5,494 px
+
+`측정 2026-09-27 · Godot 4.7.2-stable · headless`
+
+**증상:** A dialog that sized its panel from `body.get_combined_minimum_size().y` right after filling it came out
+far too short or far too tall, depending on the content. Measured in a 400 px wide `VBoxContainer` holding an
+`HFlowContainer` with seven 130×195 children and an `AUTOWRAP_WORD_SMART` label of about 270 characters:
+
+| When | Flow | Label | Column |
+|---|---|---|---|
+| Same frame, right after `add_child` | 0 | 5,494 | 5,499 |
+| After one `await get_tree().process_frame` | 593 | 149 | 746 |
+| After two frames | 593 | 149 | 746 |
+
+A flow container has no rows until it has been sorted at a width. An autowrapped label measures itself at its
+current width, which is 0 before the container sorts it, so it reports one word per line.
+
+**해결:** Give the container its final width first, wait one `process_frame`, then read the minimum size and fit the
+height. From a function that must not become a coroutine, connect a one-shot callback instead of awaiting:
+`get_tree().process_frame.connect(func(): card.size.y = col.get_combined_minimum_size().y + pad, CONNECT_ONE_SHOT)`.
+One frame was enough in every case measured; check `is_instance_valid()` because the node may be freed by then.
+
+## GDT-155 — A Godot 4.7 `.pck` (pack format 4) can be listed in 30 lines of Python; in one Web export imported textures were 24.1 of 28.5 MB, 1.66× their WebP sources
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export · textures imported lossy 0.85 with mipmaps`
+
+**증상:** A Web export grew to 28.5 MB and it was not obvious what was inside. The pack header is: `GDPC`, format
+version (uint32, 4 here), engine version (3 × uint32), flags (uint32), file base (uint64), then, from format 3 on, the
+directory offset (uint64). At that offset: file count (uint32), then per file a uint32 path length, the path (padded
+with NUL), offset (uint64), size (uint64), MD5 (16 bytes) and flags (uint32).
+
+```python
+import struct
+d = open("build/web/index.pck", "rb").read()
+off = struct.unpack_from("<Q", d, 32)[0]          # directory offset (format >= 3)
+n = struct.unpack_from("<I", d, off)[0]; off += 4
+for _ in range(n):
+    ln = struct.unpack_from("<I", d, off)[0]; off += 4
+    path = d[off:off + ln].rstrip(b"\0").decode(); off += ln
+    _, size = struct.unpack_from("<QQ", d, off); off += 16 + 16 + 4
+    print(size, path)
+```
+
+That export held 646 files: `.ctex` textures 24.13 MB, Ogg music 1.99 MB, a subset Korean font 0.63 MB, scripts
+and data under 0.4 MB. The textures came from 14.5 MB of WebP (208 card images at 600×900 and 288×432). The importer
+re-encodes them (`compress/mode=1`, `lossy_quality=0.85`, `mipmaps/generate=true`), so the pack carries 1.66× the
+source bytes.
+
+**해결:** Measure the pack before optimising anything else. For UI-only art that is never minified much, turning off
+mipmaps or lowering `lossy_quality` is where the megabytes are; fonts, audio and code are small in comparison.
 
 ---
 
@@ -9573,4 +9624,26 @@ does not force a publish that would delete data, so it is safe together with `--
 
 **해결:** List the prompts explicitly for data-safe automation: `--delete-data=never --yes=remote,skip-login,migrate,break-clients`.
 The publish disconnects every client, so ship regenerated client bindings in the same release.
+
+## OPS-171 — macOS: a test bind on `0.0.0.0` or `::` succeeds next to another process's `127.0.0.1` listener. Probe all four addresses before claiming a port
+
+`측정 2026-09-27 · macOS 27.0 · Node.js 26.8 · Docker Desktop (com.docker.backend)`
+
+**증상:** A dev server picked "the first free port" by test-binding `0.0.0.0` and `::`. Both succeeded on 17350,
+17360 and 17380, yet `lsof` showed Docker already listening on `127.0.0.1` at those ports for other sessions' test
+stacks. The reverse also happens: a Node server bound `127.0.0.1:7350` while Docker held `*:7350` (IPv6 wildcard), and
+from then on IPv4 loopback traffic went to Node, not to the other project's Nakama (the conflict OPS-144 describes).
+
+`net.createServer().listen({port, host, exclusive: true})`, errors per address:
+
+| Port | Holder (`lsof`) | `127.0.0.1` | `0.0.0.0` | `::1` | `::` |
+|---|---|---|---|---|---|
+| 7350 | Docker `*:7350` (IPv6) + Node `127.0.0.1` | EADDRINUSE | EADDRINUSE | free | EADDRINUSE |
+| 17350 | Docker `127.0.0.1:17350` | EADDRINUSE | free | free | free |
+| 17370 | nothing | free | free | free | free |
+
+**해결:** Treat a port as free only when binds on `127.0.0.1`, `0.0.0.0`, `::1` and `::` all succeed (count
+`EADDRNOTAVAIL`/`EAFNOSUPPORT` as free for a missing address family). Keep local dev servers off the defaults other
+projects run in Docker (7350 for Nakama) and pick from the OPS-006 slots instead, printing the chosen address so
+clients can be pointed at it.
 
