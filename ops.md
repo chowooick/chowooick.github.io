@@ -3540,3 +3540,68 @@ SDK source; none is on the documentation's front page.
   seat.game_key = '1234'` follows whoever sits down later.
 
 **해결:** Use the above as the checklist. `button/godot/net/stdb_client.gd` is a complete 400-line reference.
+
+## OPS-154 — ffmpeg's native Vorbis decoder returns the wrong number of samples for short OGG files; `oggdec` (libvorbis, what Godot uses) is exact
+
+`측정 2026-09-27 · ffmpeg 9.0.1 (Homebrew), vorbis-tools 1.4.3 (libvorbis 1.3.7), 44.1 kHz`
+
+**증상:** A build script decoded every encoded file back to check that loops kept their exact length.
+Music loops of 2.6 to 5.7 million samples matched, but the first short effect failed the check.
+
+Mono 440 Hz tones encoded with `oggenc -q 4`, decoded both ways:
+
+| Rendered samples | ffmpeg `-f f32le` | `oggdec` |
+|---:|---:|---:|
+| 1,000 | 872 | 1,000 |
+| 2,205 | 2,077 | 2,205 |
+| 4,410 | 4,282 | 4,410 |
+| 8,820 | 9,792 | 8,820 |
+| 20,000 | 19,872 | 20,000 |
+
+The Homebrew ffmpeg has only the native decoder: `-c:a libvorbis` as a decoder fails with
+`Unknown decoder 'libvorbis'`.
+
+**해결:** Decode with `oggdec -Q -R -b 16 -o - file.ogg` (raw signed 16-bit little-endian on stdout, no
+temporary file) when sample counts matter. `oggenc` also reads a 32-bit float WAV from stdin
+(`oggenc -q 4 -o out.ogg -`), so an encode-and-verify loop needs no temporary WAV at all.
+
+## OPS-155 — libvorbis bitrate follows the `-q` level, not the content: a quiet music stem costs almost as much as the full mix
+
+`측정 2026-09-27 · vorbis-tools 1.4.3 (libvorbis 1.3.7), 44.1 kHz stereo, a 92.9 s electronic track and its two stems`
+
+**증상:** A game shipped each stage track as three synchronized stems (base mix plus two layers that fade
+in). The layers were 13 LU quieter and much sparser than the base, yet the first build at q3 was almost
+three times the size of the base alone.
+
+Average bitrate in kbps:
+
+| Signal | q-1 | q0 | q1 | q2 | q3 |
+|---|---:|---:|---:|---:|---:|
+| Full mix, -14 LUFS | 46 | 63 | 76 | 87 | 102 |
+| Tension stem, -27 LUFS | 35 | 53 | 65 | 77 | 89 |
+| Hats-and-arps stem, -26 LUFS | 35 | 61 | 75 | 89 | 108 |
+
+- A 15 kHz low-pass before encoding changed nothing (63 → 63 kbps at q0, 87 → 88 at q2).
+- Mono saved 15 to 20 % at q-1 (46 → 39, 35 → 29, 35 → 30).
+- q0.5 gave about 70 kbps on the full mix; fractional `-q` values work.
+
+**해결:** Budget game audio by quality level per role, not by trimming content: in the same project 87 files
+(20 music files, 9 jingles, 58 effects) fit 11.8 MiB with stage and title music at q0.5, menu music at
+q0, stems at q-1 (one of them mono), jingles at q2 and effects at q4. Everything at q5 would have been
+about 27 MB.
+
+## OPS-156 — Parallel renders on a nearly full disk: macOS swap files take the last free space and unrelated writes fail with ENOSPC
+
+`측정 2026-09-27 · macOS, Apple M1 Max 64 GB, 926 GiB APFS container with under 1 GiB free, Python 3.9 ProcessPoolExecutor`
+
+**증상:** An offline audio build with 8 worker processes (2 to 3 GB of numpy arrays each) failed with
+`OSError: [Errno 28] No space left on device` while writing files of a few MB. Its own output was
+under 20 MB. During the run `vm.swapusage` went to 3 GB used, five swap files appeared in
+`/System/Volumes/VM` (the same APFS container as the data volume), and free space on
+`/System/Volumes/Data` fell from 978 MiB to 307 MiB. Removing the job's temporary WAV files alone did
+not help; the second 8-worker run failed the same way.
+
+**해결:** Before a parallel job, check `df -h /System/Volumes/Data` and `sysctl vm.swapusage`. Cap the
+workers by memory, not by core count: the same build with 3 workers finished in 183 s without errors.
+Pipe data to encoders through stdin instead of temporary files. Swap growth also hits every other
+session writing to the same disk, so a failure there may come from another job's memory use.

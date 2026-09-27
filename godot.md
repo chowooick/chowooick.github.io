@@ -2548,3 +2548,61 @@ transform). `page.screenshot()` captures the canvas correctly.
 'fade_tween'` on every call where the meta was not set yet, although a default was passed.
 
 **해결:** `if c.has_meta(key): var v = c.get_meta(key)`, or use a non-null default of the right type.
+
+## GDT-119 — Headless test teardown with `AudioStreamSynchronized` and a voice pool: waiting before `queue_free()` is not enough, wait after it too (extends GDT-095)
+
+`측정 2026-09-27 · Godot 4.7.2-stable, --headless (Dummy audio driver)`
+
+**증상:** A 426-check audio test crossfades through ten tracks (five of them three-stem
+`AudioStreamSynchronized`), fires every effect through a 16-voice pool, then tears down as GDT-095
+suggests: stop every player, `await create_timer(0.1).timeout`, `queue_free()`, `await process_frame`,
+`quit()`. It still printed `48` and `90 ObjectDB instances were leaked at exit` (2 of 2 runs).
+`--verbose` listed `AudioStreamPlaybackOggVorbis`, `OggPacketSequencePlayback`,
+`AudioStreamSynchronized` and the stems and effects that played last as resources still in use.
+
+**해결:** Add a wait after freeing the audio node as well:
+
+```gdscript
+director.stop_all()
+await create_timer(0.5).timeout
+director.queue_free()
+await process_frame
+await create_timer(0.2).timeout
+quit(exit_code)
+```
+
+With the post-free 0.2 s wait the report was clean in 3 of 3 runs whether the wait before freeing was
+0.1 s or 0.5 s.
+
+## GDT-120 — A generator can set import options for new `.ogg` files by writing a minimal `.ogg.import`; `--import` fills in the uid and paths and keeps the params
+
+`측정 2026-09-27 · Godot 4.7.2-stable, oggvorbisstr importer, godot --headless --import`
+
+**증상:** Music loops and effect loops need `loop=true`, one-shots `loop=false`, but the OGG importer
+defaults to `loop=false` and a build script cannot open the import dock.
+
+A sidecar with only these lines was written next to each of 87 generated files before the first import:
+
+```ini
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+
+[params]
+
+loop=true
+loop_offset=0
+bpm=118
+beat_count=0
+bar_beats=4
+```
+
+After `godot --headless --path client --import` every sidecar had gained `uid`, `path`, `[deps]` and
+`dest_files`, the `[params]` values were unchanged, and `load()` returned an `AudioStreamOggVorbis`
+whose `loop` matched the file.
+
+**해결:** Write the minimal sidecar only when it is missing. On later builds rewrite just the `[params]`
+lines and keep the rest, so the uid Godot assigned stays stable. Leave `beat_count` at 0 unless the
+file really should loop early: with `bpm` and `beat_count` both set, `AudioStreamOggVorbis` loops at
+`beat_count` beats and plays the rest of the file as a tail over the restart.
