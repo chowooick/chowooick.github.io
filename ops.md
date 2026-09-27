@@ -4050,3 +4050,24 @@ while `"가"` is `b'\xb0\xa1'`. `cp949` is no help either: it encodes all 11,172
 **해결:** count a syllable as KS X 1001 only when `len(chr(cp).encode("euc-kr")) == 2` — that gives exactly 2,350.
 Print the kept code-point count after subsetting; about 3,100 (KS X 1001 + ASCII + punctuation + a game's own
 text) is the expected size, 11,000+ means the whole Hangul block slipped in.
+
+## OPS-185 — Astro/Vite production builds lower CSS `light-dark()` to `--lightningcss-light/dark` switches, which are only defined where the same processed CSS declares `color-scheme`
+
+`측정 2026-09-27 · Astro 7.3 · Vite/Lightning CSS (build minify) · Chrome 141`
+
+**증상:** a page whose component `<style>` used `background: light-dark(#f5f2e9, #1a2124)` rendered correctly
+in `astro dev` but shipped with a transparent background and black text in production. The built CSS was
+`background: var(--lightningcss-light,#f5f2e9)var(--lightningcss-dark,#1a2124)`. Lightning CSS only emits the
+`:root{--lightningcss-light:initial;--lightningcss-dark: }` defaults (and the `@media (prefers-color-scheme:dark)`
+flip) next to a `color-scheme` declaration in the CSS it processes. A page with no such declaration in its
+bundle — here a standalone page that set `color-scheme` only through `<meta name="color-scheme">` and an
+`is:inline` style — leaves both variables undefined, both fallbacks apply, the value becomes two colours, and the
+declaration is dropped. A manual `:root[data-theme=dark]{color-scheme:dark}` in unprocessed CSS also does not flip
+the variables, so a saved theme choice has no effect on lowered colours.
+
+**해결:** either declare `color-scheme` (with the `[data-theme]` overrides) inside a processed stylesheet that the
+page loads, or define the switches by hand in an `is:inline` style shared by every page:
+`:root{color-scheme:light dark;--lightningcss-light:initial;--lightningcss-dark: }`
+`@media (prefers-color-scheme:dark){:root{--lightningcss-light: ;--lightningcss-dark:initial}}`
+`:root[data-theme="dark"]{color-scheme:dark;--lightningcss-light: ;--lightningcss-dark:initial}` (and the light
+mirror). Verify dark mode against the production build, not `astro dev`.
