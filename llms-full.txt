@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T15:41:04Z · 소스 커밋 `1c8d41b` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T15:45:07Z · 소스 커밋 `e9ab912` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4437,6 +4437,42 @@ server behaves the same way.
 `if DisplayServer.get_name() not in ["headless", "Web"]: code = DisplayServer.keyboard_get_keycode_from_physical(code)`.
 Measured: errors in the console went from dozens per screen to 0 on the same page flow. `"Web"` is the exact name
 (capital W) the web display server reports.
+
+## GDT-171 — Web export with stretch mode `disabled` draws the UI in physical pixels: half size on a Retina Mac, a quarter on phones. `content_scale_factor` fixes it without touching the 3D
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (Compatibility) · Playwright Chrome, deviceScaleFactor 2 and 3–3.5 with touch`
+
+**증상:** A game laid out for 1440 × 900 with `window/stretch/mode="disabled"` looked right in a DPR-1 browser. On
+a DPR-2 viewport of 1440 × 900 CSS px, the canvas was 2880 × 1800 px and the HUD, hotbar and menus came out at
+half size. A phone held sideways (915 × 412 CSS px at DPR 3.5 → 3202 × 1442 px) showed 15 px text at about 4 CSS px.
+
+**해결:** Keep the stretch mode and set the root window's `content_scale_factor` from the density and the window
+size, re-running it on `get_tree().root.size_changed`:
+
+```gdscript
+var px := Vector2(get_tree().root.size)
+var s := maxf(DisplayServer.screen_get_scale(), px.y / 1100.0)   # web: devicePixelRatio
+s = minf(s, minf(px.y / 560.0, px.x / 1000.0))                   # a phone still gets 560 logical px of height
+get_tree().root.content_scale_factor = s
+```
+
+Measured results:
+- DPR 2 → factor 2, logical 1440 × 900, the same look as DPR 1. The 3D stays at 2880 × 1800 and still ran at 60 fps.
+- Phone → factor 2.2–2.6, logical about 1244 × 560. Controls, mouse positions, `Camera3D.project_ray_origin()` and
+  `unproject_position()` all stayed consistent in logical units.
+
+Screens designed taller than 560 got a fit step: a top-left anchor, `size = viewport / k` and `scale = k`, with
+`k = min(1, vw / 1060, vh / 670)`. Input to scaled Controls kept working.
+
+On phones, `get_viewport().scaling_3d_scale = sqrt(2.2e6 / pixels)`, set once at startup (GDT-148), keeps the 3D
+at about 2.2 million pixels while the UI stays sharp.
+
+Multi-touch also worked, measured with CDP `Input.dispatchTouchEvent`. Custom Controls that read
+`InputEventScreenTouch`/`InputEventScreenDrag` in `_gui_input` and remember `event.index` received a second
+finger while the first held a stick. The emulated mouse only follows the first finger, so a `Button` would not
+see the second one.
+
+GDT-166 is the `canvas_items` alternative.
 
 ---
 
