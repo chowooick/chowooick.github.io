@@ -3966,3 +3966,23 @@ module graph on first load took longer than the default 30 s while other session
 **해결:** on a shared machine, run Playwright against a production build: `webServer.command: 'vite build && vite preview
 --port <own port> --strictPort'` with `timeout: 120_000` (own port per OPS-006). The preview server serves static files,
 so the first load does not pay transform time.
+
+## OPS-179 — `codex exec` image tool for adult glamour key art: the output filter blocked 1 of 30 (a swimsuit beach shot), "not a photograph" still came back near-photoreal, and cowboy framing filled only 27–35%
+
+`측정 2026-09-27 · codex-cli 0.154.0 built-in image tool · 30 landscape 1536×1024 heroine pictures + 23 square sprites, 3 parallel runs`
+
+**증상:**
+- One prompt (a white one-piece swimsuit at a beach photoshoot) failed after ~140 s with `http 400 ... "Your request
+  was rejected by the safety system ... safety_violations=[sexual]"`, `"moderation_stage": "output"`,
+  `"code": "moderation_blocked"`. No file was written. Five other swimwear prompts (bikini with sarong, one-pieces,
+  a race-queen dress) and 24 gown/uniform prompts passed; which ones pass is decided on the generated image, not on
+  the words.
+- A style block that asked for a "premium semi-realistic digital painting ... Not a photograph, not a 3D render"
+  still produced near-photographic glamour renders on every attempt.
+- The OPS-128 framing ("cowboy shot ... covers roughly 40-50%") gave 19–30% Vision-mask coverage for these prompts;
+  "close cowboy shot: the camera is close to her ... cropped at mid-thigh" gave 27.5–34.7%. A top-anchored centre
+  crop to 90% (upscaled back to 1536 × 1024) raised that to 29.5–39.1%.
+
+**해결:** when a picture is blocked, regenerate it with a covered outfit (the blocked one came back fine as a resort
+maxi dress, 69 s). Budget one or two regenerations per 30 adult-glamour pictures. For bigger subjects, name a close
+cowboy shot and crop, then re-measure coverage; do not rely on percentages in the prompt.

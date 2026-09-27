@@ -3418,3 +3418,90 @@ exist, and nothing animated. After one `set_shader_parameter()` call with the sa
 
 **해결:** when creating the material, seed every uniform you will tween with `set_shader_parameter(name, start_value)`,
 then tween `"shader_parameter/<name>"`.
+
+## GDT-165 — GDScript `float` is 64-bit but `Vector2` math is 32-bit: a Rust port matched GDScript bit for bit only with `f32` at every spot the GDScript went through `Vector2`
+
+`측정 2026-09-27 · Godot 4.7.2-stable (standard single-precision build) · Rust 1.97.1 · SpacetimeDB module port of a GDScript rules engine`
+
+**증상:** a deterministic GDScript rules engine (floats for positions, `Vector2` for a few helpers such as
+`Vector2(a, b).distance_to(c)`, summing capture centres, nearest-point searches) was ported to Rust with `f64`
+throughout. A trace test that compares both engines record by record diverged wherever a value passed through
+`Vector2`: in a standard Godot build `Vector2` stores `real_t = float` (32-bit), so `distance_to()`, `+=` on a
+`Vector2` and every component read back from it are rounded to single precision, while plain GDScript `float`
+variables stay 64-bit.
+
+**해결:** in the port, use `f32` exactly where the GDScript builds or combines a `Vector2`, and `f64` everywhere
+else; convert at the same points the GDScript does. With that, 2,025 trace records over 10 stages (solo and two
+players, ~3,000 steps each, floats compared as raw 64-bit patterns) matched exactly. Two more things kept the
+engines identical: aim with a shared 256-entry cos/sin table written as decimal literals in both languages instead
+of calling `sin`/`cos`/`atan2`, and a 31-bit integer LCG for all randomness.
+
+## GDT-166 — One UI scale for phones and desktops: `content_scale_size = Vector2i(S, S)` with `CONTENT_SCALE_ASPECT_EXPAND` makes the layout's short side exactly `S` in either orientation
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS 2× display, captures at several window sizes`
+
+**증상:** a fixed base size (1440 × 900) with `canvas_items` + `expand` makes a portrait phone lay out at
+1440 × 3116, so 16 px text lands at about 4 CSS px. Separate base sizes per device class need extra code paths.
+
+**해결:** set a square base and let `expand` grow the long side:
+
+```gdscript
+var short_side := int(clampf(minf(window.size.x, window.size.y) / DisplayServer.screen_get_scale(), 560.0, 900.0))
+window.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+window.content_scale_size = Vector2i(short_side, short_side)   # re-run on size_changed
+```
+
+Measured layouts: a 3840 × 2160 px window on a 2× screen → 1600 × 900; 1920 × 1080 px at 2× → 995 × 560;
+780 × 1688 px at 2× (phone portrait) → 560 × 1212. Screens then pick rail, bar or portrait layouts from the
+layout size alone. Note that `window_set_size()` in a capture script is in physical pixels, so on a 2× screen a
+1920 × 1080 capture is a small 960 × 540 pt window and gets the phone-sized UI.
+
+## GDT-167 — Web export: `HTTPRequest.request("stream/…")` fails with `Invalid URL scheme: ''`; resolve against the page URL. Streaming reward art and music out of `index.pck` cut it from 34.4 MB to 13.3 MB
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (no threads) · headed Chromium on a local server and production`
+
+**증상:** a loader that fetched files next to `index.html` with relative URLs logged
+`ERROR: Invalid URL scheme: ''.` (`_parse_url`, `scene/main/http_request.cpp:66`) for every request on the Web; nothing
+downloaded.
+
+**해결:** build an absolute URL once:
+`JavaScriptBridge.eval("new URL('stream/', window.location.href).href", true)`. The rest of the pattern worked as is:
+- keep the files out of the pack with the preset's `exclude_filter` (globs such as `assets/heroines/*/t2.webp`) and
+  copy the raw source files to `build/web/stream/<same path>` in the build script;
+- build resources from the bytes: `Image.load_webp_from_buffer()` + `generate_mipmaps()` + `ImageTexture.create_from_image()`,
+  and `AudioStreamOggVorbis.load_from_buffer()` (set `loop` yourself);
+- return `null` until a file arrives and emit a signal; prefetch the next stage's files while the current one plays.
+
+With 20 reward pictures, 20 cards and 9 music tracks streamed, `index.pck` went from 34.4 MB to 13.3 MB and the
+first screen came up in 7.6 s on production; 31 files then arrived in the background with HTTP 200 and no console errors.
+`ResourceLoader.exists()` still sees packed files first, so desktop builds need no special case.
+
+## GDT-168 — Tweening `position` of a `Container` child from its `position` right after `add_child()` stacks every child at (0, 0)
+
+`측정 2026-09-27 · Godot 4.7.2-stable`
+
+**증상:** a menu built as a `VBoxContainer` of buttons, each given an entrance tween
+(`target = control.position; control.position = target + offset; tween position → target`), rendered all six
+buttons on top of each other at the container's origin. The container had not sorted its children yet, so every
+`target` was (0, 0), and the tween then kept moving them there after the sort.
+
+**해결:** do not tween `position` on a child whose parent is a `Container`; fade it (`modulate:a`) instead, or wait
+for the container's `sort_children` signal and animate a wrapper control. The same helper can keep sliding free
+controls: check `control.get_parent() is Container` and skip the position part.
+
+## GDT-169 — Names that collide with the language: `var match` and a script `func _get(path, urgent)` both stop every script that preloads them
+
+`측정 2026-09-27 · Godot 4.7.2-stable`
+
+**증상:**
+- `var match: RefCounted` in a screen script: `Parse Error: Expected expression to test after "match".` `match` is a
+  keyword, so the declaration is read as a match statement.
+- A loader `Node` with `func _get(path: String, urgent: bool) -> Resource:`:
+  `The function signature doesn't match the parent. Parent signature is "_get(StringName) -> Variant".` `_get` is the
+  `Object` property-getter virtual. Every script that preloads the loader then fails with
+  `Compile Error: Failed to compile depended scripts.`, which points away from the real cause.
+
+**해결:** rename (`rules`, `_fetch`). Avoid `_get`, `_set`, `_get_property_list`, `_notification`, `_init` and `_to_string`
+as ordinary method names; a parse check that loads each script on its own (`load(path).can_instantiate()` in a small
+SceneTree script) names the file that is actually broken.

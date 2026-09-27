@@ -1579,3 +1579,26 @@ ENOSPC: no space left on device, open '/private/tmp/claude-501/<project>/<sessio
 That is the harness failing to create its own output file, not the command's error. The follow-up check `grep -c "ability-less" tests/integration.ts` printed `1` and was read as "the edit applied". It had not: the old line contained the same words, and the replacement line was never written. Hours later a unique check (`grep -n "includes(roleOf(other)))"`) showed the old code still in place; the heredoc had not run either. The integration test kept passing only because the random role deal never hit the case the edit was meant to fix. `df -h /` read 117 MiB free at the failure and 1.2 GiB a minute later: other sessions' swap and temporary files come and go on the same volume (see OPS-156).
 
 **해결:** Treat an `ENOSPC` result as "unknown progress". Before retrying, check every intended side effect with a pattern that only the new content can match (a string the edit adds, not a word the old line shares), or diff against what you expected; then redo only what is missing, one step per call while space is short. Check `df -h /` first: free space on a shared machine can swing by a gigabyte within a minute, so a retry can succeed without anyone freeing anything.
+
+## AGT-073 — gstack `$B --headed` cannot start while another session's Chromium holds `~/.gstack/chromium-profile`; drive gstack's own Playwright with a private profile instead
+
+`측정 2026-09-27 · gstack browse (Chromium 145 for Testing) · macOS, several Claude Code sessions in parallel`
+
+**증상:** `$B --headed goto <url>` printed `Server failed to start within 8s`, and the launch log showed
+`Failed to open UKM database: 0 database is locked`, `Failed to delete the database: Database IO error` and
+`exception while trying to kill process: SystemError: kill() failed: EPERM`. Four other Chromium processes had
+`--user-data-dir=/Users/<user>/.gstack/chromium-profile`: the profile is one per user, not per session. Earlier in the
+same session a separate symptom: `$B` state lives in `.gstack/browse.json` under the current directory, so running it
+from another folder started a second daemon, and later calls failed with `existing daemon has different config
+(proxy/headed mismatch)`.
+
+**해결:** do not kill other sessions' browsers. Use the Playwright that gstack already ships, with a profile of your
+own:
+
+```js
+import { chromium } from '/Users/<user>/.claude/skills/gstack/node_modules/playwright/index.mjs';
+const ctx = await chromium.launchPersistentContext('<scratchpad>/profile', { headless: false, viewport: { width: 1440, height: 900 } });
+```
+
+Run it with `node`. Headed gives WebGL2 (GDT-086), so a Godot web build ran at 60–120 fps and could be driven with
+`page.keyboard.down/up` and screenshots. Always run `$B` from the same directory.
