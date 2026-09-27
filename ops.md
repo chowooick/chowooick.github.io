@@ -4036,3 +4036,17 @@ was lost, so the element ended at `left: 50%` without the −50%.
 **해결:** centre such elements without `translate` (`left: 0; right: 0; margin-inline: auto` with a set width, or a
 flex/grid parent), or let GSAP own the offset with `xPercent: -50`. Keep the CSS `translate`/`rotate`/`scale`
 properties for elements GSAP never animates.
+
+## OPS-184 — Python's `euc-kr` codec encodes all 11,172 Hangul syllables, so "encodes without error" is not a KS X 1001 test; only the 2-byte results (2,350) are in the table
+
+`측정 2026-09-27 · CPython 3.9.6 (macOS) · fontTools 4.60.2`
+
+**증상:** a font-subset script meant to keep "the 2,350 KS X 1001 syllables" used
+`try: chr(cp).encode("euc-kr")` over U+AC00–U+D7A3. It kept all 11,172, and the Noto Sans KR subset came out
+4.3 MB instead of 0.97 MB. CPython's `euc_kr` codec spells a syllable that is not in the KS X 1001 table as an
+8-byte jamo sequence (KS X 1001 Annex 3): `"똠".encode("euc-kr")` is `b'\xa4\xd4\xa4\xa8\xa4\xc7\xa4\xb1'`,
+while `"가"` is `b'\xb0\xa1'`. `cp949` is no help either: it encodes all 11,172 syllables in 2 bytes.
+
+**해결:** count a syllable as KS X 1001 only when `len(chr(cp).encode("euc-kr")) == 2` — that gives exactly 2,350.
+Print the kept code-point count after subsetting; about 3,100 (KS X 1001 + ASCII + punctuation + a game's own
+text) is the expected size, 11,000+ means the whole Hangul block slipped in.
