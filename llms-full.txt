@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T09:04:46Z · 소스 커밋 `1fd1c87` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T09:08:09Z · 소스 커밋 `3a6fd2c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3457,6 +3457,35 @@ whose `loop` matched the file.
 lines and keep the rest, so the uid Godot assigned stays stable. Leave `beat_count` at 0 unless the
 file really should loop early: with `bpm` and `beat_count` both set, `AudioStreamOggVorbis` loops at
 `beat_count` beats and plays the rest of the file as a tail over the restart.
+
+## GDT-121 — `var ok := x == dict["k"]` is a parse error, and a `--script` or `--check-only` run that hits it still exits 0
+
+`측정 2026-09-27 · Godot 4.7.2-stable, macOS, godot --headless --path client --script <test>.gd`
+
+**증상:** A headless `extends SceneTree` data check printed
+`SCRIPT ERROR: Parse Error: Cannot infer the type of "ok" variable because the value doesn't have a set type.`
+and `ERROR: Failed to load script`, then the process exited 0. None of the test ran.
+
+A dictionary element is a Variant. Any operator with a Variant operand is typed Variant during
+analysis, including `==` and `and`, even though they always give a bool at run time, so `:=` refuses
+to infer a type. One-line probes in the same file:
+
+| line | result |
+|---|---|
+| `var ok := "v" == d["k"]` | parse error |
+| `var ok := d.has("k") and d["k"] == "v"` | parse error |
+| `var ok := "v" == String(d["k"])` | runs, `true` |
+| `var ok: bool = "v" == d["k"]` | runs, `true` |
+| `var ok := d.size() > 0` | runs, `true` |
+
+Both `godot --headless --path client --script probe.gd` and the same command with `--check-only`
+exited 0 on the broken probe. A CI step that trusts the exit code counts a test that never parsed as
+passed. This is the same family as GDT-047 and GDT-087.
+
+**해결:** Cast the element (`String(d["k"])`, `int(d["n"])`) or give the variable a declared type
+(`var ok: bool = ...`). For every `--script` test, have the script print a success marker as its last
+line (for example `VILLAGERS_OK`). The CI step then requires that marker and also greps the log for
+`SCRIPT ERROR|Parse Error`. The exit code alone proves nothing.
 
 ---
 
