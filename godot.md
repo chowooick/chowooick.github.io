@@ -2804,3 +2804,49 @@ Launching the Playwright-cached Chrome directly works without any npm package:
 Then `fetch http://127.0.0.1:<port>/json/list`, open the page's `webSocketDebuggerUrl` with Node's global `WebSocket`, enable `Runtime`/`Log`, `Page.navigate` to the build and `Page.captureScreenshot`. Measured: `webgl2: true`, the 40 MB build left its loading screen in 28 s from a local server, the console showed `OpenGL ES 3.0 (WebGL 2.0 …) - Compatibility`, and the screenshot contained the rendered 3D scene.
 
 **해결:** keep a ~100-line CDP script in the repo (here `tests/web_smoke.mjs`): it collects console errors, waits for the loading element to disappear and saves screenshots, and exits non-zero on errors. Serve the export with a server that sends `application/wasm` for `.wasm` (Python 3.9's `http.server` needs an explicit `extensions_map` entry). Related: GDT-086, AGT-069, AGT-070.
+
+## GDT-130 — In `gl_compatibility`, `hint_screen_texture, filter_linear_mipmap` + `textureLod()` gives a one-pass frosted blur
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility (OpenGL 4.1 Metal, M1 Max) · windowed`
+
+**증상:** A pause screen needed a blurred copy of the 3D world behind it. It was unclear whether the Compatibility renderer generates mipmaps for the screen texture, and a multi-tap blur costs dozens of fetches per pixel.
+
+Measured with 48 px black/white stripes behind a `ColorRect` whose shader returns `textureLod(screen_tex, SCREEN_UV, 3.0)`. The uncovered half read `1.0 … 1.0, 0.0 … 0.0` at the stripe edges. The covered half read `0.47, 0.16, 0.01, 0.0, 0.01, 0.13, 0.48, 0.82, 0.97, 1.0` — a smooth ramp, so the back-buffer mip chain exists.
+
+**해결:** Declare `uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;` and sample `textureLod(screen_tex, SCREEN_UV, lod)` (lod about 3–4 at 1440 × 900). Mixing 5 offset taps at the same lod removes the blocky mip look. Animate the lod from 0 for the open transition. `amount = 0` shows the unblurred screen, so the overlay can stay opaque (`COLOR.a = 1.0`).
+
+---
+
+## GDT-131 — The Google Fonts Korean display face Jua has only 2,367 of the 11,172 Hangul syllables
+
+`측정 2026-09-27 · Jua-Regular.ttf (google/fonts ofl/jua, 2.1 MB) · Noto Sans KR variable · Godot 4.7.2 FontFile.has_char()`
+
+**증상:** A rounded display face for Korean headings looked complete in every heading tested by hand. A player name or area name typed later can render in two fonts, or as tofu on the web (GDT-088).
+
+`has_char()` over U+AC00–U+D7A3: Jua is missing **8,805** syllables (it covers the KS X 1001 set). It also has none of `▼▲◀▶…·●○※→←↑↓×✓♪〜`. Noto Sans KR has all 11,172 syllables and those symbols except `☰` and `✔`.
+
+**해결:** Wrap Jua in a `FontVariation` with `fallbacks = [<Noto Sans KR variation>]`. Draw symbols such as ▼ or ☰ as polygons or SVG instead of glyphs. In the UI test, loop over every visible Label and assert `label_settings.font.has_char(c)` for each character. `FontVariation.has_char()` also looks at the fallbacks.
+
+---
+
+## GDT-132 — Godot 4.7's default `ui_accept` / `ui_cancel` have no gamepad buttons
+
+`측정 2026-09-27 · Godot 4.7.2-stable · InputMap.action_get_events() in a --script run`
+
+**증상:** A menu that listens only to `ui_accept` / `ui_cancel` works with a keyboard and ignores the gamepad's A and B buttons.
+
+Defaults as printed: `ui_accept` = Enter, Kp Enter, Space. `ui_cancel` = Escape. `ui_up` = Up, `JOY_BUTTON_DPAD_UP` and `JOY_AXIS_LEFT_Y -1`. Directions reach the gamepad, confirm and back do not.
+
+**해결:** Treat the game's own actions as menu commands (for example `interact` on `JOY_BUTTON_A` = confirm), and read `JOY_BUTTON_B` from `InputEventJoypadButton.button_index` for back. Stick motion arrives as a stream of `InputEventJoypadMotion`, and each event past the deadzone reports `is_action_pressed`. Edge-detect it with a per-axis state and hysteresis (enter above 0.6, reset below 0.3). Otherwise one flick moves the focus several steps.
+
+---
+
+## GDT-133 — `_input()` and the same frame's `_physics_process()` share the process frame count; the physics count is one higher
+
+`측정 2026-09-27 · Godot 4.7.2-stable · windowed and --headless --script`
+
+**증상:** A dialogue box closes on the press of E in `_input()`. The game polls `Input.is_action_just_pressed("interact")` in `_physics_process()` and checks `ui.is_blocking()`. The box is already closed, so the same press starts the conversation again.
+
+One synthetic E press, logged: `_input pressed proc=8 phys=11` → `_physics_process just_pressed proc=8 phys=12` → `_process just_pressed proc=8 phys=12`. Events are delivered before the physics steps of the same iteration. The physics counter increments before `_physics_process` runs.
+
+**해결:** At close, store `closed_proc = Engine.get_process_frames()` and `closed_phys = Engine.get_physics_frames()`. Keep `is_blocking()` true while `get_process_frames() <= closed_proc or get_physics_frames() <= closed_phys + 1`. That covers a frame without a physics step at high refresh rates. The next real press still reaches the game. For the opposite case (the press that opened a modal must not advance it), ignore events while `get_process_frames()` equals the frame the modal opened in. In headless tests, several process frames can pass without a physics tick. Wait on `physics_frame` twice before asserting that blocking ended, not on `process_frame`.
