@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T15:45:07Z · 소스 커밋 `e9ab912` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T15:46:10Z · 소스 커밋 `4ffc06e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4473,6 +4473,22 @@ finger while the first held a stick. The emulated mouse only follows the first f
 see the second one.
 
 GDT-166 is the `canvas_items` alternative.
+
+## GDT-172 — A Godot 4.7 web export inside a Docker build: download the Linux editor by checksum, vendor only the one 10 MB web template (templates ship as one 1.28 GB `.tpz`), import before exporting
+
+`측정 2026-09-27 · Godot 4.7.2 · debian:bookworm-slim · Docker 29.7 (BuildKit) · arm64 native and amd64 under emulation`
+
+**증상:** a production image that has to export a Godot project on the build host (Dokploy-style: build from a git clone, no artefacts committed) needs the editor and an export template. Godot publishes export templates **only** as `Godot_v4.7.2-stable_export_templates.tpz`, **1,281,349,702 bytes** of every platform, while a single-threaded web export needs one file from it, `web_nothreads_release.zip`, **10,245,903 bytes**. The Linux editors are separate zips of about 77 MB (`linux.x86_64` 77,860,424, `linux.arm64` 77,008,699), each listed in the release's `SHA512-SUMS.txt`.
+
+What worked, both architectures:
+
+- Pick the editor with BuildKit's automatic `ARG TARGETARCH` (`amd64` → `linux.x86_64`, `arm64` → `linux.arm64`), `curl` it from the GitHub release and `sha512sum -c` it against the value copied out of `SHA512-SUMS.txt`.
+- Commit `web_nothreads_release.zip` (taken from the local `export_templates/4.7.2.stable/`) with a `.sha512` beside it, and `COPY` both to `/root/.local/share/godot/export_templates/4.7.2.stable/`. The `.tpz` itself has a published checksum; the single zip does not, so its checksum is your own.
+- `godot --headless --import` **before** `godot --headless --export-release Web build/web/index.html`. A cold `.godot` is a broken project (GDT-036), and an export from it packs scripts whose `class_name`s never resolved.
+- The editor prints `ERROR: Unable to load fontconfig, system font support is disabled.` about twenty times on a slim image. Harmless when the project brings its own fonts, but it makes a failed build's log open with a page of errors that are not the failure: `apt-get install libfontconfig1` took it to 0.
+- Timing: the import and export took seconds natively on arm64, and **22.0 s** for the x86 editor under emulation on an M1 Max. The resulting `index.wasm` is the template's `godot.wasm` byte for byte (39,514,754), and served with nginx `brotli_static` it went out as 6,902,599 bytes.
+
+**해결:** vendor the one template file with its own SHA-512, download the editor per `TARGETARCH` against the release's SHA-512, import then export, and keep the three version pins (project, editor download, template) moving in one commit.
 
 ---
 
