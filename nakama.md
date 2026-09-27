@@ -772,3 +772,59 @@ other value.
 (`{matchId, createdAt}`, written right after `matchCreate`, used only if younger than 3 s), then create. After the
 fix, back-to-back presses landed in one room 5 of 5 times. Two RPCs fired at the same instant still made two rooms
 (0 of 5): both read the record before either wrote it.
+
+---
+
+## NKM-036 — The JS runtime freezes module globals: a global `/g` regex throws inside `replace`, and a throw in any match handler stops the whole match
+
+`측정 2026-09-27 · Nakama 3.37.0 JS runtime · runtime.js_read_only_globals left at its default (true)`
+
+**증상:** a text sanitizer kept its regex in a module global, `var UNSAFE = /[<>]/g;`, and `matchJoinAttempt`
+called `name.replace(UNSAFE, "")`. Unit tests that ran the module in Node `vm` passed. On the real server the first
+join destroyed the room; the client only saw `{code: 5, message: "Match join rejected"}`. Server log:
+
+```
+"msg":"Stopping match after error from match_join_attempt execution","tick":0,
+"error":"TypeError: Cannot assign to read only property 'lastIndex' at replace (native)"
+```
+
+Two facts combine:
+
+- `nakama --help`: `runtime.js_read_only_globals` "marks all Javascript runtime globals as read-only to reduce
+  memory footprint. Default true." A regex with the `g` (or `y`) flag has to write `lastIndex`, so `replace`,
+  `exec` and `test` on a global one throw. Global regexes without `g` used with `test()` ran fine on the same server.
+- An exception from a match handler does not only fail that call. Nakama stops the match and every player in it is
+  dropped; the joiner that triggered it gets the generic "Match join rejected".
+
+**해결:** create `g` regexes inside the function (a regex literal is a new object on every evaluation). Wrap match
+handler work per message in `try/catch` with a log line so one bad input cannot close a room, and have
+`matchJoinAttempt` return `{accept: false}` from its `catch`. To get the same failure in unit tests, deep-freeze the
+module's globals after loading it in `vm`: V8 then throws the same
+`TypeError: Cannot assign to read only property 'lastIndex' of object '[object RegExp]'`.
+
+---
+
+## NKM-037 — JS runtime RPC errors keep their gRPC code over HTTP (3 and 9 → 400, 14 → 503, 16 → 401), and the error body carries the module's stack trace
+
+`측정 2026-09-27 · Nakama 3.37.0 JS runtime · HTTP RPC through nakama-js 2.8.0 and curl`
+
+`throw {message, code}` from a JS RPC reaches an HTTP caller with the standard gRPC-gateway status: code 3 → 400,
+9 → 400, 14 → 503, 16 → 401 (compare NKM-007: over the socket every code becomes 7). The body also contains the
+JS stack, so any client can read the module's function names and line numbers:
+
+```
+{"code":3,"error":{"stackTrace":"[object Object]\n\tat rpcError (main.js:41:36(6))\n\tat invalid (main.js:104:34(12))\n..."},"message":"invalid_progress:hearts"}
+```
+
+nakama-js 2.8.0 rejects an HTTP RPC with the fetch `Response` itself (`error.status`, body via `await error.json()`),
+a request timeout with the bare string `"Request timed out."`, and a refused `joinMatch` with
+`{code: 5, message: <rejectMessage>}` — `matchJoinAttempt` returning `rejectMessage: "world_full"` arrives as
+`message: "world_full"`.
+
+A room registry kept in a version-checked storage record (read it; if its match is gone, take a lock with the
+record's version, `matchCreate`, write the match id) answered 30 simultaneous `join_world` calls on a freshly
+restarted server with 1 success and 29 `503 world_preparing`.
+
+**해결:** branch on the message identifier (as in NKM-007) or on the HTTP status, never on the gRPC code alone.
+Retry 503 after a short pause: 250–750 ms steps were enough for the registry case. Treat everything in a thrown
+runtime error, including the stack, as public.

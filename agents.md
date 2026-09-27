@@ -1539,3 +1539,29 @@ The daemons are per repository, but the profile is not: all of them launch with
 `CHROMIUM_PROFILE=<scratch dir>/chromium-<repo> $B --headed goto …` (`resolveChromiumProfile()` in
 `browse/src/config.ts`). For WebGL work that needs no visible window, GDT-117 avoids the daemon altogether. Do not
 kill another session's Chromium to get the lock back.
+
+## AGT-071 — `\u2028`/`\u202e`-style escapes in tool parameters arrive as the literal characters (Write content and Bash commands alike): U+2028 inside a JS regex literal is a line break, so the file no longer parses
+
+`측정 2026-09-27 · Claude Code (Opus 5.5) · esbuild 0.28.2`
+
+**증상:** a Nakama JS module written with the Write tool contained the regex
+`/[\u0000-\u001f\u007f-\u009f<>\u2028\u2029\u202a-\u202e\u2066-\u2069]/g`, typed as escapes. On disk the first four
+escapes were still six-character escapes, but `\u2028 \u2029 \u202a \u202e \u2066 \u2069` had become the characters
+themselves (`od -c` shows `342 200 250` for U+2028). `esbuild --target=es5` failed with
+`Unterminated regular expression`: U+2028 is a JavaScript line terminator, so the regex literal ended in the middle
+of the line and a spec-compliant runtime cannot load the file. A test file written the same way got literal
+U+202E and U+2066 (bidi override and isolate) inside string literals: still valid syntax, but invisible characters
+that reorder text in editors and diffs.
+
+It is not only the Write tool. The same escapes typed into a Bash command, inside a quoted heredoc feeding a Python
+raw string, also reached the file as the literal characters (this entry's first draft was damaged that way), while
+the NUL–0x1F escapes in the same command survived. AGT-057 saw NUL–0x1F escapes turn into control bytes, so which
+escapes survive varies. Treat every `\uXXXX` typed into any tool parameter as unreliable.
+
+**해결:** never type the escape itself. Generate it from the code point in the program that writes the file,
+e.g. Python `chr(92) + 'u' + '2028'` or `'\\u%04x' % 0x2028`, or build the regex from code points at runtime
+(`new RegExp('[' + '\\u' + (0x2028).toString(16) + ...)`). Then list what is not plain ASCII:
+`python3 -c "import sys; s=open(sys.argv[1]).read(); print(sorted({hex(ord(c)) for c in s if ord(c) > 0x7e}))" <file>`.
+For a file that must stay ASCII, such as a Nakama module, assert it in the unit tests
+(`/[^\x09\x0a\x0d\x20-\x7e]/.test(source) === false`) and run it through `esbuild --target=es5` before
+deploying; that reports the parse error the server would only show at startup.
