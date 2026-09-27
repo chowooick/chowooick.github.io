@@ -2228,7 +2228,7 @@ in game. Inspecting the imported `AudioStreamWAV` showed `loop_end` = frames −
 `smpl` chunk and set the loop only in code or in the import settings. Note that the importer's default compression
 for WAV is QOA. Reference: `~/work/cobramission/client/core/audio/audio.gd`.
 
-## GDT-100 — A `MeshInstance3D` built in code has an empty `skeleton` path: the skin is set, nothing errors, and the mesh renders in its rest pose
+## GDT-103 — A `MeshInstance3D` built in code has an empty `skeleton` path: the skin is set, nothing errors, and the mesh renders in its rest pose
 
 `측정 2026-09-27 · Godot 4.7.2-stable · Forward+ / Metal · skinned ArrayMesh + Skin built at runtime`
 
@@ -2275,7 +2275,7 @@ counting outline-coloured pixels in a windowed screenshot; thin dark lines are e
 
 ---
 
-## GDT-100 — Wrapped Korean text breaks in the middle of words; a WORD JOINER between syllables fixes it
+## GDT-104 — Wrapped Korean text breaks in the middle of words; a WORD JOINER between syllables fixes it
 
 `측정 2026-09-27 · Godot 4.7.2-stable · TextServerAdvanced (ICU) · Pretendard 32 px`
 
@@ -2301,7 +2301,7 @@ width stayed 830.0 px with and without it. Two follow-ups:
 
 ---
 
-## GDT-101 — `variation_opentype = {"wght": 700}` is silently ignored; Noto Sans JP then renders Thin
+## GDT-105 — `variation_opentype = {"wght": 700}` is silently ignored; Noto Sans JP then renders Thin
 
 `측정 2026-09-27 · Godot 4.7.2-stable · NotoSansJP[wght].ttf from google/fonts`
 
@@ -2325,7 +2325,7 @@ compare string widths; do not judge by eye.
 
 ---
 
-## GDT-102 — Pretendard has kana but no kanji: Japanese text mixes two typefaces unless Noto Sans JP comes first
+## GDT-106 — Pretendard has kana but no kanji: Japanese text mixes two typefaces unless Noto Sans JP comes first
 
 `측정 2026-09-27 · Pretendard 1.3.9 (static OTF) · Noto Sans JP (variable) · Godot 4.7.2-stable`
 

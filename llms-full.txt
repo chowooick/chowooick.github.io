@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:20:40Z · 소스 커밋 `ea206e0` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:26:35Z · 소스 커밋 `0c93230` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -2923,6 +2923,136 @@ Quaternius Ultimate Monsters (metallic 0, roughness 1) import as ordinary lit ma
 `StandardMaterial3D`, or an `EditorScenePostImport` script that sets `metallic = 0` and
 `shading_mode = SHADING_MODE_PER_PIXEL`. Check `metallic` and `shading_mode` of a newly imported pack
 in a headless script before judging its look.
+
+## GDT-100 — The WAV importer copies a `smpl` chunk's loop end (last frame index, frames − 1) into `loop_end`, so an imported loop drops its final sample on every pass
+
+`측정 2026-09-27 · Godot 4.7.2-stable · 16-bit PCM WAV loops written by Python with a `smpl` chunk (loop start 0, end = frames − 1, per the RIFF spec)`
+
+**증상:** Seamless music and ambience loops rendered sample-exact still had a faint periodic tick at the loop point
+in game. Inspecting the imported `AudioStreamWAV` showed `loop_end` = frames − 1: the RIFF `smpl` chunk stores the
+*inclusive* index of the last frame, and the importer uses it as the *exclusive* end. One sample is skipped per loop.
+
+**해결:** Override it at load time: `stream.loop_mode = AudioStreamWAV.LOOP_FORWARD`, `stream.loop_begin = 0`,
+`stream.loop_end = <total frame count>` (for 16-bit PCM, `stream.data.size() / (2 * channels)`). Alternatively omit the
+`smpl` chunk and set the loop only in code or in the import settings. Note that the importer's default compression
+for WAV is QOA. Reference: `~/work/cobramission/client/core/audio/audio.gd`.
+
+## GDT-103 — A `MeshInstance3D` built in code has an empty `skeleton` path: the skin is set, nothing errors, and the mesh renders in its rest pose
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Forward+ / Metal · skinned ArrayMesh + Skin built at runtime`
+
+**증상:** A procedural character (`Skeleton3D` → child `MeshInstance3D` with `mesh` and `skin`)
+never deformed. Bone poses changed (`get_bone_pose_rotation` returned animated values), but every
+screenshot showed the bind pose. No warning was printed.
+
+`MeshInstance3D.skeleton` defaults to `NodePath("")` in 4.x (the class reference lists
+`default="NodePath(&quot;&quot;)"`), not `".."`. Editor-imported scenes store the path explicitly, which is
+why this only shows up for nodes created from code. With an empty path the skin is never bound to
+a skeleton.
+
+**해결:** Set the path explicitly when you build the node: `mesh_instance.skeleton = NodePath("..")`
+(or the path to the `Skeleton3D`). Verify with a pose change in a screenshot, not with bone values.
+
+## GDT-101 — An `AnimationNodeTransition` built in code outputs nothing until a state is requested
+
+`측정 2026-09-27 · Godot 4.7.2-stable · AnimationTree with a code-built AnimationNodeBlendTree`
+
+**증상:** A code-built AnimationTree (`BlendSpace1D` → `TimeScale` → `Transition` → `OneShot` →
+output) was active and processing, the library held 13 clips, and the same library animated the
+skeleton through an `AnimationPlayer`. Through the tree, every bone stayed at rest.
+`parameters/state/current_state` read `""`.
+
+A `Transition` node added with `add_input()` has no current state until the first
+`transition_request`; it then passes nothing downstream, so the whole tree blends to rest.
+
+**해결:** Right after activating the tree, request the default state for every Transition node:
+`tree.set("parameters/state/transition_request", "loco")`.
+
+## GDT-102 — An inverted-hull outline that scales its offset by `VIEWPORT_SIZE` in `vertex()` drew no silhouette lines; the same offset from `PROJECTION_MATRIX` alone works
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Forward+ / Metal (M1 Max) · next_pass ShaderMaterial, cull_front, POSITION written`
+
+**증상:** A pixel-width outline (next pass, `cull_front`, vertices pushed along the view-space normal,
+`POSITION = PROJECTION_MATRIX * vp`) showed no lines around silhouettes. The offset was
+`width_px * (VIEWPORT_SIZE.y / 1080.0) * 2.0 * depth / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y)`.
+A constant 12 mm offset in the same pass drew clean silhouettes. `VIEWPORT_SIZE.y` itself reads
+above 100 in `vertex()` in the color pass, so the value is not simply zero. The cause is not isolated.
+
+**해결:** Leave `VIEWPORT_SIZE` out of the vertex offset. Use a resolution-relative width:
+`2.0 * depth / (abs(PROJECTION_MATRIX[1][1]) * 1080.0) * width_px`. Check an outline change by
+counting outline-coloured pixels in a windowed screenshot; thin dark lines are easy to miss by eye.
+
+---
+
+## GDT-104 — Wrapped Korean text breaks in the middle of words; a WORD JOINER between syllables fixes it
+
+`측정 2026-09-27 · Godot 4.7.2-stable · TextServerAdvanced (ICU) · Pretendard 32 px`
+
+**증상:** A Korean dialogue line in an autowrapping `Label` (`AUTOWRAP_WORD_SMART`) split the word
+"어디부터" into "어디부 | 터". Choice cards and speech bubbles did the same ("나가니 | 까", "받 | 아").
+
+Godot follows the UAX #14 default for Hangul, which allows a line break between any two syllables.
+`TextParagraph` with `BREAK_WORD_BOUND | BREAK_ADAPTIVE` gives the same result, and the ICU keep-all
+locale keyword does nothing. The same sentence at widths 640, 700 and 760 px:
+
+| language passed to `add_string` | 700 px |
+|---|---|
+| `ko` | `… 자, 어디부 \| 터 시작할까?` |
+| `ko@lw=keepall` or `ko-u-lw-keepall` | `… 자, 어디부 \| 터 시작할까?` (no effect) |
+| `ko`, U+2060 between syllables | `… 자, \| 어디부터 시작할까?` |
+
+**해결:** Insert U+2060 WORD JOINER between consecutive Hangul syllables (U+AC00–U+D7A3) before you
+set wrapped text. Breaks then happen only at spaces. The joiner has zero width: the measured string
+width stayed 830.0 px with and without it. Two follow-ups:
+- A typewriter reveal that counts characters must skip U+2060, or Korean lines type out at half speed.
+- Auto-translated labels cannot be pre-processed. Set the text from code with `tr()` plus the joiners,
+  and re-apply it on `NOTIFICATION_TRANSLATION_CHANGED`.
+
+---
+
+## GDT-105 — `variation_opentype = {"wght": 700}` is silently ignored; Noto Sans JP then renders Thin
+
+`측정 2026-09-27 · Godot 4.7.2-stable · NotoSansJP[wght].ttf from google/fonts`
+
+**증상:** Japanese UI text in a `FontVariation` over the variable Noto Sans JP looked hairline-thin
+at every requested weight. Bold labels and body text looked the same.
+
+- `get_supported_variation_list()` reports the axis as `{ 2003265652: (100, 900, 100) }`.
+  The default instance is **Thin 100**, not Regular.
+- The string key `"wght"` is ignored, even though the class reference names it as an example.
+
+| `variation_opentype` | width of "Hamburg WWW" at 40 px |
+|---|---|
+| `{}` | 276.0 |
+| `{"wght": 100}` / `{"wght": 900}` | 276.0 / 276.0 (ignored) |
+| `{2003265652: 900}` (int tag) | 311.0 |
+| `{"weight": 900}` (axis name) | 311.0 |
+
+**해결:** Key the axis by its integer tag, `0x77676874` or `TextServer.name_to_tag("wght")`, or by the
+name `"weight"`. The saved `.tres` then shows `2003265652: 700`. When you check that a weight applied,
+compare string widths; do not judge by eye.
+
+---
+
+## GDT-106 — Pretendard has kana but no kanji: Japanese text mixes two typefaces unless Noto Sans JP comes first
+
+`측정 2026-09-27 · Pretendard 1.3.9 (static OTF) · Noto Sans JP (variable) · Godot 4.7.2-stable`
+
+**증상:** A body font chain of Pretendard with a Noto Sans JP fallback worked for Korean and English. In
+Japanese, kana and kanji came from different fonts inside one word. They differed in stroke weight and
+in x-height.
+
+A fontTools cmap check shows why. Pretendard Regular (14,336 glyphs) contains Hangul, hiragana,
+katakana, 「」, 。, 、 and full-width ！, but no CJK ideographs (事 and 件 are missing). The primary font
+is always tried first, so kana come from Pretendard and only kanji fall through to Noto Sans JP.
+Other coverage from the same check: Black Han Sans has no kana and no kanji. Dela Gothic One has kana
+and kanji but no Hangul. Anton and VT323 are Latin only.
+
+**해결:** Re-order the chain by locale. For `ja`, make Noto Sans JP the base font and Pretendard the
+fallback. For every other locale, use Pretendard first. The chains are shared `FontVariation`
+resources referenced by the Theme, so changing `base_font` and `fallbacks` once at a locale change
+updates every Control. Display chains need the same swap (Dela Gothic One before Black Han Sans for
+`ja`).
 
 ---
 
