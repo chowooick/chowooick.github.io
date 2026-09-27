@@ -875,3 +875,21 @@ ignores a write to a frozen object. (NKM-036's regex case throws even in sloppy 
 `InitModule`. Collect the names with `acorn.parse(src, {ecmaVersion: 5}).body` → `VariableDeclaration`. In the module,
 write caches only while the object is still extensible: `if (Object.isExtensible(CACHE)) try { CACHE[k] = v } catch (e) {}`.
 Alternatively, fill the cache inside `InitModule`, before the freeze.
+
+## NKM-040 — `match_join` metadata is `map<string, string>`: one object-valued key makes the server close the WebSocket with no error frame
+
+`측정 2026-09-27 · Nakama 3.40.0 Lua runtime · realtime socket, format=json · Chrome 가 보낸 프레임을 Playwright로 기록`
+
+**증상:** A client joined an authoritative match with
+`{"cid":"join","match_join":{"match_id":"…","metadata":{"name":"농부","look":{}}}}`. The socket received the
+`status_presence_event`, sent the join, and then closed. No `error` envelope and no `match` reply arrived. The
+match's `match_join_attempt` never ran, so nothing in the module logged anything. On the client, the only sign was that
+the player stayed offline and the socket reconnected in a loop.
+
+`metadata` is `map<string, string>` in the realtime protocol. A nested object or array (here `"look":{}`) fails to
+decode, and the server drops the connection instead of answering with an error. With the same object sent as JSON text
+(`"look":"{\"skin\":\"f1c9a5\"}"`), the join succeeded, and two browsers saw each other within 3.2 s.
+
+**해결:** Send every metadata value as a string: `JSON.stringify(value)` on the client, and in the match handler
+decode it (`pcall(nk.json_decode, metadata.look)` in Lua). Data that changes after the join (appearance, display name)
+is better sent as match data after joining than packed into the join.

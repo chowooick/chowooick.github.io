@@ -3123,3 +3123,44 @@ Measured in a scratch project, freeing the node before each callback ran:
 **증상:** A procedural 3D stage lowered `get_viewport().scaling_3d_scale` from 1.0 toward 0.5 whenever frame time rose. Under heavy machine load it changed the scale several times in one session, and WebKit then logged `WebGL: context lost` followed by shader link failures partway through a scripted game flow (the defense scene). WebKit runs in which the scale never changed finished the same flow without a loss. Chrome kept rendering through the same scale changes.
 
 **해결:** On WebKit/Safari, choose the scale once at startup and never change it; elsewhere, only lower it, at most twice. With that change the full flow (menu → lobby → day with an evidence prop → night → dawn → vote → defense → execution) ran in WebKit with zero context losses; the only warning left was the engine's `WEBGL_polygon_mode` notice. Test adaptive-resolution code in WebKit under CPU load, since an idle machine never triggers the changes.
+
+## GDT-149 — `set_process(false)` called before a node enters the tree is undone at its first ready when the script defines `_process()`
+
+`측정 2026-09-27 · Godot 4.7.2-stable · --headless`
+
+**증상:** A creature controller called `set_process(false)` right after `new()` and only then `add_child()`ed the node.
+It kept ticking anyway.
+
+Measured with a script that only defines `_process()`:
+
+| Order | `is_processing()` afterwards | `_process` calls in 2 frames |
+|---|---|---|
+| `set_process(false)`, then `add_child()` | `true` (right after `add_child`) | 1 |
+| `add_child()`, then `set_process(false)` | `false` | 0 |
+| add, remove, `set_process(false)`, add again | `false` | 0 |
+
+A script that overrides `_process()` gets processing switched on when the node first becomes ready. That overwrites an
+earlier `set_process(false)`. Later re-entries into the tree do not switch it on again, because ready runs once.
+
+**해결:** Turn processing off after the node is in the tree: in `_ready()`, or after `add_child()`. The same applies to
+`_physics_process` and `set_physics_process`.
+
+## GDT-150 — Web export sample playback ignores `AudioStreamWAV.loop_begin`/`loop_end`: a sustain loop replays the whole sample, attack included
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export · 내보낸 index.js(GodotAudio.Sample / SampleNode)를 직접 읽음 · 귀로 확인하지는 않음`
+
+**증상:** Instrument samples that loop only their sustain part (`loop_begin` > 0) are a common way to hold notes of
+any length. In the Web build's default Sample playback mode, the loop points never reach Web Audio.
+
+- `GodotAudio.Sample`'s constructor stores `options.loopBegin` and `options.loopEnd`, and no other code in `index.js`
+  reads them.
+- `SampleNode._restart()` creates a new `AudioBufferSource` with the whole buffer and calls
+  `start(this.startTime, this.offset + pauseTime)`. It never sets `source.loop`, `loopStart` or `loopEnd`.
+
+So when a looping sample ends, the whole buffer plays again from `offset`, attack included. The loop point also has
+the timing gap that GDT-097 describes.
+
+**해결:** Do not rely on WAV loop points on the Web. Make samples long enough for the longest note. For longer notes,
+crossfade into a second voice started in the middle of the sample. Another option is to switch the bus to Stream
+playback (`audio/general/default_playback_type.web`), but GDT-097 measured dropouts with Stream playback in a no-threads
+build.
