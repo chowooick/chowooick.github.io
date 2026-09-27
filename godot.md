@@ -3354,3 +3354,13 @@ The temporary's refcount reaches zero on the line that creates the Callable. The
 JavaScript's `JSON.stringify` writes the shortest round-tripping form, so the two sides disagree even when both computed the same double.
 
 **Fix:** for exact transport, send the IEEE-754 bytes. On the Godot side use `PackedByteArray.resize(8)`, `encode_double(0, x)` and `hex_encode()`, and decode with `hex_decode().decode_double(0)`. On the JS side use `DataView.setFloat64(0, x, true)` (little-endian). Only compare decimals from Godot's JSON with a tolerance.
+
+## GDT-148 — A Godot web export refuses to start on any `http://` origin but localhost, even single-threaded: `getMissingFeatures()` requires a Secure Context unconditionally
+
+`측정 2026-09-27 · Godot 4.7.2 · web_nothreads_release · Chrome`
+
+**증상:** the page stays on its loading screen forever, and the console says `Secure Context - Check web server configuration (use HTTPS)`. The same build works at `http://localhost:…` and at `https://…`. Typical triggers: opening a dev server from a phone at `http://192.168.x.x:port`, or putting the production container behind a test hostname over plain HTTP.
+
+In the 4.7.2 engine loader (`godot.js`), `Engine.getMissingFeatures({ threads })` pushes `Secure Context` whenever `window.isSecureContext` is false, **before and independent of** the `threads` flag — `threads: false` only drops the Cross-Origin-Isolation and SharedArrayBuffer requirements. The default web shell (and any custom shell that copies its boot code) calls it and stops if anything is missing. Measured: the same image loaded as `http://button.test:8081` (mapped to 127.0.0.1) never booted, and booted in 5.2 s with 0 console errors once Chrome was told to treat that origin as secure.
+
+**해결:** serve over HTTPS, or use `localhost` (browsers treat it as potentially trustworthy). For a browser test of a non-localhost origin over HTTP, launch Chrome with `--unsafely-treat-insecure-origin-as-secure=http://host:port` (plus `--host-resolver-rules=MAP host 127.0.0.1` to route a made-up name). For a phone on the LAN, `adb reverse tcp:PORT tcp:PORT` and open `http://localhost:PORT` on the phone.
