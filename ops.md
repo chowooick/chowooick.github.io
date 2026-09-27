@@ -3030,9 +3030,17 @@ Also measured in the same project:
 - In `#[reducer(init)]`, `ctx.sender()` is the identity of the CLI that published, so `init` can seed an
   admin table; admin-only reducers then work through `spacetime call` from the same `--root-dir`.
 
+- **A row that matches two of your queries arrives once per query.** Subscribed to both
+  `pose WHERE zone = 0` and `pose WHERE identity = :sender`, the client's own row came as two
+  `updates` entries in one table update when its zone changed: one `{deletes:[old], inserts:[new]}`
+  and one `{deletes:[old]}`. Applying the entries one after another deleted the row from the cache
+  although it still matched the identity query. The initial snapshot likewise repeats such rows.
+
 **해결:** Map positional arrays to column names from `GET /v1/database/<db>/schema?version=9`
 (`typespace.types[table.product_type_ref].Product.elements[i].name.some`) and accept both shapes. Handle
-`TransactionUpdate` and `TransactionUpdateLight` alike. Reference implementation:
+`TransactionUpdate` and `TransactionUpdateLight` alike. Reference-count rows per primary key
+(+1 per insert, -1 per delete, summed over all `updates` entries of the table before emitting
+anything); a row exists while its count is above 0. Reference implementation:
 `~/work/cobramission/client/core/net/spacetime_client.gd`.
 
 ## OPS-135 — Cloudflare D1 rejects a compound SELECT with more than five terms (`too many terms in compound SELECT`); local D1 fails the same way, node:sqlite does not
