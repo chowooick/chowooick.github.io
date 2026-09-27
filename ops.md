@@ -3877,3 +3877,19 @@ clients can be pointed at it.
 **증상:** In a local repository with commits and no remote, `glab repo create mafia --private` printed `✓ Created project on GitLab`, then `Initialized empty Git repository in <repo>/mafia/.git/` and `✓ Initialized repository in './mafia/'`. The current repository still had no `origin`, and a new untracked folder `mafia/` (containing only `.git`) sat in the working tree, where a later `git add -A` would pick it up as an embedded repository.
 
 **해결:** Create the project, then wire the remote yourself: `git remote add origin git@gitlab.com:<ns>/<name>.git && git push -u origin main`. Delete the nested folder after checking it holds nothing but `.git` (`ls -A <name>`). Verify with `git ls-remote origin` and `glab api projects/<ns>%2F<name>` (`visibility`).
+
+## OPS-173 — A result cache in a Worker's module memory served 1 of 3 repeats seconds apart; `caches.default` in the page Worker served every repeat
+
+`측정 2026-09-27 · Cloudflare Workers (Free plan): a Worker placed in ICN and reached only by service binding, and the site Worker on zone routes`
+
+**증상:** The placed Worker kept a 528 KB result in a module-level `Map` for 60 s. Three requests for the same key,
+6 s and then 1 s apart: the first read the database, the second read it again (it ran in an instance without the
+entry), and only the third was served from memory (age 6,484 ms). For a second key, two requests 1 s apart both
+read the database. The expected saving mostly did not happen.
+
+**해결:** Keep the result in the Cache API of the Worker that serves the page: `caches.default.match()` and
+`put()` with a URL on the zone's own host that no route serves, versioned and carrying the call's arguments, and
+`Cache-Control: max-age=60` on the stored response. In the same session every repeat was served from it: 62–72 ms
+of server time instead of 987 ms. The docs list custom domains as having working cache operations (zone routes
+worked here too); a Worker with no route of its own is not in that list, so the placed Worker keeps no cache. Do not
+cache results that carry one member's data.
