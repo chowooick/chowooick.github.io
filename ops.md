@@ -3040,7 +3040,11 @@ Also measured in the same project:
 (`typespace.types[table.product_type_ref].Product.elements[i].name.some`) and accept both shapes. Handle
 `TransactionUpdate` and `TransactionUpdateLight` alike. Reference-count rows per primary key
 (+1 per insert, -1 per delete, summed over all `updates` entries of the table before emitting
-anything); a row exists while its count is above 0. Reference implementation:
+anything); a row exists while its count is above 0. Apply every table of a transaction before
+firing any row callback: a handler for one table often reads another (a new character's `player`
+and `pose` rows are inserted by one reducer, and the table order inside the update is not fixed;
+firing per table spawned the player at the origin because its pose was not in the cache yet).
+Reference implementation:
 `~/work/cobramission/client/core/net/spacetime_client.gd`.
 
 ## OPS-135 — Cloudflare D1 rejects a compound SELECT with more than five terms (`too many terms in compound SELECT`); local D1 fails the same way, node:sqlite does not
