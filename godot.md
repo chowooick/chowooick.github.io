@@ -3294,3 +3294,29 @@ Korean, Japanese or Chinese string takes the path that does not work.
 `cdp.send('Input.insertText', {text})`. Before concluding that Korean input is broken, try it with a real IME.
 Input methods that insert text without composition, such as some autofill and dictation tools, will not reach the
 field either.
+
+## GDT-157 — `ext_resource`에 `uid=`가 없는 손으로 쓴 `.tscn`은 Web 빌드 콘솔에 invalid UID 경고를 매 부팅 찍는다
+
+`측정 2026-09-27 · Godot 4.7.2 · Web export (gl_compatibility, 싱글스레드) · Chrome`
+
+**증상:** 에디터와 네이티브 실행은 조용한데, 브라우저 콘솔에만 부팅마다 이 두 줄이 나온다.
+콘솔 에러·경고를 0으로 요구하는 브라우저 테스트가 이것 하나로 실패한다.
+
+```
+WARNING: 'res://scenes/main.tscn': In external resource #0, invalid UID: 'uid://s28mpx4lkckk' - using text path instead: 'res://scripts/main.gd'.
+   at: open (core/io/resource_format_binary.cpp:1028)
+```
+
+원본 `.tscn`은 `[ext_resource type="Script" path="res://scripts/main.gd" id="1"]`처럼 `uid=` 없이
+손으로 썼고, 경고 속 UID는 프로젝트 어디에도 없다(`grep -r`로 소스·`.godot` 모두 0건).
+`main.gd.uid` 파일은 다른 값(`uid://d00neijvifb24`)을 갖고 있었다. 익스포트가 텍스트 씬을 바이너리로
+바꾸면서 스크립트와 맞지 않는 UID를 박아 넣는다. 경로로 되돌아가므로 게임은 정상 동작한다.
+
+**해결:** `ext_resource`에 스크립트의 `.uid` 파일 값을 그대로 적는다.
+
+```
+[ext_resource type="Script" uid="uid://d00neijvifb24" path="res://scripts/main.gd" id="1"]
+```
+
+재익스포트 후 콘솔 경고 0건(브라우저 e2e 19개 검사 통과). 스크립트로 씬을 생성하거나 손으로 쓸 때는
+`.uid` 파일을 읽어 `uid=`를 함께 쓴다.
