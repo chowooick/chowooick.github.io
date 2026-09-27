@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:17:35Z · 소스 커밋 `5ca4510` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:18:46Z · 소스 커밋 `3706b3e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -871,6 +871,26 @@ mod.InitModule(nkCtx, logger, nk, initializer);
 
 Identifiers the module does not declare (`Date`, `Math`, `JSON`) still resolve to the context's globals. Also
 cache pure derived data in the module: after that, lookups stopped dominating the profile.
+
+## NKM-039 — A frozen-globals unit test also needs strict mode: in sloppy mode a write to the frozen memo cache is silently dropped, the suite stays green, and Nakama throws `Cannot add property …, object is not extensible`
+
+`측정 2026-09-27 · Nakama 3.37.0 JS runtime · Node 26 vm`
+
+**증상:** an engine kept a module-level memo cache (`var CBE_CACHE = {}` filled on first use inside RPCs). The
+vm-based unit suite passed 49/49. On a real Nakama, the first `cb_start` returned HTTP 500:
+`TypeError: Cannot add property k:blitz@3, object is not extensible at cbeSkills (cardbattle.js:106:12(78))`. This is the
+freezing NKM-036 describes, but it hit a plain object property write, not a regex.
+
+Following NKM-036 (deep-freeze the module's globals after `InitModule` in `vm`) did **not** reproduce it. With the
+cache write restored, the RPC suite still passed 15/15, because the module runs in sloppy mode there and V8 silently
+ignores a write to a frozen object. (NKM-036's regex case throws even in sloppy mode, because `replace` writes
+`lastIndex` with the throwing flag.) With `'use strict';` prepended inside the vm wrapper, the same broken build failed
+12 of 15. The fixed build then passed all 49.
+
+**해결:** in the test loader, prepend `'use strict';` to the module source, then deep-freeze every top-level `var` after
+`InitModule`. Collect the names with `acorn.parse(src, {ecmaVersion: 5}).body` → `VariableDeclaration`. In the module,
+write caches only while the object is still extensible: `if (Object.isExtensible(CACHE)) try { CACHE[k] = v } catch (e) {}`.
+Alternatively, fill the cache inside `InitModule`, before the freeze.
 
 ---
 
