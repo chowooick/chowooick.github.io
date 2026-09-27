@@ -2915,3 +2915,35 @@ then `git remote add origin git@gitlab.com:<ns>/<name>.git && git push -u origin
 `git ls-remote origin refs/heads/main` matched the local `HEAD`. According to the same source file, running
 `glab repo create --private --defaultBranch main` with no name argument from inside the repo names the project after the
 top-level directory and adds `origin` to the current repo. That path was read in the source, not run.
+
+## OPS-129 — 외교부 재외공관 사이트(overseas.mofa.go.kr)는 붐비면 모든 주소에 F5 대기실 페이지를 HTTP 200으로 준다. RSS 파서는 이것을 DOCTYPE 오류로 보고한다
+
+`측정 2026-09-27 · overseas.mofa.go.kr 공관 RSS(rss.do?brdId=…) · 가정 회선과 Cloudflare Workers 발신 양쪽`
+
+**증상:** 공관 RSS 4개가 같은 실행에서 한꺼번에 실패하고 다음 실행에서 멀쩡해지기를 며칠째 반복했다(예약 실행의 약 절반).
+수집기 오류는 `XML_ENTITIES_NOT_ALLOWED`였다. XML 파서 앞에 둔 `<!DOCTYPE|<!ENTITY` 거부 검사에 걸린 것이다.
+피드가 깨진 것이 아니다. 사이트가 붐빌 때는 `robots.txt`를 포함한 **모든 경로**가 다음 페이지를 준다.
+
+- HTTP 200, `<title>Waitingroom</title>`, XHTML DOCTYPE, F5 로고, "서비스 접속 대기 중입니다" 안내
+- 첫 요청은 평소처럼 `307` + `TMOSHCooKie` 쿠키로 같은 주소를 다시 부르게 하고, 두 번째 요청에서 대기실이 나온다
+- 같은 Workers 발신 요청을 몇 초 간격으로 세 번 보냈을 때 첫 번째는 피드마다 3~10초 걸려 RSS가 왔고, 뒤의 두 번은 5개 주소 모두 대기실이었다
+
+대기실 페이지의 스크립트는 `/waitingroom/update.html`을 부른다. 응답은 `<예상 초> <순번> <다음 호출 간격 ms>`(예: `0 32 5000`)이고,
+차례가 오면 `done 0 5000`, 문제가 있으면 `error`다. 이때까지 받은 쿠키(`clientid`, `qindex`, `landinguri`)를 붙여 원래 주소를 다시 부르면 RSS(200, `application/rss+xml`)가 온다.
+실측한 기다림은 순번 32에서 약 15~19초였다.
+
+**해결:** 응답 첫머리에서 `<title>Waitingroom</title>`을 찾으면 파싱하지 말고 줄을 선다. 같은 쿠키 통으로 `update.html`을 서버가 말한 간격(1~10초로 제한)마다 부르고,
+`done`이 오면 원래 주소를 다시 요청한다. 한 실행이 기다릴 총 시간 상한(예: 120초)을 두고, 넘거나 `error`가 오면 "대기실 시간 초과"처럼 원인이 드러나는 코드로 실패시킨다.
+한 번 들어가면 같은 실행의 나머지 공관 주소는 기다리지 않았다. `robots.txt`도 대기실이 될 수 있으니 robots 응답을 캐시하기 전에 같은 검사를 한다.
+구현 예: 교민센터 `workers/auto-collector.ts`의 `sourceClient()`.
+
+## OPS-130 — Workers 무료 플랜에서 CPU 232ms, 벽시계 148초 실행이 `outcome: ok`로 끝났다. 문서의 10ms를 즉시 끊는 한도로 보지 않는다
+
+`측정 2026-09-27 · Cloudflare Workers(README 기준 무료 플랜) · wrangler tail --format json · 1회`
+
+**증상:** 외부 피드 6곳, 기사 페이지 16개, Workers AI 요약 12건을 한 번의 fetch 호출에서 처리하는 수집 Worker를 `wrangler tail`로 봤다.
+이벤트 필드는 `"outcome":"ok"`, `"cpuTime":232`, `"wallTime":148127`이었다. 공개 문서의 무료 플랜 CPU 한도(요청당 10ms)의 23배인데 오류(1102)가 나지 않았다.
+같은 Worker의 6시간 예약 실행도 며칠째 비슷한 작업량으로 끝나고 있다.
+
+**해결:** 무료 플랜이라는 이유만으로 작업을 잘게 쪼개지 않는다. 먼저 `wrangler tail --format json`으로 실제 `cpuTime`과 `outcome`을 잰다.
+다만 1회 측정이고 보장된 동작이 아니다. 한도에 걸리면 실행이 기록 없이 끊겨 "실행 중" 상태가 남으니 그런 상태를 감지하는 점검을 따로 둔다.

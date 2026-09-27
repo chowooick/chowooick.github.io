@@ -1387,3 +1387,16 @@ $B js "window.__r"
 ```
 
 같은 출처 쿠키가 그대로 실리므로 로그인 세션이 필요한 API의 실제 응답을 이 방식으로 확인할 수 있다.
+
+## AGT-063 — gstack browse headed 데몬은 테스트 도중 조용히 headless로 다시 뜬다. 로그인과 페이지에서 보낸 긴 요청이 함께 사라진다
+
+`측정 2026-09-27 · gstack browse (connect 모드) · macOS`
+
+**증상:** headed 창에서 로그인한 관리 화면으로 2~3분 걸리는 POST(수동 수집)를 걸어 두고 `$B js`로 상태를 읽었다.
+토스트와 버튼 상태가 사라졌는데 네트워크 기록의 그 POST는 끝까지 `pending`이었다. 서버 쪽 작업은 "실행 중" 기록만 남기고 끝나지 않았다.
+같은 세션에서 `[browse] Headed server running (PID …) but not responding`, `[browse] The operation timed out`, `HINT: 3 consecutive failures`가 나왔다.
+`$B status`를 보니 `Mode: launched`에 PID가 바뀌어 있었다. 데몬이 headless로 다시 뜨면서 로그인 세션과 열린 페이지, 그 페이지가 보낸 요청이 모두 사라진 것이다.
+
+**해결:** 결과를 믿기 전에 `$B status`의 `Mode`와 PID가 처음과 같은지 본다. 서버에서 오래 도는 작업을 확인할 때는 브라우저 버튼을 쓰지 않는다.
+같은 엔드포인트를 `curl --max-time 600`처럼 끝까지 붙어 있는 클라이언트로 직접 부르고, 서버 로그는 `wrangler tail --format json`으로 같이 본다.
+headed 창은 로그인과 짧은 화면 확인에만 쓴다.
