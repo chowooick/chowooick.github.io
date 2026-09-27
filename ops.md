@@ -2819,3 +2819,22 @@ function add(parent: Node, ...kids: (Node | string)[]) {
 
 **해결:** 값은 파일로 한 번 만들고(`umask 077`) 두 Worker에 같은 파일을 파이프로 넣은 뒤 지운다. 화면에 찍지 않는다.
 호출하는 쪽 UI는 결과를 기다리는 동안 경과 시간을 보여 주고, 대상이 실행 시작 시 남기는 기록(예: `state: running`)을 따로 폴링하면 진행을 알릴 수 있다.
+
+## OPS-126 — Selected-file overlay images keep stale test files: in-image regression then reports failures that are not regressions
+`measured 2026-09-27 · Docker 28.5.0 · Dokploy 0.30.2 (busan) · Flask app released as FROM <live digest> + COPY overlay`
+
+**Symptom:** a release candidate fails one in-image test (`test_bug_reports.py`: `'tester-one' unexpectedly found`)
+while the same test passes on the developer machine. It looks like the new release leaked data.
+
+A release built as `FROM <live image digest>` plus `COPY overlay/ /app/` replaces only the files listed in the
+overlay. A test that an earlier release changed in source, but did not put in its own overlay, stays at its old
+version in every later image. Here the runtime module was byte-identical in source and image; only the test
+differed, and the newer test asserted the opposite behaviour ("email is intentionally attached"). The host's
+deploy tree did not contain the test at all, so comparing the deploy tree with source could not catch it.
+
+**Fix:** run the same suites in the live (base) image and in the candidate under identical conditions
+(`docker run --rm --network none …`) and compare the two failure lists — a failure present in both is
+pre-existing, not the release's. Then hash the failing test in source and in the image; if only the test differs,
+add the current test to the overlay so the next image is clean. Also: a Flask login redirect built with
+`url_for(..., next='/admin')` comes back as `/login?next=/admin` (slash not percent-encoded) — assert on the
+prefix, not on `%2F`.
