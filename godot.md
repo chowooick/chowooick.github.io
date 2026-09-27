@@ -3095,3 +3095,23 @@ Checked by rendering, not by docs:
 - Godot front faces are clockwise: a quad given counter-clockwise as seen from the front must be emitted (a, c, b), (a, d, c).
 
 **해결:** For foliage drawn with MultiMeshInstance3D, derive variation from `MODEL_MATRIX`; for per-object glow colours use instance uniforms instead of duplicating materials.
+
+## GDT-147 — A lambda that captured a node logs `ERROR: Lambda capture at index 0 was freed` when the node is gone, even if its body checks `is_instance_valid` first
+
+`측정 2026-09-27 · Godot 4.7.2`
+
+**증상:** `ERROR: Lambda capture at index 0 was freed. Passed "null" instead.` at `gdscript_lambda_callable.cpp:110`, from a test run that otherwise passes. The source looks safe:
+
+```gdscript
+get_tree().create_timer(1.4).timeout.connect(func() -> void:
+	if is_instance_valid(p):
+		p.stop_cheer())
+```
+
+Measured in a scratch project, freeing the node before each callback ran:
+
+- A `SceneTree` timer's lambda that captured the node: the engine logs the ERROR, then runs the body with the capture replaced by `null` (`is_instance_valid` → false). The guard works; the error is logged anyway, because it is raised while the call is being prepared, before the body runs.
+- A tween created by the node itself (`node.create_tween()`, `tween_interval`, `tween_callback`): the callback never runs and nothing is logged. The tween dies with its node.
+- A lambda that captured `weakref(node)` and called `get_ref()`: no error, `get_ref()` is `null`.
+
+**해결:** For "do X to this node later", let the node own the delay (`node.create_tween().tween_interval(t)` then `tween_callback(node.method)`), so the callback cannot outlive it. When the callback has to live elsewhere, capture a `WeakRef`, not the node. An `is_instance_valid` check inside the lambda does not silence the error.
