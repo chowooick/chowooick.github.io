@@ -3639,3 +3639,23 @@ The Android export platform shuts the adb server down when the editor process ex
 With the project setting left false, the default `quit_on_go_back=true` would instead close the app mid-match on any accidental back swipe.
 
 **해결:** keep the project setting false and flip the `SceneTree` property per screen — `get_tree().quit_on_go_back = screen == "home"` — so the engine finishes the activity itself on the title, while `_notification(NOTIFICATION_WM_GO_BACK_REQUEST)` handles every other screen (close the open panel, drop the selection, confirm before leaving). Measured: back on the title → `topResumedActivity` is no longer the game; back in a match → the confirm dialog.
+
+## GDT-177 — Web export: a scene of ~150–300 instances of an `instance uniform` material logged "Too many instances using shader instance variables … Maximum items supported by this hardware is: 1024"; an isolated 1,030-box test did not
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export (Compatibility, no threads), GPU Chrome on macOS; native GL Compatibility on M1 Max`
+
+**증상:** a board game drew 48 tiles (tile + figure MeshInstance3D each, sometimes a third) plus a title diorama of ~43 pieces, all sharing one ShaderMaterial whose per-piece state was `instance uniform`s (first four floats, then packed into one `vec4` — same result). The web build printed `ERROR: Too many instances using shader instance variables. Consider increasing rendering/limits/global_shader_variables/buffer_size … Maximum items supported by this hardware is: 1024.` repeatedly once a match started; at the title alone (~180 instances) it printed nothing. Natively the cap reads 4096 and nothing was printed; setting `limits/global_shader_variables/buffer_size=1024` natively reproduced the errors **at the title**. Pieces' meshes were reassigned often (a face-down tile's figure mesh set to `null`, then to a kind's mesh on reveal).
+
+An isolated project did **not** reproduce it with `buffer_size=1024`: 1,030 BoxMesh instances with one instance uniform, 300 instances with four, and 300 rounds each of mesh swapping, mesh ↔ null, material swapping and instance free — zero errors. So the trigger is something in the real scene not yet isolated; the practical ceiling is lower than "1,024 instances".
+
+This is a caveat to GDT-146, which recommends instance uniforms for per-object glow.
+
+**해결:** made per-piece state an ordinary `uniform vec4 state` and let a piece borrow a private `duplicate()` of the shared material only while its state is non-zero (hover, selection, a flash) — at most a handful at once. The same web flow then logged no engine errors (15 clicked moves, GPU Chrome). If a web build must use instance uniforms at scale, watch the console for this line early; the native build will not show it at the default buffer size.
+
+## GDT-178 — A GDScript lambda captures locals by value: assigning to a captured `String` inside a polling lambda never reaches the outer variable
+
+`측정 2026-09-27 · Godot 4.7.2-stable · headless `--script` test`
+
+**증상:** a two-process test polled a file for a room code with `var code := ""` and `await _wait(func() -> bool: code = FileAccess.get_file_as_string(f).strip_edges(); return code.length() == 4, 15.0)`. The wait returned true (the lambda saw four digits), and the next line `join(code)` sent `""` — the outer `code` was never assigned. No warning or error.
+
+**해결:** capture a container and write into it: `var code := [""]` … `code[0] = …` … `join(code[0])`. Arrays and Dictionaries are references, so the lambda and the caller see the same object; primitives (`int`, `String`, `bool`, `Vector2`) are copied at capture time.
