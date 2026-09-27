@@ -2121,7 +2121,7 @@ matched: the client and the server both produced `f256051205efd6e4` for the same
 `"%08x%08x" % [(h >> 32) & 0xFFFFFFFF, h & 0xFFFFFFFF]`. Write the offset basis as its signed value
 (`-3750763034362895579`) because the hex literal overflows.
 
-## GDT-096 — Web export sample playback loops music by restarting from the `ended` event: every loop point gaps (median 11 ms, up to 113 ms). Stream playback in a no-threads build dropped out 55 % of the time under load
+## GDT-097 — Web export sample playback loops music by restarting from the `ended` event: every loop point gaps (median 11 ms, up to 113 ms). Stream playback in a no-threads build dropped out 55 % of the time under load
 
 `측정 2026-09-27 · Godot 4.7.2-stable Web export (nothreads template), headless Chromium + SwiftShader WebGL2`
 
