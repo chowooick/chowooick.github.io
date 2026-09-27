@@ -3605,3 +3605,18 @@ not help; the second 8-worker run failed the same way.
 workers by memory, not by core count: the same build with 3 workers finished in 183 s without errors.
 Pipe data to encoders through stdin instead of temporary files. Swap growth also hits every other
 session writing to the same disk, so a failure there may come from another job's memory use.
+
+## OPS-157 — A backgrounded static server that fails with EADDRINUSE is silent, and the browser test then tests another session's app on that port
+
+`측정 2026-09-27 · macOS, Node 26 http server started with `&`, Playwright Chrome`
+
+**증상:** A test started `node serve.mjs <dir> 8765 &` and pointed Playwright at `http://localhost:8765/`. The page never
+reported its marker and the test timed out after 90 s. The screenshot showed a different game: another project's
+`python3 -m http.server` already held port 8765. The Node server had died at once with
+`Error: listen EADDRINUSE: address already in use :::8765`, but that went to a log nobody read, so the failure looked
+like a bug in the app under test. A check that only waited for `load` or took a screenshot would have passed on the
+wrong app.
+
+**해결:** Before starting a server, check the port: `lsof -nP -iTCP:<port> -sTCP:LISTEN`. Prefer a random high port.
+After `goto`, assert something only your app has (the page title or a marker) before any other check, and fail fast
+if it is missing. See OPS-006 for port slots in integration stacks.

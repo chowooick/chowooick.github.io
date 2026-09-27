@@ -2635,3 +2635,75 @@ passed. This is the same family as GDT-047 and GDT-087.
 (`var ok: bool = ...`). For every `--script` test, have the script print a success marker as its last
 line (for example `VILLAGERS_OK`). The CI step then requires that marker and also greps the log for
 `SCRIPT ERROR|Parse Error`. The exit code alone proves nothing.
+
+## GDT-122 — Jolt `HeightMapShape3D` splits every cell along the (1,0)–(0,1) diagonal: bilinear height sampling is off by up to a metre on steep cells, and a body spawned at the bilinear height can fall through the terrain forever
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Jolt Physics · HeightMapShape3D 1024 × 1024, scale (2, 1, 2) · macOS`
+
+**증상:** A `CharacterBody3D` placed at `bilinear_height(x, z) + 0.05` on a steep, eroded cliff cell fell straight through
+the heightfield: y went from 71 to −62 in four seconds with no collision. On flat ground the same placement worked, so
+walking tests passed and the bug only showed on cliffs.
+
+400 random downward rays on that cliff, compared with three ways to interpolate the four corner samples of the cell
+(`fx`, `fz` are the fractions inside the cell, `h00` at (0,0), `h10` at (1,0), `h01` at (0,1), `h11` at (1,1)):
+
+| interpolation | mean \|ray y − estimate\| |
+|---|---|
+| bilinear | 0.24 m |
+| triangles split (0,0)–(1,1) | 0.48 m |
+| triangles split (1,0)–(0,1) | 0.00004 m |
+
+So the collision surface is two triangles per cell cut along the (1,0)–(0,1) diagonal. A spawn point from the bilinear
+estimate can be below that surface; the body then starts inside the heightfield, and a heightfield has no inside to push
+it out of.
+
+**해결:** Use the same triangles everywhere the height is read — CPU queries, the render mesh and shaders:
+
+```gdscript
+if fx + fz < 1.0:
+	return h00 + (h10 - h00) * fx + (h01 - h00) * fz
+return h11 + (h01 - h11) * (1.0 - fx) + (h10 - h11) * (1.0 - fz)
+```
+
+Build the render grid with the same diagonal (`[a, b, c, b, d, c]` for a=(i,j), b=(i+1,j), c=(i,j+1), d=(i+1,j+1)) so
+the finest terrain level matches the collision exactly. Keep a rescue in the character: if `y < height_at(x, z) − 1.2`
+(and not swimming), snap to `height_at + 0.1`.
+
+## GDT-123 — Web export (nothreads) runs GDScript at about native speed; Jolt builds a 1024² heightfield in 110 ms; a vertex shader can displace terrain with `texelFetch` on an R32F texture
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export (Compatibility, nothreads) in Chrome/Metal ANGLE vs native macOS · Apple M1 Max`
+
+**증상:** Planning an open world for the Web needs real numbers for how slow GDScript and physics setup are in
+WebAssembly. One probe project measured the same code in both builds:
+
+| step | Web | native |
+|---|---|---|
+| 1,000,000-iteration `sin` loop in GDScript | 99 ms | 91 ms |
+| `FastNoiseLite.get_image(1024, 1024)` | 130 ms | 274 ms |
+| 1,000,000-element `PackedFloat32Array` scale loop | 54 ms | 215 ms (headless) |
+| Jolt `HeightMapShape3D` 1024 × 1024 created and added | 110 ms | 150 ms |
+
+A `CharacterBody3D` dropped onto that heightfield landed correctly on the Web. A `PlaneMesh` displaced in the vertex
+shader with `texelFetch` on an `ImageTexture` in `FORMAT_RF` (`filter_nearest`) rendered correctly in the Web
+Compatibility renderer. Exporting the tiny probe took 3 s.
+
+**해결:** Budget GDScript on the Web like native GDScript, not tens of times slower. Heavy one-off generation still
+belongs offline (bake to resources), but per-frame logic of a few milliseconds is realistic. GPU heightmap displacement
+with a float texture is a safe Compatibility-renderer technique for terrain.
+
+## GDT-124 — In a custom `light()`, Godot multiplies `DIFFUSE_LIGHT` by `ALBEDO` afterwards and `LIGHT_COLOR` already contains π
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · linear tonemap, ambient off, one DirectionalLight3D (energy 1) facing the quad`
+
+**증상:** Writing a toon `light()` needs to know whether to multiply by albedo and how bright `LIGHT_COLOR` is. Four quads
+with albedo (0.8, 0.2, 0.2), rendered side by side and read back from the viewport:
+
+| light() body | pixel |
+|---|---|
+| `DIFFUSE_LIGHT += ndl * ATTENUATION * LIGHT_COLOR / PI;` | (0.800, 0.196, 0.196) |
+| `DIFFUSE_LIGHT += ndl * ATTENUATION * LIGHT_COLOR;` | (1.000, 0.349, 0.349) |
+| `DIFFUSE_LIGHT += ndl * ATTENUATION * LIGHT_COLOR * ALBEDO / PI;` | (0.639, 0.004, 0.004) |
+| `StandardMaterial3D` (roughness 1, no specular) | (0.800, 0.196, 0.196) |
+
+**해결:** `f * ATTENUATION * LIGHT_COLOR / PI` reproduces the engine's Lambert exactly. Do not multiply by `ALBEDO`
+inside `light()` — it gets squared.
