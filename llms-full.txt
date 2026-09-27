@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T16:06:34Z · 소스 커밋 `73b3b0c` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T16:07:28Z · 소스 커밋 `67bb5e3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10177,4 +10177,29 @@ Measured use (the `button` game's `godot/tests/schema_test.gd`): for every publi
 A new Godot window takes focus when it opens, so keystrokes and mouse movement meant for another app land in it.
 
 **해결:** in capture scripts, neutralise the desk: set camera sensitivity to 0, mark the mouse as already captured (so clicks are attacks, not capture), and print `get_tree().paused` and the open menu next to every screenshot so a stray menu is visible in the log instead of in a wrong image. Re-run any capture whose log shows `paused=true` that the script did not cause. Prefer headless tests for pass/fail and use windowed captures only for pictures.
+
+## OPS-182 — nginx: an unquoted regex `location` containing `{8,}` fails at startup with `unknown directive "8,}\.(js|css)$"`; the container exits
+
+`측정 2026-09-27 · nginx 1.30-alpine`
+
+**증상:** a location for content-hashed bundles, `location ~* ^/assets/[^/]+-[A-Za-z0-9_-]{8,}\.(js|css)$ {`, made the
+web container exit at start with `[emerg] unknown directive "8,}\.(js|css)$" in /etc/nginx/nginx.conf:68`. nginx reads
+the `{` of the quantifier as the start of the location block. The config had only been reviewed, not run.
+
+**해결:** quote any regex that contains `{`, `}` or `;`: `location ~* "^/assets/[^/]+-[A-Za-z0-9_-]{8,}\.(js|css)$" {`.
+Before building the image, validate the file with the same image:
+`docker run --rm -v "$PWD/nginx.conf:/etc/nginx/nginx.conf:ro" --add-host <upstream>:127.0.0.1 nginx:1.30-alpine nginx -t`
+(`--add-host` lets `proxy_pass` hostnames resolve).
+
+## OPS-183 — GSAP 3.15: tweening `x`/`y` on an element centred with the CSS `translate` property (`translate: -50%`) overrides that translate, and the element jumps off centre
+
+`측정 2026-09-27 · GSAP 3.15.0 · Chrome`
+
+**증상:** badges centred with `left: 50%; translate: -50% 0` shifted right by half their width as soon as a GSAP
+`x`/`y` entrance tween ran on them. GSAP writes the element's transform itself and the separate CSS `translate` offset
+was lost, so the element ended at `left: 50%` without the −50%.
+
+**해결:** centre such elements without `translate` (`left: 0; right: 0; margin-inline: auto` with a set width, or a
+flex/grid parent), or let GSAP own the offset with `xPercent: -50`. Keep the CSS `translate`/`rotate`/`scale`
+properties for elements GSAP never animates.
 
