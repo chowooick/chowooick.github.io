@@ -3034,3 +3034,25 @@ Also measured in the same project:
 (`typespace.types[table.product_type_ref].Product.elements[i].name.some`) and accept both shapes. Handle
 `TransactionUpdate` and `TransactionUpdateLight` alike. Reference implementation:
 `~/work/cobramission/client/core/net/spacetime_client.gd`.
+
+## OPS-135 — Cloudflare D1 rejects a compound SELECT with more than five terms (`too many terms in compound SELECT`); local D1 fails the same way, node:sqlite does not
+
+`측정 2026-09-27 · Cloudflare D1 (remote, ENAM), wrangler 4.135.0 local D1, Node 26.8 node:sqlite`
+
+**증상:** A dashboard query that joined eight `GROUP BY` subqueries with `UNION ALL` failed inside
+`db.batch()` with `too many terms in compound SELECT: SQLITE_ERROR`. Measured with
+`wrangler d1 execute <db> --command "SELECT 1 UNION ALL SELECT 2 ..."`:
+
+| Terms | Remote D1 | Local D1 (`--local`) |
+| --- | --- | --- |
+| 5 | ok | ok |
+| 6 | `too many terms in compound SELECT: SQLITE_ERROR [code: 7500]` | same error |
+
+Stock SQLite allows 500 terms (`SQLITE_MAX_COMPOUND_SELECT`), so a test on `node:sqlite` or
+`better-sqlite3` passes the query that D1 rejects. The limit is per level:
+`SELECT * FROM (3 terms) UNION ALL SELECT * FROM (3 terms)` returns six rows without error.
+
+**해결:** Give each part its own statement and send them together with `db.batch([...])` (one round trip,
+results in order). Or nest so no level has more than five terms. Run new SQL once against local D1
+(`wrangler d1 execute --local`, or the binding from `getPlatformProxy()`, OPS-106) before trusting a
+node:sqlite test.
