@@ -2272,3 +2272,75 @@ above 100 in `vertex()` in the color pass, so the value is not simply zero. The 
 **해결:** Leave `VIEWPORT_SIZE` out of the vertex offset. Use a resolution-relative width:
 `2.0 * depth / (abs(PROJECTION_MATRIX[1][1]) * 1080.0) * width_px`. Check an outline change by
 counting outline-coloured pixels in a windowed screenshot; thin dark lines are easy to miss by eye.
+
+---
+
+## GDT-100 — Wrapped Korean text breaks in the middle of words; a WORD JOINER between syllables fixes it
+
+`측정 2026-09-27 · Godot 4.7.2-stable · TextServerAdvanced (ICU) · Pretendard 32 px`
+
+**증상:** A Korean dialogue line in an autowrapping `Label` (`AUTOWRAP_WORD_SMART`) split the word
+"어디부터" into "어디부 | 터". Choice cards and speech bubbles did the same ("나가니 | 까", "받 | 아").
+
+Godot follows the UAX #14 default for Hangul, which allows a line break between any two syllables.
+`TextParagraph` with `BREAK_WORD_BOUND | BREAK_ADAPTIVE` gives the same result, and the ICU keep-all
+locale keyword does nothing. The same sentence at widths 640, 700 and 760 px:
+
+| language passed to `add_string` | 700 px |
+|---|---|
+| `ko` | `… 자, 어디부 \| 터 시작할까?` |
+| `ko@lw=keepall` or `ko-u-lw-keepall` | `… 자, 어디부 \| 터 시작할까?` (no effect) |
+| `ko`, U+2060 between syllables | `… 자, \| 어디부터 시작할까?` |
+
+**해결:** Insert U+2060 WORD JOINER between consecutive Hangul syllables (U+AC00–U+D7A3) before you
+set wrapped text. Breaks then happen only at spaces. The joiner has zero width: the measured string
+width stayed 830.0 px with and without it. Two follow-ups:
+- A typewriter reveal that counts characters must skip U+2060, or Korean lines type out at half speed.
+- Auto-translated labels cannot be pre-processed. Set the text from code with `tr()` plus the joiners,
+  and re-apply it on `NOTIFICATION_TRANSLATION_CHANGED`.
+
+---
+
+## GDT-101 — `variation_opentype = {"wght": 700}` is silently ignored; Noto Sans JP then renders Thin
+
+`측정 2026-09-27 · Godot 4.7.2-stable · NotoSansJP[wght].ttf from google/fonts`
+
+**증상:** Japanese UI text in a `FontVariation` over the variable Noto Sans JP looked hairline-thin
+at every requested weight. Bold labels and body text looked the same.
+
+- `get_supported_variation_list()` reports the axis as `{ 2003265652: (100, 900, 100) }`.
+  The default instance is **Thin 100**, not Regular.
+- The string key `"wght"` is ignored, even though the class reference names it as an example.
+
+| `variation_opentype` | width of "Hamburg WWW" at 40 px |
+|---|---|
+| `{}` | 276.0 |
+| `{"wght": 100}` / `{"wght": 900}` | 276.0 / 276.0 (ignored) |
+| `{2003265652: 900}` (int tag) | 311.0 |
+| `{"weight": 900}` (axis name) | 311.0 |
+
+**해결:** Key the axis by its integer tag, `0x77676874` or `TextServer.name_to_tag("wght")`, or by the
+name `"weight"`. The saved `.tres` then shows `2003265652: 700`. When you check that a weight applied,
+compare string widths; do not judge by eye.
+
+---
+
+## GDT-102 — Pretendard has kana but no kanji: Japanese text mixes two typefaces unless Noto Sans JP comes first
+
+`측정 2026-09-27 · Pretendard 1.3.9 (static OTF) · Noto Sans JP (variable) · Godot 4.7.2-stable`
+
+**증상:** A body font chain of Pretendard with a Noto Sans JP fallback worked for Korean and English. In
+Japanese, kana and kanji came from different fonts inside one word. They differed in stroke weight and
+in x-height.
+
+A fontTools cmap check shows why. Pretendard Regular (14,336 glyphs) contains Hangul, hiragana,
+katakana, 「」, 。, 、 and full-width ！, but no CJK ideographs (事 and 件 are missing). The primary font
+is always tried first, so kana come from Pretendard and only kanji fall through to Noto Sans JP.
+Other coverage from the same check: Black Han Sans has no kana and no kanji. Dela Gothic One has kana
+and kanji but no Hangul. Anton and VT323 are Latin only.
+
+**해결:** Re-order the chain by locale. For `ja`, make Noto Sans JP the base font and Pretendard the
+fallback. For every other locale, use Pretendard first. The chains are shared `FontVariation`
+resources referenced by the Theme, so changing `base_font` and `fallbacks` once at a locale change
+updates every Control. Display chains need the same swap (Dela Gothic One before Black Han Sans for
+`ja`).
