@@ -3677,3 +3677,32 @@ ResizeObserver then kept reporting 1 × 1. Without the composer the same scene r
 
 **해결:** Always pass `false` as the third argument: `composer.setSize(w, h, false)` (and `renderer.setSize(w, h, false)`)
 and size the canvas with CSS.
+
+---
+
+## OPS-162 — Chrome's `DynamicsCompressorNode` starts a fresh `OfflineAudioContext` render with heavy gain reduction: measure levels after ≥ 0.5 s of lead-in
+
+`측정 2026-09-27 · Chrome 153 (Playwright 1.63, headless) · WebAudio master chain compressor → limiter`
+
+**증상:** Offline level checks of short sound effects through a game's master chain (glue compressor,
+limiter) reported them far too quiet. A 0.100-amplitude blip measured 0.023 at the output when rendered
+from t = 0, but 0.139 from a 0.080 input once the render had 0.5 s of silence before it. The difference is
+the compressor's automatic makeup gain settling (about +4.8 dB with those settings).
+
+**해결:** In `OfflineAudioContext` measurements, schedule the sound at least 0.5 s after the start (or
+play a short pre-roll through the chain) and measure only after that point. Compare SFX against music at
+the shell's real default volumes, with the same lead-in for both.
+
+---
+
+## OPS-163 — Headless Chrome with `--autoplay-policy=no-user-gesture-required --mute-audio` runs a real-time `AudioContext` silently; startup can take 1.5–3.9 s under load
+
+`측정 2026-09-27 · Chrome 153 · Playwright 1.63 (channel: 'chrome', headless) · macOS, many parallel sessions`
+
+**증상:** An audio smoke test that checked a sequencer's beat position after fixed waits failed
+intermittently: the `AudioContext` had not started yet. With the two flags above, the context does run
+in real time (clock advances, `beat()` progresses) and nothing is heard through the speakers.
+
+**해결:** Launch with both flags (`--mute-audio` keeps CI and a shared Mac quiet). Derive expected
+positions from the elapsed `performance.now()` since the context actually started (wait for
+`ctx.state === 'running'`), not from fixed windows.
