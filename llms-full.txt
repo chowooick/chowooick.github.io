@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:28:55Z · 소스 커밋 `ccbb463` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:29:27Z · 소스 커밋 `93b6b0e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7871,4 +7871,38 @@ Reference: `~/work/cobramission/server/src/module.rs` (`move_player`, `pose_tick
    빈 슬롯을 쓴다 (OPS-006 슬롯 규약).
 
 관련: OPS-006, OPS-017, OPS-063
+
+## OPS-145 — SpacetimeDB: after the `/v1/identity/websocket-token` exchange, `InitialConnection.token` is the 60-second token. Saving it loses the player a minute later
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 (spacetimedb.mnori.com) · Godot 4.7.2 GDScript client over v2/v3.bsatn · headless Chrome 153`
+
+**증상:** A client reconnected with its saved token and got the same identity. Any later launch more than
+60 s after that reconnect would have come back as a new identity. Browsers cannot put the token in an
+`Authorization` header on a websocket handshake, so web clients do what the TS SDK's `ws.ts` does:
+`POST /v1/identity/websocket-token` with `Authorization: Bearer <token>`, then `?token=<answer>` on the
+socket URL. In that case the `token` field of the server's `InitialConnection` message is the **short-lived
+websocket token**, not the one the client came in with. Decoded JWT claims, measured:
+
+```
+long-lived (minted on first connect):  "exp": null,        "iat": 1790497467
+InitialConnection after the exchange:  "exp": 1790497534,  "iat": 1790497474     # exp = iat + 60
+```
+
+A client that writes `InitialConnection.token` to storage on every connect overwrites the good token with
+one that expires in a minute. The reconnect that did it still succeeds, and so does any reconnect in the
+next 60 s, so a quick test never sees it. A native client that sends the header instead gets the long-lived
+token back and does not hit this.
+
+**해결:** Do what the TS SDK does (`db_connection_impl.ts`, case `'InitialConnection'`:
+`if (!this.token && serverMessage.value.token) this.token = ...`): adopt and persist the server's token
+**only when the connection was opened without one**. Otherwise keep and report the token you opened with.
+A check for it: decode the stored token's payload after a reconnect and assert `exp` is still null, or
+that the stored token has not changed.
+
+Also measured on the same run: SpacetimeDB answers the schema GET and the token POST cross-origin from
+`http://127.0.0.1` (no CORS failure), and Godot 4.7.2's web `WebSocketPeer` sends `supported_protocols` as
+the browser's `new WebSocket(url, protocols)` (`get_selected_protocol()` read back `v2.bsatn.spacetimedb`
+and `v3.bsatn.spacetimedb`).
+
+관련: OPS-134 (the JSON protocol's own quirks)
 
