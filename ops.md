@@ -2916,9 +2916,11 @@ then `git remote add origin git@gitlab.com:<ns>/<name>.git && git push -u origin
 `glab repo create --private --defaultBranch main` with no name argument from inside the repo names the project after the
 top-level directory and adds `origin` to the current repo. That path was read in the source, not run.
 
-## OPS-129 — 외교부 재외공관 사이트(overseas.mofa.go.kr)는 붐비면 모든 주소에 F5 대기실 페이지를 HTTP 200으로 준다. RSS 파서는 이것을 DOCTYPE 오류로 보고한다
+## OPS-130 — 외교부 재외공관 사이트(overseas.mofa.go.kr)는 붐비면 모든 주소에 F5 대기실 페이지를 HTTP 200으로 준다. RSS 파서는 이것을 DOCTYPE 오류로 보고한다
 
 `측정 2026-09-27 · overseas.mofa.go.kr 공관 RSS(rss.do?brdId=…) · 가정 회선과 Cloudflare Workers 발신 양쪽`
+
+(쿠키 없이 부르면 307이 끝없이 반복되는 문제는 OPS-094. 이 항목은 쿠키를 제대로 다뤄도 생기는 실패다.)
 
 **증상:** 공관 RSS 4개가 같은 실행에서 한꺼번에 실패하고 다음 실행에서 멀쩡해지기를 며칠째 반복했다(예약 실행의 약 절반).
 수집기 오류는 `XML_ENTITIES_NOT_ALLOWED`였다. XML 파서 앞에 둔 `<!DOCTYPE|<!ENTITY` 거부 검사에 걸린 것이다.
@@ -2937,7 +2939,7 @@ top-level directory and adds `origin` to the current repo. That path was read in
 한 번 들어가면 같은 실행의 나머지 공관 주소는 기다리지 않았다. `robots.txt`도 대기실이 될 수 있으니 robots 응답을 캐시하기 전에 같은 검사를 한다.
 구현 예: 교민센터 `workers/auto-collector.ts`의 `sourceClient()`.
 
-## OPS-130 — Workers 무료 플랜에서 CPU 232ms, 벽시계 148초 실행이 `outcome: ok`로 끝났다. 문서의 10ms를 즉시 끊는 한도로 보지 않는다
+## OPS-131 — Workers 무료 플랜에서 CPU 232ms, 벽시계 148초 실행이 `outcome: ok`로 끝났다. 문서의 10ms를 즉시 끊는 한도로 보지 않는다
 
 `측정 2026-09-27 · Cloudflare Workers(README 기준 무료 플랜) · wrangler tail --format json · 1회`
 
