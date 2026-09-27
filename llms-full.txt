@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:33:17Z · 소스 커밋 `0d677df` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:42:54Z · 소스 커밋 `0f2d256` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -757,6 +757,37 @@ Postgres는 문자를 세지만 MySQL의 옛 설정이나 바이트 기반 제�
 **해결:** 킥만으로는 대상 클라이언트가 알 방법이 없다. 알려야 하면 서버가 킥과 별도로 신호를 보내야 한다.
 클라이언트는 "소켓은 살아 있는데 매치 데이터가 끊긴" 상태를 감시하고, 그 상태에서 자동 재입장하지 않는다.
 두 창을 띄운 유저가 서로를 번갈아 킥하는 루프가 생긴다.
+
+---
+
+## NKM-035 — A new match is invisible to `matchList` for up to about 1 s, so quick-play players who press within that window each get their own room
+
+`측정 2026-09-27 · Nakama 3.40.0 JS runtime · default match.label_update_interval_ms (1000) · local Docker`
+
+**증상:** quick play was "`nk.matchList(20, true, '', 0, 3, '+label.game:kids-v2 +label.visibility:public +label.course:N')`,
+reserve the first hit, otherwise `matchCreate` a public room". Two players pressing quick play one after the other
+ended up in two different rooms.
+
+Measured on a restarted server, each trial on its own course. The second RPC started N ms after the first client's
+`match_join` had completed:
+
+| N | same room |
+| --- | --- |
+| 0–250 ms | 1 of 6 |
+| 500 ms | 2 of 2 |
+| 750 ms | 1 of 2 |
+| 1000–1250 ms | 4 of 4 |
+
+A `dispatcher.matchLabelUpdate` (the room moved to another course) was not listed at 131, 233 and 460 ms and was
+listed at 639 ms. `nakama --help` for `match.label_update_interval_ms`: "Time in milliseconds between match label
+update batch processes. Default 1000." New labels and label changes wait for the next batch; the match itself
+exists at once and accepts `matchSignal` and joins. A numeric label field matches with `+label.course:0` like any
+other value.
+
+**해결:** when `matchList` finds nothing, fall back to a storage record of the newest public match for that query
+(`{matchId, createdAt}`, written right after `matchCreate`, used only if younger than 3 s), then create. After the
+fix, back-to-back presses landed in one room 5 of 5 times. Two RPCs fired at the same instant still made two rooms
+(0 of 5): both read the record before either wrote it.
 
 ---
 
@@ -4663,6 +4694,31 @@ Sonnet agent were added. Twenty minutes later the tracker showed **31%** of the 
 **해결:** before fanning out, read the cache. Watch the 5-hour percentage while subagents run. If the burn rate would
 exhaust the window long before `resetsAt`, `TaskStop` the least critical subagent and resume it with `SendMessage`
 when capacity returns. Exhausting the window also blocks the user's other sessions until the reset.
+
+## AGT-068 — Format-character escapes such as `\u200b` and `\u202e` written with the Write tool can land as the real invisible characters, and the AGT-057 `[[:cntrl:]]` check does not see them
+
+`측정 2026-09-27 · Claude Code (Opus 5.5) · Write tool`
+
+**증상:** a JS name sanitizer was written as
+`/[\u0000-\u001f\u007f-\u009f<>\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g`, and a test used
+`'\u202e'` and `'\u200b'`. In both saved files the `\u0000`–`\u009f` escapes stayed six-character escapes, but
+every escape from `\u200b` up became the real character (U+200B ZERO WIDTH SPACE, U+202E RIGHT-TO-LEFT OVERRIDE,
+U+FEFF and so on). The regex still meant the same thing and every test passed, so nothing failed. `od -c` shows the
+UTF-8 bytes (`342 200 213` for U+200B). `LC_ALL=C grep '[[:cntrl:]]'` reports nothing, because these are Unicode
+format characters (category Cf), not ASCII control bytes. A bidi override inside source also makes an editor show
+code in a different order than it runs.
+
+In AGT-057 the control-range escapes were the ones that became real bytes; here they survived. Which escapes
+survive is not predictable, so check every file that was written with `\u` escapes.
+
+**해결:** after writing, list control, format and separator characters by Unicode category:
+
+```sh
+python3 -c "import sys,unicodedata as u;s=open(sys.argv[1],encoding='utf-8').read();print([(i,hex(ord(c)),u.name(c,'?')) for i,c in enumerate(s) if u.category(c) in ('Cc','Cf','Zl','Zp') and c not in '\n\t'])" FILE
+```
+
+Replace each hit from Python with escape text built from parts, for example
+`s.replace(chr(0x202e), chr(92) + 'u202e')`, so the fix itself cannot be decoded a second time.
 
 ---
 
