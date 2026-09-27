@@ -2375,3 +2375,35 @@ the script is only preloaded.
 static helpers on `load()`ed scripts. Read constants with `get_script_constant_map()`, call static
 funcs directly on the Script object. A catalogue of several hundred items as one `const` Dictionary
 is fine to load at startup; keep values free of `null` (GDT-028).
+
+---
+
+## GDT-108 — Hangul breaks mid-word only where ICU break data exists: always in editor and headless runs, in a Web export only with `include_text_server_data`
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export (nothreads) in headed Chromium · Pretendard 15 px`
+
+**증상:** A coach-tip `Label` (`AUTOWRAP_WORD_SMART`, 318 px wide) showed
+"…실루엣만 퍼센트에 들어 | 갑니다" in every headless capture, the mid-word break of GDT-104. The same
+project exported for the Web and opened in Chromium wrapped it as "…실루엣만 퍼센트에 | 들어갑니다",
+at the space.
+
+The difference is whether ICU break-iterator data is present:
+
+| Run | `internationalization/locale/include_text_server_data` | Break |
+|---|---|---|
+| Editor binary, `--headless` | — | `퍼센트에 들어 \| 갑니다` |
+| Web export | `false` (default) | `퍼센트에 \| 들어갑니다` |
+| Web export | `true` | `퍼센트에 들어 \| 갑니다` |
+
+With the setting on, `index.pck` grew from 15.48 MB to 20.28 MB and contained `icudt78l/brkitr/*`.
+
+Screenshots from the editor or a headless test therefore show breaks that web players do not see.
+Turning the setting on (for Thai, Khmer or CJK dictionaries) brings the mid-word breaks to the web
+build as well.
+
+**해결:**
+- Judge wrapped Korean on the exported build, not on editor or headless captures.
+- Or apply GDT-104's U+2060 joiners so every run breaks at spaces. In the headless run the joiners
+  moved `shaped_text_get_line_breaks` at 300 px from "…퍼센트 | 에 들어갑니다" to
+  "…실루엣만 | 퍼센트에 들어갑니다", and the string width stayed 374.0 px.
+- A project that enables `include_text_server_data` needs GDT-104 for Korean on the web too.

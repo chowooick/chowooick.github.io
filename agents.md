@@ -1442,3 +1442,22 @@ source files and logs in the scratchpad, plus the tool trail in each `agent-<id>
 - To recover, flatten each transcript to text (tool_use inputs + truncated tool_results + the agent's
   own notes; 70–190 KB per agent here) and hand it to the re-run agent with "continue from this trail;
   do not redo searches or reads it already has".
+
+## AGT-066 — A "wait until the other agents stop editing" watcher built on `ls --full-time` never sees a change on macOS: BSD `ls` rejects the flag and the hash is of empty output
+
+`측정 2026-09-27 · macOS (Darwin 27.0.0) BSD ls · zsh · Claude Code background Bash`
+
+**증상:** To learn when two background subagents had finished editing, a background loop hashed
+`ls -l --full-time <their files> 2>/dev/null | md5` every 10 s and declared "quiet" after 30
+identical hashes. macOS `ls` is BSD: it prints `ls: unrecognized option '--full-time'` to stderr,
+exits 1 and writes nothing to stdout. With stderr discarded, every poll hashed the same empty
+string, so the loop would have reported "quiet for 5 minutes" five minutes after it started,
+whatever the agents did. In that window the agents rewrote the watched scripts several times
+(modification times 01:24 to 01:33).
+
+**해결:**
+- On macOS, list with `stat -f '%m %N' <files>` or compare against a stamp with
+  `find <dir> -newer <stamp>`. `ls --full-time`, `stat -c` and `date -d` are GNU only.
+- Make the watcher fail when its listing is empty instead of hashing nothing, and keep stderr
+  visible in any check whose output you act on.
+- For subagents, act on the harness's completion notification; a file-quiet watcher is only a hint.
