@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T09:13:55Z · 소스 커밋 `5332442` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T09:19:35Z · 소스 커밋 `a698e9c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8757,4 +8757,61 @@ wrong app.
 **해결:** Before starting a server, check the port: `lsof -nP -iTCP:<port> -sTCP:LISTEN`. Prefer a random high port.
 After `goto`, assert something only your app has (the page title or a marker) before any other check, and fail fast
 if it is missing. See OPS-006 for port slots in integration stacks.
+
+## OPS-158 — Rapier 0.21: a fixed ground lets a tall stack sink forever under real-scale gravity; a kinematic ground holds it
+
+`측정 2026-09-27 · @dimforge/rapier3d-simd-compat 0.21.0, Node 26, 18-layer tower of 7.5 × 1.5 × 2.5 cm boxes, g = 981 cm/s², 240 Hz, 8 solver iterations`
+
+**증상:** A block tower in centimetre units sank into a `RigidBodyDesc.fixed()` cuboid ground: the bottom layer went
+0.10 cm down in 0.05 s and 1.52 cm in 5 s with the default `lengthUnit = 1`, and kept going. With `lengthUnit ≥ 3` it
+stopped at 0.19 cm, which is still exactly proportional to the load and did not change with `contact_natural_frequency`,
+solver iterations or timestep. The same tower on a `kinematicPositionBased()` ground (never moved) sank 0.003 cm.
+Separately, the default contact softness (30 Hz) compresses an 18-layer stack at this scale until it topples; 480 Hz
+held it (0.015 cm total compression) and 1000 Hz exploded.
+
+**해결:** Use a kinematic body for the static floor/table, `world.integrationParameters.contact_natural_frequency = 480`
+with `numSolverIterations = 8` at 240 Hz, and keep `lengthUnit = 1` so the allowed penetration stays far below small
+geometric details (0.25 mm height differences decided which blocks carry load). Raise
+`normalizedPredictionDistance` (0.5 cm here) instead of `lengthUnit` for fast motion.
+
+## OPS-159 — Rapier JS: `sleep()` after `setTranslation(..., false)` keeps stale collider positions, and moving a kinematic body every step keeps waking its island
+
+`측정 2026-09-27 · @dimforge/rapier3d-simd-compat 0.21.0, browser and Node`
+
+**증상:** Restoring a saved tower with `setTranslation(p, false)` + `setRotation(q, false)` and then `body.sleep()` looked
+fine until something woke the island: the top block jumped 1.7 cm within 10 frames and the tower settled 0.3 cm off its
+saved pose. The wake-up came from a kinematic table that received `setNextKinematicTranslation` to the same position on
+every step.
+
+**해결:** Restore with `wakeUp = true` and let bodies fall asleep on their own (a settled snapshot restored this way
+moved ≤ 0.017 cm and slept within 3 s). Call `setNextKinematicTranslation` only while the kinematic body actually
+moves, plus one call to return it to rest.
+
+## OPS-160 — Rapier JS `GenericImpulseJoint` exposes no per-axis motors; the raw joint set does, and they make a stable force-limited "hand"
+
+`측정 2026-09-27 · @dimforge/rapier3d-simd-compat 0.21.0`
+
+**증상:** To push a block with a finger-like limited force, explicit `addForce` PD control needed stiffness high enough
+to hold a block level, which became unstable. `JointData.generic(a1, a2, axis, 0)` (mask = locked axes, so 0 frees all
+six) accepted motors only through `SphericalImpulseJoint`/`UnitImpulseJoint` methods in the typed API.
+
+**해결:** The typed joint keeps `rawSet` and `handle`: for axis 0–5 call
+`rawSet.jointConfigureMotorModel(handle, axis, 1 /* ForceBased */)`,
+`rawSet.jointConfigureMotorPosition(handle, axis, 0, k, c)` and `rawSet.jointSetMotorMaxForce(handle, axis, cap)`, then
+move a kinematic body that carries the joint. Motors are solved implicitly, so stiff holds are stable, and the caps
+decide what the hand can overcome: with a 45 000 dyn axial cap a loose block slid 9.5 cm out while load-bearing blocks
+moved ≤ 0.16 cm, and tight blocks near the top dragged the layers above, as in the real game.
+
+## OPS-161 — postprocessing `EffectComposer.setSize(w, h)` restyles the canvas; with a ResizeObserver it pins the canvas to 1 × 1 px
+
+`측정 2026-09-27 · postprocessing 6.39.5, three 0.186.1, Chromium`
+
+**증상:** The page rendered pure white. The console repeated `GL_INVALID_FRAMEBUFFER_OPERATION: Framebuffer is incomplete:
+Attachment has zero size`. The composer was created while the scene size was still 1 × 1; `composer.setSize()` forwards
+to `renderer.setSize(w, h, updateStyle = true)`, which wrote `width: 1px; height: 1px` onto the canvas style, and the
+ResizeObserver then kept reporting 1 × 1. Without the composer the same scene rendered correctly. Also in three r186:
+`THREE.PCFSoftShadowMap` is gone (it warns and falls back to `PCFShadowMap`; soften with `shadow.radius`).
+
+**해결:** Always pass `false` as the third argument: `composer.setSize(w, h, false)` (and `renderer.setSize(w, h, false)`)
+and size the canvas with CSS.
 
