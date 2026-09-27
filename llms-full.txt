@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T14:41:24Z · 소스 커밋 `a49de49` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T14:45:15Z · 소스 커밋 `8a81c9a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -891,6 +891,24 @@ ignores a write to a frozen object. (NKM-036's regex case throws even in sloppy 
 `InitModule`. Collect the names with `acorn.parse(src, {ecmaVersion: 5}).body` → `VariableDeclaration`. In the module,
 write caches only while the object is still extensible: `if (Object.isExtensible(CACHE)) try { CACHE[k] = v } catch (e) {}`.
 Alternatively, fill the cache inside `InitModule`, before the freeze.
+
+## NKM-040 — `match_join` metadata is `map<string, string>`: one object-valued key makes the server close the WebSocket with no error frame
+
+`측정 2026-09-27 · Nakama 3.40.0 Lua runtime · realtime socket, format=json · Chrome 가 보낸 프레임을 Playwright로 기록`
+
+**증상:** A client joined an authoritative match with
+`{"cid":"join","match_join":{"match_id":"…","metadata":{"name":"농부","look":{}}}}`. The socket received the
+`status_presence_event`, sent the join, and then closed. No `error` envelope and no `match` reply arrived. The
+match's `match_join_attempt` never ran, so nothing in the module logged anything. On the client, the only sign was that
+the player stayed offline and the socket reconnected in a loop.
+
+`metadata` is `map<string, string>` in the realtime protocol. A nested object or array (here `"look":{}`) fails to
+decode, and the server drops the connection instead of answering with an error. With the same object sent as JSON text
+(`"look":"{\"skin\":\"f1c9a5\"}"`), the join succeeded, and two browsers saw each other within 3.2 s.
+
+**해결:** Send every metadata value as a string: `JSON.stringify(value)` on the client, and in the match handler
+decode it (`pcall(nk.json_decode, metadata.look)` in Lua). Data that changes after the join (appearance, display name)
+is better sent as match data after joining than packed into the join.
 
 ---
 
@@ -4021,6 +4039,47 @@ Measured in a scratch project, freeing the node before each callback ran:
 **증상:** A procedural 3D stage lowered `get_viewport().scaling_3d_scale` from 1.0 toward 0.5 whenever frame time rose. Under heavy machine load it changed the scale several times in one session, and WebKit then logged `WebGL: context lost` followed by shader link failures partway through a scripted game flow (the defense scene). WebKit runs in which the scale never changed finished the same flow without a loss. Chrome kept rendering through the same scale changes.
 
 **해결:** On WebKit/Safari, choose the scale once at startup and never change it; elsewhere, only lower it, at most twice. With that change the full flow (menu → lobby → day with an evidence prop → night → dawn → vote → defense → execution) ran in WebKit with zero context losses; the only warning left was the engine's `WEBGL_polygon_mode` notice. Test adaptive-resolution code in WebKit under CPU load, since an idle machine never triggers the changes.
+
+## GDT-149 — `set_process(false)` called before a node enters the tree is undone at its first ready when the script defines `_process()`
+
+`측정 2026-09-27 · Godot 4.7.2-stable · --headless`
+
+**증상:** A creature controller called `set_process(false)` right after `new()` and only then `add_child()`ed the node.
+It kept ticking anyway.
+
+Measured with a script that only defines `_process()`:
+
+| Order | `is_processing()` afterwards | `_process` calls in 2 frames |
+|---|---|---|
+| `set_process(false)`, then `add_child()` | `true` (right after `add_child`) | 1 |
+| `add_child()`, then `set_process(false)` | `false` | 0 |
+| add, remove, `set_process(false)`, add again | `false` | 0 |
+
+A script that overrides `_process()` gets processing switched on when the node first becomes ready. That overwrites an
+earlier `set_process(false)`. Later re-entries into the tree do not switch it on again, because ready runs once.
+
+**해결:** Turn processing off after the node is in the tree: in `_ready()`, or after `add_child()`. The same applies to
+`_physics_process` and `set_physics_process`.
+
+## GDT-150 — Web export sample playback ignores `AudioStreamWAV.loop_begin`/`loop_end`: a sustain loop replays the whole sample, attack included
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export · 내보낸 index.js(GodotAudio.Sample / SampleNode)를 직접 읽음 · 귀로 확인하지는 않음`
+
+**증상:** Instrument samples that loop only their sustain part (`loop_begin` > 0) are a common way to hold notes of
+any length. In the Web build's default Sample playback mode, the loop points never reach Web Audio.
+
+- `GodotAudio.Sample`'s constructor stores `options.loopBegin` and `options.loopEnd`, and no other code in `index.js`
+  reads them.
+- `SampleNode._restart()` creates a new `AudioBufferSource` with the whole buffer and calls
+  `start(this.startTime, this.offset + pauseTime)`. It never sets `source.loop`, `loopStart` or `loopEnd`.
+
+So when a looping sample ends, the whole buffer plays again from `offset`, attack included. The loop point also has
+the timing gap that GDT-097 describes.
+
+**해결:** Do not rely on WAV loop points on the Web. Make samples long enough for the longest note. For longer notes,
+crossfade into a second voice started in the middle of the sample. Another option is to switch the bus to Stream
+playback (`audio/general/default_playback_type.web`), but GDT-097 measured dropouts with Stream playback in a no-threads
+build.
 
 ---
 
