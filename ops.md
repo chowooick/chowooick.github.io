@@ -3706,3 +3706,18 @@ in real time (clock advances, `beat()` progresses) and nothing is heard through 
 **해결:** Launch with both flags (`--mute-audio` keeps CI and a shared Mac quiet). Derive expected
 positions from the elapsed `performance.now()` since the context actually started (wait for
 `ctx.state === 'running'`), not from fixed windows.
+
+## OPS-164 — A focus helper that selects `[href]` also picks the SVG `<use href="#icon">` inside every icon button: arrow-key navigation "moves" to the icon and focus silently stays put
+
+`측정 2026-09-27 · Chrome (Playwright 1.63) on macOS 27 · hand-written spatial focus navigation over buttons that contain inline SVG sprite icons`
+
+**증상:** Arrow keys in a menu did nothing: `document.activeElement` stayed on the first button, no error. The list of
+"focusable" elements came from `root.querySelectorAll('button:not([disabled]), [href], input, …')` and had eight
+entries for four buttons — every `<button><svg><use href="#i-play"/></svg>…</button>` contributed its `<use>` element,
+which matches `[href]` and passes a `checkVisibility()` filter. The nearest candidate below a button was often that
+button's own icon, so the helper called `.focus()` on an SVG `<use>` element. That call is a silent no-op, and the
+helper still reported success, so no fallback ran.
+
+**해결:** Select links explicitly — `a[href], area[href]` — never a bare `[href]` (SVG `<use>`, `<image>`, `<a>` in SVG
+and `<link>` all carry `href`). When a helper moves focus, confirm it with `document.activeElement === target` before
+treating the move as done.
