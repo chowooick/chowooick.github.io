@@ -1524,3 +1524,18 @@ public landing page. `$B url` showed `https://…/`.
 404 that comes back 200 is the tell. Recovery that worked: `$B disconnect`, `pkill -f chromium-profile`,
 `$B connect`. It printed `Connect failed: Server failed to start within 8s`, yet `$B status` then showed
 `Mode: headed` and the profile's site session was still valid.
+
+## AGT-070 — gstack browse keeps one Chromium profile for every session on the machine: a second session's headed browser takes the lock and the first one's page disappears
+
+`측정 2026-09-27 · gstack browse (Playwright Chromium 1208) · macOS · several Claude sessions in different repositories`
+
+**증상:** A headed browse session (GDT-086) was loading a Godot web build; minutes later every command answered
+`No active page. Use "browse goto <url>" first`, and restarting failed with `Failed to open UKM database: 0 database
+is locked` and `Server failed to start`. Another session in a different repository had started its own browse daemon.
+The daemons are per repository, but the profile is not: all of them launch with
+`--user-data-dir=~/.gstack/chromium-profile`.
+
+**해결:** Give each repository its own profile with the environment variable browse already reads:
+`CHROMIUM_PROFILE=<scratch dir>/chromium-<repo> $B --headed goto …` (`resolveChromiumProfile()` in
+`browse/src/config.ts`). For WebGL work that needs no visible window, GDT-117 avoids the daemon altogether. Do not
+kill another session's Chromium to get the lock back.

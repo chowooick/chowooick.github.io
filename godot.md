@@ -2475,3 +2475,76 @@ reach every door point by stepping the real game loop takes minutes per run.
 **해결:** After the level geometry exists, set `velocity` and call `move_and_slide()` directly in a loop, then
 read `global_position` / `is_on_floor()`. It resolves without waiting for physics frames; a 47-check curb, corridor
 and door-access test ran this way headless (reference: `~/work/cobramission/client/world/city/tests/`).
+
+## GDT-113 — `Control.set_anchors_preset()` keeps the control's current rect: a zero-size control anchored to full rect stays zero-size
+
+`측정 2026-09-27 · Godot 4.7.2-stable · canvas_items stretch`
+
+**증상:** A HUD built in code (`Control.new()`, then `set_anchors_preset(PRESET_FULL_RECT)`, then `add_child`) had
+size (0, 0). Every child anchored to its centre or right edge landed at the parent's top-left: a turn pill half
+off-screen, a title cut off at the top. Printed state: `anchors 1,1  offsets -1600,-900  size 0,0`. Anchors were set;
+the offsets had been rewritten to keep the old zero rect.
+
+**해결:** `set_anchors_and_offsets_preset(PRESET_FULL_RECT)` for anything that should fill its parent. For a panel
+pinned to a corner or centre, set `anchor_*` equal to the pin point, all four `offset_*` to the pixel offset, and
+`grow_horizontal`/`grow_vertical` (BEGIN/BOTH/END) for which way it extends — its size is then its minimum size. Do
+not use `position` on an anchored control: it is in the parent's coordinates, so it is only right at one window size.
+
+## GDT-114 — `Input.parse_input_event()` positions are window pixels; `Camera3D.unproject_position()` answers in viewport coordinates. With `canvas_items` stretch they differ at every non-base window size
+
+`측정 2026-09-27 · Godot 4.7.2-stable · base 1600×900, stretch canvas_items/expand`
+
+**증상:** An automated test clicked pieces at `camera.unproject_position(piece)` and passed at 1600×900. The same
+test at 1280×720 (a two-client run) missed every click: 13 of 13 moves timed out. Real mouse input in the game was
+fine; only the synthesised events were off, by exactly the stretch factor 0.8.
+
+**해결:** Convert before parsing: `var pos := get_viewport().get_final_transform() * viewport_pos`, then set
+`event.position = pos`. The same transform, divided by `devicePixelRatio`, gives CSS pixels for a browser test to
+click in a web export.
+
+## GDT-115 — `JavaScriptBridge.create_callback()` drops the callable's return value: the page always receives `undefined`
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export (single-threaded) · Chrome`
+
+**증상:** `window.bdev.state = JavaScriptBridge.create_callback(func(_a): return JSON.stringify(...))` and
+`JSON.parse(window.bdev.state())` in the page threw *Cannot read properties of null*. The callback ran; its return
+value never crossed back.
+
+**해결:** Leave the answer on a JavaScript object the callback can reach, and read it after the call:
+`dev.json = JSON.stringify(state)` inside the callback, `bdev.state(); JSON.parse(bdev.json)` in the page. Keep the
+`JavaScriptObject` and the callback referenced from GDScript (a member array) or they are collected.
+
+## GDT-116 — A SpacetimeDB 2.8 client in pure GDScript works natively and in a single-threaded web export; raise `WebSocketPeer.inbound_buffer_size` first
+
+`측정 2026-09-27 · Godot 4.7.2-stable · SpacetimeDB 2.8.0 (v2.bsatn.spacetimedb) · macOS native + Chrome web export`
+
+**증상:** There is no Godot SDK for SpacetimeDB 2.x and the C# SDK rules out a web export. The protocol turned out to
+be small enough to write: about 400 lines for BSATN, the socket, a row cache keyed by row bytes, and reducer calls.
+A whole practice match, a friend room, the ranked queue and a native-versus-browser match all ran through it. The
+one Godot-specific trap: `WebSocketPeer.inbound_buffer_size` defaults to 65535 bytes and a server frame larger than
+that is dropped without an error — a subscription's first message is a single frame.
+
+**해결:** `ws.supported_protocols = ["v2.bsatn.spacetimedb"]`, `ws.inbound_buffer_size = 16 * 1024 * 1024`, poll in
+`_process` with `process_mode = PROCESS_MODE_ALWAYS`. The wire facts themselves are OPS-153. Headless `--script` runs
+work for protocol tests (no rendering needed).
+
+## GDT-117 — System Chrome in headless mode (`channel: 'chrome'`) keeps the GPU on macOS: a Godot web export runs at 60 fps and takes real mouse input
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (Compatibility) · Playwright 1.62.1 · Chrome stable · Apple M1 Max`
+
+**증상:** GDT-086 needs a headed window for WebGL2, which puts a browser on the owner's screen and, through gstack,
+contends for a shared profile (AGT-070). Playwright's bundled Chromium in headless mode has the same missing WebGL2.
+
+**해결:** `chromium.launch({ channel: 'chrome' })` — the installed Google Chrome, new headless mode — reports WebGL 2.0,
+boots a 40 MB Godot export in 2–5 s from localhost and measures 60 fps over `requestAnimationFrame`. `page.mouse`
+clicks reach Godot's `_unhandled_input` as real pointer events, so a test can play a whole match (aim with GDT-114's
+transform). `page.screenshot()` captures the canvas correctly.
+
+## GDT-118 — `Object.get_meta(name, null)` reports an error when the key is missing: a `null` default counts as no default
+
+`측정 2026-09-27 · Godot 4.7.2-stable`
+
+**증상:** `c.get_meta("fade_tween", null)` printed `The object does not have any 'meta' values with the key
+'fade_tween'` on every call where the meta was not set yet, although a default was passed.
+
+**해결:** `if c.has_meta(key): var v = c.get_meta(key)`, or use a non-null default of the right type.

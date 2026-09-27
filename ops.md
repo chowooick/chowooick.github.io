@@ -3512,3 +3512,31 @@ python3 -c 'import http.server as h, functools as f; h.ThreadingHTTPServer.reque
 or serve from the test itself with Node's `http.createServer` (default backlog 511). A random boot failure on a
 multi-module page under the stock Python server says nothing about the code; production servers (nginx) are not
 affected.
+
+## OPS-153 — SpacetimeDB 2.8's websocket protocol, for a client that is not the official SDK
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone · subprotocol v2.bsatn.spacetimedb · read off node_modules/spacetimedb/src/sdk`
+
+**증상:** Writing a client without the SDK (a GDScript one, GDT-116), each of these cost a failed run or a read of the
+SDK source; none is on the documentation's front page.
+
+- **Framing.** Every *server* message starts with one compression byte (0 none, 1 brotli, 2 gzip) before the BSATN
+  `ServerMessage`. *Client* messages have no such byte. Ask for `?compression=None` on the subscribe URL.
+- **Auth.** A browser cannot put a header on a websocket. The SDK `POST`s the saved token to
+  `v1/identity/websocket-token` with `Authorization: Bearer …`, gets a short-lived token back, and passes it as
+  `?token=`. With no saved token, connect without one and keep the token from `InitialConnection`.
+- **Variant order** is declaration order in `client_api/types.ts`: ClientMessage Subscribe=0, Unsubscribe=1,
+  OneOffQuery=2, CallReducer=3; ServerMessage InitialConnection=0 … TransactionUpdate=4, ReducerResult=6.
+  `Option<T>` is **some=0, none=1**. Reducer names on the wire are the Rust function names (`start_training`).
+- **Identity** is a little-endian u256 on the wire and printed big-endian everywhere else (SDK hex, SQL `0x…`, CLI).
+- **The caller's own changes arrive inside `ReducerResult.Ok.transactionUpdate`**, not as a separate
+  `TransactionUpdate`; a client that only applies `TransactionUpdate` never sees its own move.
+- A row update is a delete of the old bytes plus an insert of the new; a cache keyed by the row's bytes needs no
+  primary key. Reference-count rows when query sets overlap.
+- `ReducerResult` carries the server's timestamp (micros): with the round trip measured client-side it gives the
+  clock offset for a countdown against a server deadline.
+- **Subscription SQL accepts** `WHERE identity = :sender`, identity literals `WHERE identity = 0x<64 hex>`, and a
+  JOIN on indexed columns: `SELECT player.* FROM player JOIN seat ON player.identity = seat.identity WHERE
+  seat.game_key = '1234'` follows whoever sits down later.
+
+**해결:** Use the above as the checklist. `button/godot/net/stdb_client.gd` is a complete 400-line reference.
