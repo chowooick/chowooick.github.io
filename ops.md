@@ -2886,7 +2886,8 @@ level" reduced low angles but did not remove them. Sticker prompts that asked fo
 background" returned RGBA with a transparent background in 3 of 5 (46-49% transparent pixels, see OPS-076).
 Three parallel runs took 68-109 s per image over 23 generations with no rate-limit errors.
 
-**Fix:** name the shot and the crop, then tune the fill per character: add a size note only for wide costumes and
-expect about ±8 points of spread between runs of the same prompt. Spell out what covers the legs and list the
+**Fix:** name the shot and the crop, then tune the fill per character: add a size note only for wide costumes. The
+same size note gave 30.0% on one character and 46.0% on another, while two runs of one unchanged prompt landed 0.7
+points apart (47.8%, 48.5%), so re-check coverage after every prompt change. Spell out what covers the legs and list the
 exclusions ("full-length leggings to the ankles; no stockings, no garter straps, no bare thighs"). Measure every
 candidate and look at it at full size; hands and outfit details do not show in thumbnails.
