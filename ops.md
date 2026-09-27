@@ -4100,3 +4100,34 @@ The Additional Use Grant, word for word the same at v2.8.0 and on master (2.11.0
 application stays inside the grant; a second one needs Clockwork Labs' written terms (or their hosted
 Maincloud, where the instance is theirs). Several applications sharing one instance each use one instance
 (reading of the text, not legal advice). Ask Clockwork Labs when a design depends on what counts as an instance.
+
+## OPS-187 — modern-screenshot returns a blank image when the captured DOM has Alpine-style attributes (`x-on:click`, `@click`, `x-bind:foo`)
+
+`측정 2026-09-27 · modern-screenshot 4.7.0 · Alpine.js 3.14 · Chrome 145/153`
+
+**증상:** `domToCanvas(document.body)` / `domToPng()` finished without an error and produced a correctly sized but
+completely empty image. Capturing a single heading worked; any subtree containing an Alpine element came back blank.
+
+The library serialises the cloned DOM into an SVG `<foreignObject>` and loads it as an image. Attribute names such as
+`x-on:click` or `x-bind:aria-expanded` are namespace-prefixed names with an undeclared prefix, and `@click` is not a
+valid XML name at all, so the SVG is not well-formed XML and the `<img>` fires `error`; modern-screenshot draws
+nothing and does not reject. Its default `removeAbnormalAttributes` feature does not remove these names.
+
+**해결:** strip them from the copy (the live page is untouched):
+`onCloneEachNode: node => { if (node instanceof Element) for (const a of [...node.attributes]) if (/[:@]/.test(a.name) && !/^(xmlns|xlink|xml):/.test(a.name)) node.removeAttribute(a.name) }`.
+To find which subtree breaks a capture, serialise `domToForeignObjectSvg(node)` with `XMLSerializer` and try loading
+it as `data:image/svg+xml` per child; skip zero-size children, which fail for an unrelated reason.
+
+## OPS-188 — modern-screenshot waits for every `<img>` under the captured node, so lazy images below the fold make each capture take the full `timeout`
+
+`측정 2026-09-27 · modern-screenshot 4.7.0 · Chrome 145 · production page with 82 list rows`
+
+**증상:** capturing the visible part of a long page took 6.9 s, of which `wait until load` (visible with
+`debug: true`) was exactly the 6000 ms `timeout`; with the default timeout it was 30 s. Clone, embed and draw took
+about 0.9 s together. A `filter` that drops off-screen nodes does not help: `createContext()` calls
+`waitUntilLoad(node)` on the original node, which awaits every `img`/`video` descendant, and `loading="lazy"` images
+that were never scrolled into view never fire `load`.
+
+**해결:** build the context with a tiny timeout, then raise it for the asset fetches that follow:
+`const ctx = await createContext(root, { ...options, timeout: 1 }); ctx.timeout = 5000; await domToCanvas(ctx)`.
+The same capture then took 1.4–1.5 s. Images on screen that are still loading render empty; that is the trade-off.
