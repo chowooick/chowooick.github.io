@@ -2949,3 +2949,35 @@ top-level directory and adds `origin` to the current repo. That path was read in
 
 **해결:** 무료 플랜이라는 이유만으로 작업을 잘게 쪼개지 않는다. 먼저 `wrangler tail --format json`으로 실제 `cpuTime`과 `outcome`을 잰다.
 다만 1회 측정이고 보장된 동작이 아니다. 한도에 걸리면 실행이 기록 없이 끊겨 "실행 중" 상태가 남으니 그런 상태를 감지하는 점검을 따로 둔다.
+
+## OPS-132 — `oggenc` (vorbis-tools) for game assets: decoded peaks move up to +1.6 dB, every run gets a random stream serial, and the written files over-allocate on APFS
+
+`측정 2026-09-27 · vorbis-tools 1.4.3 (libvorbis 1.3.7), oggdec, macOS APFS`
+
+**증상:** A generator normalised 34 mono sound effects to exactly -3.0 dBFS sample peak and encoded them
+with `oggenc -q 5`. After decoding with `oggdec`, most peaks were within ±0.4 dB, but not all of them:
+
+- A bass-heavy explosion (sub boom plus noise) came back at -1.4 dBFS, +1.6 dB.
+- A dense, saturated square-wave buzz came back with 0 dBFS (clipped) samples and a 4x-oversampled
+  true peak of +3.4 dBTP.
+
+Rebuilding the same audio produced files with different md5 even though they decoded to identical
+samples. `du -sh` reported 7.5 MB for an audio folder whose files summed to 5.69 MB.
+
+Measured facts:
+
+- **Length is exact.** All 44 files decoded to exactly the rendered sample count, loops up to
+  4,167,450 samples, so sample-exact loop points survive the round trip.
+- **Random serial.** `oggenc` picks a random Ogg stream serial on every run. That alone makes
+  rebuilds differ byte for byte.
+- **APFS over-allocation.** A 1,448,267-byte `.ogg` written by `oggenc` held 4,224 × 512-byte
+  blocks (2.16 MB). A `cp` of the same file allocated normally (1,984 blocks for a 1,014,433-byte
+  file).
+
+**해결:**
+- Measure peaks on the decoded file, not the WAV you fed in. Correct the gain by the measured
+  difference and re-encode; one or two passes land within ±0.4 dB. Keep dense, saturated sounds
+  off full scale before encoding.
+- Pass `-s <fixed number>`, for example the CRC32 of the file name, to get byte-identical rebuilds.
+- Encode to a temporary path, then write the bytes to the final path (or `cp` it), so `du`
+  matches the real size.

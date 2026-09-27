@@ -2074,3 +2074,34 @@ In every row the texture size equals the window size multiplied by the stretch s
 
 Button의 normal/hover/pressed/focus 스타일박스에 그대로 넣으면 컨테이너 배치·키보드 포커스가 기본 동작 그대로 유지된다.
 웹 빌드에서도 같은 모양으로 그려졌다.
+
+## GDT-095 — A headless run that quits while `AudioStreamPlayer`s are still playing reports leaked `AudioStreamPlaybackOggVorbis` instances; stopping them in `_exit_tree()` makes it worse
+
+`측정 2026-09-27 · Godot 4.7.2-stable, --headless (Dummy audio driver)`
+
+**증상:** A headless test that ends with `quit()` while OGG music or one-shot effects are still
+sounding prints `WARNING: N ObjectDB instances were leaked at exit` and
+`ERROR: M resources still in use at exit`. `--verbose` lists `AudioStreamPlaybackOggVorbis`,
+`OggPacketSequencePlayback` and the `.ogg` resources that were playing.
+
+- The count depends on what is sounding at the moment of quit: 26 to 34 across runs of the same
+  UI test.
+- Adding an `_exit_tree()` to the audio node that calls `stop()` on every player and clears its
+  `stream` raised the count to 44.
+- Calling `stop()` and then waiting 0.1 s before freeing removed the lines entirely. That fits the
+  playbacks being released on a later audio mix step, which teardown never reaches.
+
+**해결:** At the end of a test, stop the players, give the audio server a moment, then free and quit:
+
+```gdscript
+for child in audio_node.get_children():
+    if child is AudioStreamPlayer:
+        child.stop()
+await create_timer(0.1).timeout
+audio_node.queue_free()
+await process_frame
+quit(exit_code)
+```
+
+In a 156-check audio test this took the exit report from 8 leaked instances to none. The lines are
+exit-only noise, but they hide real leak regressions in the same test run.
