@@ -1461,3 +1461,27 @@ whatever the agents did. In that window the agents rewrote the watched scripts s
 - Make the watcher fail when its listing is empty instead of hashing nothing, and keep stderr
   visible in any check whose output you act on.
 - For subagents, act on the harness's completion notification; a file-quiet watcher is only a hint.
+
+## AGT-067 — Pace parallel subagents from the VS Code usage tracker's cache, not the rate-limited API; a stopped `Agent` subagent resumes with `SendMessage`
+
+`측정 2026-09-27 · Claude Code (VS Code extension) · Agent tool background subagents · YahyaShareef.claude-code-usage-tracker cache`
+
+**증상:** five background `Agent` subagents (Opus) were launched for one remake. About 25 minutes later all five
+failed together with `You've hit your session limit · resets 2:10am`, as in AGT-065. Other projects' sessions share
+the same account limit, so the window was not only ours. After the reset, three were resumed, then a fourth and a
+Sonnet agent were added. Twenty minutes later the tracker showed **31%** of the 5-hour window used.
+
+**Facts:**
+- The tracker's last fetched value is readable without any API call:
+  `sqlite3 "file:$HOME/Library/Application Support/Code/User/globalStorage/state.vscdb?mode=ro" "select value from ItemTable where key='YahyaShareef.claude-code-usage-tracker'"`
+  → JSON `claudeUsage.cache.v2.data` with `fiveHour.utilization`, `fiveHour.resetsAt`, `sevenDay.utilization`, per-model
+  weekly limits and `fetchedAt`. The value only changes when the extension refreshes (every 10–20 min here, OPS-119).
+  A background `Monitor` loop can print it whenever it changes.
+- A subagent that died on the limit keeps its transcript. `SendMessage` to its agent id resumed it with the full
+  context: 4 of 4 continued. The art subagent then finished its whole ticket (62 assets, validated manifest). No
+  transcript flattening is needed for `Agent` subagents (compare AGT-065, which covers Workflow agents).
+- `TaskStop` on a running subagent pauses it the same way. `SendMessage` later resumes it.
+
+**해결:** before fanning out, read the cache. Watch the 5-hour percentage while subagents run. If the burn rate would
+exhaust the window long before `resetsAt`, `TaskStop` the least critical subagent and resume it with `SendMessage`
+when capacity returns. Exhausting the window also blocks the user's other sessions until the reset.

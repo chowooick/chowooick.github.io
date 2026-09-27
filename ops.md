@@ -3310,3 +3310,37 @@ the browser's `new WebSocket(url, protocols)` (`get_selected_protocol()` read ba
 and `v3.bsatn.spacetimedb`).
 
 관련: OPS-134 (the JSON protocol's own quirks)
+
+## OPS-146 — `codex exec` image tool for a full game cast: "fully transparent background" gave RGBA 55/55, a full-body master passed with `-i` held 18/18 derived images on-model — including a landscape close-up, so the framing can change
+
+`측정 2026-09-27 · codex-cli 0.154.0 built-in image tool · 70 generations (62 final assets + 8 retries), 4 in parallel`
+
+**증상:** a card-battle game needed 8 characters × (full-body idle, attack pose, landscape eye-level cut-in), 29 spirit
+figures, a boss and 6 backgrounds, all original, as cutouts for 3D billboards and UI.
+
+Measured:
+- **Transparency on request.** Every prompt that ended with "isolated on a fully transparent background" came back as an
+  RGBA PNG with transparent corners: 55/55 full-body and bust images. Cut-ins (1536×1024 extreme close-ups): 9/9 RGBA,
+  opaque corners only where the hair was asked to bleed off the frame. Backgrounds asked to be "fully opaque": 6/6 RGB.
+  No hand masking was needed. (OPS-076/OPS-128 saw transparency only sometimes, when it was not asked for.)
+- **Reference consistency across poses and framing.** Passing the approved full-body master as a reference kept face,
+  hair, mask, costume and palette in 18/18 derived images: 9 attack poses (portrait) and 9 cut-ins (landscape, "extreme
+  close-up from forehead to chin"). Unlike OPS-139, the framing followed the prompt here: the prompt changed the canvas
+  shape as well as the crop, and it said "keep face, hair, mask, costume, colours and proportions" without mentioning
+  framing. The command put the reference last: `codex exec ... - -i master.png`, with `-` (stdin prompt) before `-i`. That
+  works because `-i` takes several files and nothing follows it.
+- **Outfit drift beyond OPS-128, one case each, fixed 4/4 by one explicit coverage sentence:** "torn band tee" → crop top
+  with bare midriff; "jacket over a hoodie" → cropped hoodie; "long-sleeved bodysuit" → open back; "cargo shorts over
+  leggings" → thigh straps.
+- **Shapes need geometry, not nouns.** "Mask shaped like a stylized spade (points up over the brow)" returned a plain
+  domino mask 2/2. Describing the geometry fixed it 1/1: "the pointed tip rises along the middle of the forehead to the
+  hairline, the two round lobes cover the eyes". "Three-legged crow" drew two legs. "Exactly THREE legs, one in the centre
+  and one on each side" fixed it 1/1.
+- **Effects get cropped.** "All effects stay inside the frame" still let 1 of 9 attack poses cut a muzzle flash at the
+  edge. Naming the effect and adding "fades out well before the left edge" fixed it.
+- **Time:** median 72 s per image without a reference, 98 s with one. No failures. One 9-minute stretch ran 297–469 s per
+  image, still without errors.
+
+**해결:** for game cutouts, ask for transparency explicitly and verify colour type 6 and the corners in code. Approve one
+full-body master per character, then derive every pose and cut-in from it with `-i`. Write coverage sentences for every
+garment likely to shrink. Describe signature shapes as geometry. Name the effects that must stay in frame.
