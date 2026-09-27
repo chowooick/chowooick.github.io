@@ -2756,3 +2756,66 @@ Vision 요청을 쓰는 20줄짜리 Swift(`VNImageRequestHandler(cgImage:)` → 
 
 **해결:** 마스크를 입력 크기로 리사이즈한다(PIL `mask.resize(image.size)`). Vision 출력은 이미지 전체를 늘려 덮으므로 정규화 좌표가 일치한다.
 머리카락 가장자리는 회색 값이라 셀 격자로 줄일 때는 `Image.BOX` 평균 뒤 128 이상을 사람으로 친다.
+
+## OPS-123 — tsconfig `types`에 `@cloudflare/workers-types`가 있으면 브라우저 스크립트의 DOM `append`·`ParentNode` 타입이 깨진다
+
+`측정 2026-09-27 · Astro 7.3.3 · @cloudflare/workers-types 5.20260919.1 · TypeScript 5.9 · astro check`
+
+**증상:** 같은 프로젝트의 브라우저용 `src/scripts/*.ts`에서 브라우저로는 잘 도는 코드가 `astro check`에서 오류 수십 개를 낸다.
+
+- `div.append(node)` → `Argument of type 'HTMLElement' is not assignable to parameter of type 'string | Response | ReadableStream<any>'`
+- `function $(selector, root: ParentNode = document)`에 요소를 넘기면 → `Argument of type 'HTMLDialogElement' is not assignable to parameter of type 'ParentNode'`
+- `tbody.append(...rows)` → `A spread argument must either have a tuple type or be passed to a rest parameter`
+
+workers-types는 HTMLRewriter용 전역 `Element`를 선언하고, 여기에 `append(content: string | ReadableStream | Response, options?)`가 직접 붙어 있다.
+이 선언이 DOM `Element`와 합쳐지면서 `ParentNode.append`를 가리고, 그 결과 모든 DOM 요소가 `ParentNode`에 대입되지 않는다.
+`querySelector`, `closest`, `replaceChildren`, `appendChild`는 가려지지 않아 그대로 통과한다.
+
+**해결:** 서버 코드가 쓰므로 workers-types를 빼지 않는다. 브라우저 스크립트는 가려지지 않은 멤버만 쓴다.
+
+```ts
+type Root = { querySelector(s: string): unknown; querySelectorAll(s: string): ArrayLike<unknown> & Iterable<unknown> };
+const $ = <T = HTMLElement>(s: string, root: Root = document) => root.querySelector(s) as T | null;
+function add(parent: Node, ...kids: (Node | string)[]) {
+  for (const kid of kids) parent.appendChild(typeof kid === 'string' ? document.createTextNode(kid) : kid);
+}
+```
+
+## OPS-124 — PocketBase 규칙에 관리자 절을 OR로 붙이면 impersonate 토큰으로 "역할 × 비공개 헤더" 조합을 실측한다. 거절은 목록 0건과 쓰기 404로 조용히 온다
+
+`측정 2026-09-27 · PocketBase 0.40.4 · 비공개 헤더 경계(@request.headers.x_*) 규칙`
+
+**증상:** 관리자 계정이 숨긴 댓글·비공개 글·모든 프로필을 읽고 필드 하나만 바꾸게 하려고 기존 규칙에
+`|| ((<헤더 경계>) && @request.auth.collectionName = "<auth 컬렉션>" && (@request.auth.email = "<관리자>"))`를 붙였다.
+규칙이 틀려도 오류가 나지 않는다. 실측한 응답:
+
+| 요청 | 응답 |
+| --- | --- |
+| 목록, 규칙 불통과 | 200, `totalItems: 0` (403 아님) |
+| 수정, 규칙 불통과 | 404 |
+| 수정, `@request.body.<필드>:isset = false`로 잠근 필드를 보냄 | 404 (400 필드 오류가 아니라 수정 전체 거절) |
+| 관리자 토큰 + 헤더 | 비공개·숨김 포함 전부 (프로필 3/3, 댓글 874/874, Q&A 873/873) |
+
+`@request.auth.email`은 `emailVisibility`가 꺼져 있어도 규칙 안에서 비교된다. 필드 하나만 바꾸게 하는 문법은 없어서
+나머지 필드를 전부 `:isset = false`로 나열해야 한다. 목록은 라이브 스키마(`id`·`created`·`updated`와 허용 필드 제외)에서 뽑아야
+나중에 필드가 늘어도 잠긴다.
+
+**해결:** 사람 로그인 없이 끝내려면 슈퍼유저로 `POST /api/collections/<auth>/impersonate/<id>` `{"duration":300}`을 불러
+관리자와 일반 회원 토큰을 만든다. 역할(관리자·회원·익명) × 헤더(있음·없음) × 동작(읽기·허용 쓰기·잠긴 쓰기)을 표로 돌리고,
+기대값은 슈퍼유저가 같은 필터로 센 수와 비교한다. 쓰기 탐침은 비공개·숨김 상태로 새로 만든 레코드에만 하고 `finally`에서 지운다.
+앱의 "내 것" 조회가 규칙에 기대지 않는지(OPS-112)도 같이 본다. 21개 조합을 도는 예: 교민센터 `scripts/ops/grant-admin-console.py`.
+
+## OPS-125 — Workers 서비스 바인딩 호출은 대상 Worker가 2분 넘게 걸려도 끝까지 기다린다. `wrangler secret put`은 로컬 코드를 올리지 않는다
+
+`측정 2026-09-27 · Cloudflare Workers Free 플랜 · wrangler 4.135.0`
+
+**증상:** 웹 Worker의 요청 처리 안에서 `await env.COLLECTOR.fetch('https://collector.internal/run', {method:'POST', headers:{Authorization:'Bearer …'}})`로
+수집 Worker를 불렀다. 대상이 외부 피드 6곳과 AI 요약을 도는 데 148초가 걸렸고, 브라우저 요청은 그동안 열린 채 결과 JSON을 받았다.
+호출한 쪽은 기다리기만 하므로 CPU 한도에 걸리지 않았다. 대상 Worker의 Bearer 토큰 검사도 그대로 동작해서,
+`workers_dev` 주소를 열어 두지 않고도 내부 호출만으로 수동 실행을 붙일 수 있다.
+
+두 Worker에 같은 토큰을 넣을 때 `wrangler secret put NAME --config <대상 설정>`은 "Uploaded secret"만 하고 코드 번들·업로드 단계가 없다.
+현재 배포된 코드로 새 버전을 만든다. 로컬에 미커밋 변경이 있는 Worker도 비밀값만 안전하게 바꿀 수 있다.
+
+**해결:** 값은 파일로 한 번 만들고(`umask 077`) 두 Worker에 같은 파일을 파이프로 넣은 뒤 지운다. 화면에 찍지 않는다.
+호출하는 쪽 UI는 결과를 기다리는 동안 경과 시간을 보여 주고, 대상이 실행 시작 시 남기는 기록(예: `state: running`)을 따로 폴링하면 진행을 알릴 수 있다.

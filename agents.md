@@ -1358,3 +1358,32 @@ WebFetch 28회를 이미 마친 상태였다. `journal.jsonl`에는 `launched`�
 `grep -n disable-model-invocation ~/.claude/skills/<이름>/SKILL.md`로 플래그를 본다.
 플래그가 있으면 정상 동작이다. 사용자에게 슬래시 명령으로 직접 부르라고 안내하고, 모델이 쓸 수 있는 형제 스킬이
 있으면 그쪽을 쓴다.
+
+## AGT-061 — zsh에서 `for path in …`은 PATH를 덮어쓴다. 루프 안의 `curl`·`head`·`sed`가 전부 command not found가 된다
+
+`측정 2026-09-27 · macOS zsh · Claude Code Bash 도구`
+
+**증상:** 운영 URL 여러 개의 상태 코드를 보려고 `for path in /admin /api/admin/pulse; do curl … "$BASE$path"; done`을 돌렸더니
+`command not found: curl`, `command not found: head`, `command not found: sed`가 줄줄이 나왔다. 같은 호출의 뒤쪽 `node`도 실패했다.
+
+zsh에서 소문자 `path`는 `PATH`와 묶인 배열(tied parameter)이다. `path=/admin`을 대입하는 순간 PATH가 `/admin` 하나가 된다.
+`cdpath`·`fpath`·`manpath`·`module_path`도 같은 종류다. bash에는 이런 묶음이 없어서 bash 습관대로 쓰면 걸린다(AGT-028과 같은 zsh 계열 함정).
+
+**해결:** 루프 변수는 `route`·`url`·`p`처럼 짓는다. 이미 덮어썼다면 그 호출은 버리고 다시 실행한다. 다음 Bash 호출은 셸 상태가 새로 시작되어 정상이다.
+
+## AGT-062 — gstack browse `js`는 Promise를 기다리지 않는다. 비동기 결과는 `window`에 넣고 다음 호출에서 읽는다
+
+`측정 2026-09-27 · gstack browse (headed, connect 모드)`
+
+**증상:** 로그인된 페이지에서 API 왕복을 확인하려고 `$B js "(async()=>{const r=await fetch('/api/x'); return r.status})()"`를 실행하면
+출력이 빈 줄이다. 오류도 없다.
+
+**해결:** 시작과 읽기를 나눈다.
+
+```bash
+$B js "window.__r='pending';(async()=>{const r=await fetch('/api/x');window.__r=r.status+' '+await r.text()})();'started'"
+sleep 3
+$B js "window.__r"
+```
+
+같은 출처 쿠키가 그대로 실리므로 로그인 세션이 필요한 API의 실제 응답을 이 방식으로 확인할 수 있다.
