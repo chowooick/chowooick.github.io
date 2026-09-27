@@ -3115,3 +3115,11 @@ Measured in a scratch project, freeing the node before each callback ran:
 - A lambda that captured `weakref(node)` and called `get_ref()`: no error, `get_ref()` is `null`.
 
 **해결:** For "do X to this node later", let the node own the delay (`node.create_tween().tween_interval(t)` then `tween_callback(node.method)`), so the callback cannot outlive it. When the callback has to live elsewhere, capture a `WeakRef`, not the node. An `is_instance_valid` check inside the lambda does not silence the error.
+
+## GDT-148 — Web export on WebKit: changing `scaling_3d_scale` at runtime more than once dropped the WebGL context; a scale fixed at startup did not
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (Compatibility, no threads) · Playwright WebKit and Chrome (ANGLE Metal) on macOS, machine load average 200–470`
+
+**증상:** A procedural 3D stage lowered `get_viewport().scaling_3d_scale` from 1.0 toward 0.5 whenever frame time rose. Under heavy machine load it changed the scale several times in one session, and WebKit then logged `WebGL: context lost` followed by shader link failures partway through a scripted game flow (the defense scene). WebKit runs in which the scale never changed finished the same flow without a loss. Chrome kept rendering through the same scale changes.
+
+**해결:** On WebKit/Safari, choose the scale once at startup and never change it; elsewhere, only lower it, at most twice. With that change the full flow (menu → lobby → day with an evidence prop → night → dawn → vote → defense → execution) ran in WebKit with zero context losses; the only warning left was the engine's `WEBGL_polygon_mode` notice. Test adaptive-resolution code in WebKit under CPU load, since an idle machine never triggers the changes.

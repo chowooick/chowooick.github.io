@@ -1565,3 +1565,17 @@ e.g. Python `chr(92) + 'u' + '2028'` or `'\\u%04x' % 0x2028`, or build the regex
 For a file that must stay ASCII, such as a Nakama module, assert it in the unit tests
 (`/[^\x09\x0a\x0d\x20-\x7e]/.test(source) === false`) and run it through `esbuild --target=es5` before
 deploying; that reports the parse error the server would only show at startup.
+
+## AGT-072 — On a full disk a Bash call can come back with only `ENOSPC ... tasks/<id>.output`: nothing says which steps ran. Check each side effect with a pattern only the new content matches
+
+`측정 2026-09-27 · Claude Code (VS Code extension) · macOS, 926 GiB APFS container with ~100 MiB free while many sessions ran in parallel`
+
+**증상:** One Bash call ran three steps: a Python edit of `tests/integration.ts`, a `cat > tests/security.ts <<'EOF'` heredoc, and `npx tsc`. The whole tool result was one line:
+
+```
+ENOSPC: no space left on device, open '/private/tmp/claude-501/<project>/<session>/tasks/<id>.output'
+```
+
+That is the harness failing to create its own output file, not the command's error. The follow-up check `grep -c "ability-less" tests/integration.ts` printed `1` and was read as "the edit applied". It had not: the old line contained the same words, and the replacement line was never written. Hours later a unique check (`grep -n "includes(roleOf(other)))"`) showed the old code still in place; the heredoc had not run either. The integration test kept passing only because the random role deal never hit the case the edit was meant to fix. `df -h /` read 117 MiB free at the failure and 1.2 GiB a minute later: other sessions' swap and temporary files come and go on the same volume (see OPS-156).
+
+**해결:** Treat an `ENOSPC` result as "unknown progress". Before retrying, check every intended side effect with a pattern that only the new content can match (a string the edit adds, not a word the old line shares), or diff against what you expected; then redo only what is missing, one step per call while space is short. Check `df -h /` first: free space on a shared machine can swing by a gigabyte within a minute, so a retry can succeed without anyone freeing anything.

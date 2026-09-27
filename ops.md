@@ -3810,3 +3810,18 @@ impulse halves it.
 `frequency`/`detune`, filter `frequency`/`Q`, panner `pan`). An LFO connected to a k-rate param is sampled once
 per 128 frames, which is inaudible for vibrato and filter sweeps. Keep reverb impulses around 2 s. With this and
 filter-free plucked notes, the heaviest track went from 21.8 % to 16.5 % of one core in the same setup.
+
+## OPS-169 — SpacetimeDB 2.8 TypeScript module: appending columns with `.default(...)` migrates a live database under `--delete-data=never`; `init` does not run again, so new scheduled tables start empty
+
+`측정 2026-09-27 · SpacetimeDB 2.8.0 standalone · TypeScript module (spacetimedb npm 2.8.0) · spacetime CLI 2.8.0`
+
+**증상:** A game module in production needed new columns on existing tables (`room`, `player`, `secret_role`) and nine new tables. The deploy procedure forbids a data-deleting publish, and it was not known whether the TypeScript module could extend an existing table in place.
+
+Measured on a disposable local database seeded with the old module (a room in the middle of a timed game, five players, their private roles):
+
+- New columns were appended at the end of each table with a default: `t.u32().default(0)`, `t.string().default('fedora')`, `t.bool().default(false)`. `spacetime publish <db> --delete-data=never --yes` printed `Created table ...` for the new tables, then `!!! Warning: All clients will be disconnected due to breaking schema changes`, and `Updated database`. It did not refuse the publish.
+- Every existing row survived. `SELECT` on the old rows returned the declared defaults in the new columns.
+- The game already in progress kept going: the old module's scheduled row for the phase timer fired into the new reducer code, which moved the room to the next phase.
+- `init` ran only on the very first publish (`spacetime logs` shows `Invoking init reducer` once, and nothing like it for the update). A new scheduled table (a 1 s interval timer) therefore got its row only from the lazy insert the module does in `clientConnected`.
+
+**해결:** Keep the schema append-only: add tables freely, add columns only at the end of a table and always with `.default(...)`, and never reorder, retype or remove columns. Insert rows for new scheduled tables lazily (`if (!ctx.db.timer.count()) insert(...)`) from `clientConnected` and from the reducers that need them, not only from `init`. The publish disconnects every client, so release the regenerated client bindings at the same time.
