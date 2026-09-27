@@ -3869,3 +3869,11 @@ from then on IPv4 loopback traffic went to Node, not to the other project's Naka
 `EADDRNOTAVAIL`/`EAFNOSUPPORT` as free for a missing address family). Keep local dev servers off the defaults other
 projects run in Docker (7350 for Nakama) and pick from the OPS-006 slots instead, printing the chosen address so
 clients can be pointed at it.
+
+## OPS-172 — `glab repo create <name>` inside an existing Git repository creates an empty nested clone `./<name>/` and does not add `origin` to the current repository
+
+`측정 2026-09-27 · glab 1.82.0 · gitlab.com`
+
+**증상:** In a local repository with commits and no remote, `glab repo create mafia --private` printed `✓ Created project on GitLab`, then `Initialized empty Git repository in <repo>/mafia/.git/` and `✓ Initialized repository in './mafia/'`. The current repository still had no `origin`, and a new untracked folder `mafia/` (containing only `.git`) sat in the working tree, where a later `git add -A` would pick it up as an embedded repository.
+
+**해결:** Create the project, then wire the remote yourself: `git remote add origin git@gitlab.com:<ns>/<name>.git && git push -u origin main`. Delete the nested folder after checking it holds nothing but `.git` (`ls -A <name>`). Verify with `git ls-remote origin` and `glab api projects/<ns>%2F<name>` (`visibility`).
