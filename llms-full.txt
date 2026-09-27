@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T15:02:50Z · 소스 커밋 `c33aed3` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T15:03:36Z · 소스 커밋 `6b6133d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4210,6 +4210,66 @@ Korean, Japanese or Chinese string takes the path that does not work.
 `cdp.send('Input.insertText', {text})`. Before concluding that Korean input is broken, try it with a real IME.
 Input methods that insert text without composition, such as some autofill and dictation tools, will not reach the
 field either.
+
+## GDT-157 — `ext_resource`에 `uid=`가 없는 손으로 쓴 `.tscn`은 Web 빌드 콘솔에 invalid UID 경고를 매 부팅 찍는다
+
+`측정 2026-09-27 · Godot 4.7.2 · Web export (gl_compatibility, 싱글스레드) · Chrome`
+
+**증상:** 에디터와 네이티브 실행은 조용한데, 브라우저 콘솔에만 부팅마다 이 두 줄이 나온다.
+콘솔 에러·경고를 0으로 요구하는 브라우저 테스트가 이것 하나로 실패한다.
+
+```
+WARNING: 'res://scenes/main.tscn': In external resource #0, invalid UID: 'uid://s28mpx4lkckk' - using text path instead: 'res://scripts/main.gd'.
+   at: open (core/io/resource_format_binary.cpp:1028)
+```
+
+원본 `.tscn`은 `[ext_resource type="Script" path="res://scripts/main.gd" id="1"]`처럼 `uid=` 없이
+손으로 썼고, 경고 속 UID는 프로젝트 어디에도 없다(`grep -r`로 소스·`.godot` 모두 0건).
+`main.gd.uid` 파일은 다른 값(`uid://d00neijvifb24`)을 갖고 있었다. 익스포트가 텍스트 씬을 바이너리로
+바꾸면서 스크립트와 맞지 않는 UID를 박아 넣는다. 경로로 되돌아가므로 게임은 정상 동작한다.
+
+**해결:** `ext_resource`에 스크립트의 `.uid` 파일 값을 그대로 적는다.
+
+```
+[ext_resource type="Script" uid="uid://d00neijvifb24" path="res://scripts/main.gd" id="1"]
+```
+
+재익스포트 후 콘솔 경고 0건(브라우저 e2e 19개 검사 통과). 스크립트로 씬을 생성하거나 손으로 쓸 때는
+`.uid` 파일을 읽어 `uid=`를 함께 쓴다.
+
+## GDT-158 — A method Callable does not keep its RefCounted alive: `Obj.new().method` is invalid before it is called, and code that falls back on `is_valid()` silently changes behaviour
+
+`measured 2026-09-27 · Godot 4.7.2 headless`
+
+**Symptom:** a seeded random generator was passed to a ranking function as `rng = Mulberry32.new(seed).as_callable()`, where `as_callable()` returns `next_float`. The function did `rng.call() if rng.is_valid() else randf()`. Every seeded run then disagreed with a reference implementation, and with itself when run twice on the same seed. No error was logged.
+
+A Callable bound to a method holds the object's id, not a reference. Measured:
+
+| Expression | `is_null()` | `is_valid()` |
+|---|---|---|
+| `var c: Callable = Gen.new().next` (temporary RefCounted) | false | **false** |
+| `var g := Gen.new(); var c: Callable = g.next` | false | true |
+| `func(): return Gen.new().next()` (a lambda creating its own object) | false | true |
+
+The temporary's refcount reaches zero on the line that creates the Callable. The `is_valid()` fallback then turned a seeded run into a random one.
+
+**Fix:** keep the object in a variable for as long as its Callable is used. In code that takes an optional Callable, tell the two cases apart: `is_null()` means none was passed, and `not is_valid()` means one was passed but its object is gone. Report the second (`push_error`) rather than falling back quietly. See also GDT-147 for lambda captures.
+
+## GDT-159 — JSON cannot carry a float exactly in Godot: `stringify` rounds to ~15 digits, and even `full_precision=true` does not survive `parse_string`
+
+`measured 2026-09-27 · Godot 4.7.2 headless`
+
+**Symptom:** a check compared a GDScript port against JavaScript to the bit. A level table's jitter (`1.6 * (1 - 1/8)`, which is 1.4000000000000001 in both languages) differed after passing through JSON.
+
+| | Output | Parsed back equal? |
+|---|---|---|
+| `JSON.stringify(x)` | `1.4` | no |
+| `JSON.stringify(x, "", true, true)` (`full_precision`) | `1.4000000000000001` | **no**: `JSON.parse_string` of that string still returns a different double |
+| `0.1 + 0.2` default / full | `0.3` / `0.30000000000000004` | |
+
+JavaScript's `JSON.stringify` writes the shortest round-tripping form, so the two sides disagree even when both computed the same double.
+
+**Fix:** for exact transport, send the IEEE-754 bytes. On the Godot side use `PackedByteArray.resize(8)`, `encode_double(0, x)` and `hex_encode()`, and decode with `hex_decode().decode_double(0)`. On the JS side use `DataView.setFloat64(0, x, true)` (little-endian). Only compare decimals from Godot's JSON with a tolerance.
 
 ---
 
