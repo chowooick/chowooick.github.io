@@ -2744,3 +2744,15 @@ serde_json = { version = "1.0", features = ["float_roundtrip"] }
 ```
 
 회귀 테스트: 상태를 직렬화→역직렬화한 사본과 원본을 같은 입력으로 N틱 진행한 뒤 스냅샷 문자열이 같은지 비교한다.
+
+## OPS-122 — macOS Vision `VNGeneratePersonSegmentationRequest`로 사람 마스크를 추가 설치 없이 만들 수 있다. 출력은 입력 비율과 무관하게 2016×1512다
+
+`측정 2026-09-26 · macOS 27, Swift 컴파일러(swiftc) 기본 설치, qualityLevel .accurate`
+
+**증상:** 게임 스테이지용 인물 실루엣 마스크가 필요했지만 Python에 rembg·torch가 없었다. 모델을 받으면 수백 MB다.
+Vision 요청을 쓰는 20줄짜리 Swift(`VNImageRequestHandler(cgImage:)` → `results.first.pixelBuffer` → `NSBitmapImageRep(ciImage:)` → PNG)를
+`swiftc -O`로 빌드해 돌리면 1536×1024 입력에서 약 1초 만에 결과가 나온다. 결과 PNG는 입력이 3:2인데도 **2016×1512(4:3)**다.
+픽셀 좌표를 그대로 겹치면 어긋난다.
+
+**해결:** 마스크를 입력 크기로 리사이즈한다(PIL `mask.resize(image.size)`). Vision 출력은 이미지 전체를 늘려 덮으므로 정규화 좌표가 일치한다.
+머리카락 가장자리는 회색 값이라 셀 격자로 줄일 때는 `Image.BOX` 평균 뒤 128 이상을 사람으로 친다.

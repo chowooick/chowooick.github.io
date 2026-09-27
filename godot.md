@@ -1956,3 +1956,16 @@ setTimeout(()=>{const u={...o,buttons:0};c.dispatchEvent(new PointerEvent('point
 
 스크린샷 픽셀은 CSS 좌표가 아니다(headed 창은 `viewport` 설정이 먹지 않았고 dpr 2). `$B --headed js "innerWidth+'x'+innerHeight"`로
 실제 크기를 받아 `X = 스크린샷x × innerWidth / 스크린샷폭`으로 환산한다. 이 방법으로 로비 → 온라인 대화상자 → 방 참여까지 진행했다.
+
+## GDT-087 — 삼항식으로 만든 배열을 `Array[float]` 변수에 넣으면 SCRIPT ERROR가 나고 그 함수만 조용히 중단된다. 테스트 러너의 종료 코드는 0으로 남는다
+
+`측정 2026-09-26 · Godot 4.7.2-stable, --headless --script 테스트 러너`
+
+**증상:** `var spreads: Array[float] = [0.0] if stage == 1 else [-0.22, 0.0, 0.22]` 한 줄이 실행될 때마다
+`SCRIPT ERROR: Trying to assign an array of type "Array" to a variable of type "Array[float]".`가 찍힌다.
+그 함수는 그 줄에서 멈추지만 호출한 쪽은 계속 돌아간다. 그래서 `_check` 기반 테스트는 "75 checks, 0 failures"로 통과했고,
+이 분기(보스의 조준 사격)만 한 번도 일어나지 않았다. 밸런스 측정에서 "탄에 맞은 횟수 0"이 나와서야 알았다.
+리터럴을 바로 대입하면 타입이 추론되지만 삼항식의 결과는 타입 없는 `Array`로 취급된다.
+
+**해결:** 삼항식 결과를 받는 변수는 `var spreads: Array = ...`처럼 타입 없는 Array로 선언하거나, `Array[float](...)`로 감싼다.
+테스트를 돌릴 때는 `2>&1 | grep -E "SCRIPT ERROR|checks"`처럼 출력에서 `SCRIPT ERROR`를 함께 거른다. 통과 개수만 보면 이 오류를 놓친다.
