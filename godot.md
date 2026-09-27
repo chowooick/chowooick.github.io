@@ -3217,3 +3217,54 @@ these extensions.
 plain transparent `StandardMaterial3D` (albedo alpha about 0.07, `TRANSPARENCY_ALPHA`, roughness about 0.04) through
 `set_surface_override_material`. Check other scanned models' glass the same way before a close-up relies on seeing
 through it.
+
+## GDT-154 — `HFlowContainer` and autowrapping `Label` report their real height only after a layout pass: same-frame minimum heights are 0 and 5,494 px
+
+`측정 2026-09-27 · Godot 4.7.2-stable · headless`
+
+**증상:** A dialog that sized its panel from `body.get_combined_minimum_size().y` right after filling it came out
+far too short or far too tall, depending on the content. Measured in a 400 px wide `VBoxContainer` holding an
+`HFlowContainer` with seven 130×195 children and an `AUTOWRAP_WORD_SMART` label of about 270 characters:
+
+| When | Flow | Label | Column |
+|---|---|---|---|
+| Same frame, right after `add_child` | 0 | 5,494 | 5,499 |
+| After one `await get_tree().process_frame` | 593 | 149 | 746 |
+| After two frames | 593 | 149 | 746 |
+
+A flow container has no rows until it has been sorted at a width. An autowrapped label measures itself at its
+current width, which is 0 before the container sorts it, so it reports one word per line.
+
+**해결:** Give the container its final width first, wait one `process_frame`, then read the minimum size and fit the
+height. From a function that must not become a coroutine, connect a one-shot callback instead of awaiting:
+`get_tree().process_frame.connect(func(): card.size.y = col.get_combined_minimum_size().y + pad, CONNECT_ONE_SHOT)`.
+One frame was enough in every case measured; check `is_instance_valid()` because the node may be freed by then.
+
+## GDT-155 — A Godot 4.7 `.pck` (pack format 4) can be listed in 30 lines of Python; in one Web export imported textures were 24.1 of 28.5 MB, 1.66× their WebP sources
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Web export · textures imported lossy 0.85 with mipmaps`
+
+**증상:** A Web export grew to 28.5 MB and it was not obvious what was inside. The pack header is: `GDPC`, format
+version (uint32, 4 here), engine version (3 × uint32), flags (uint32), file base (uint64), then, from format 3 on, the
+directory offset (uint64). At that offset: file count (uint32), then per file a uint32 path length, the path (padded
+with NUL), offset (uint64), size (uint64), MD5 (16 bytes) and flags (uint32).
+
+```python
+import struct
+d = open("build/web/index.pck", "rb").read()
+off = struct.unpack_from("<Q", d, 32)[0]          # directory offset (format >= 3)
+n = struct.unpack_from("<I", d, off)[0]; off += 4
+for _ in range(n):
+    ln = struct.unpack_from("<I", d, off)[0]; off += 4
+    path = d[off:off + ln].rstrip(b"\0").decode(); off += ln
+    _, size = struct.unpack_from("<QQ", d, off); off += 16 + 16 + 4
+    print(size, path)
+```
+
+That export held 646 files: `.ctex` textures 24.13 MB, Ogg music 1.99 MB, a subset Korean font 0.63 MB, scripts
+and data under 0.4 MB. The textures came from 14.5 MB of WebP (208 card images at 600×900 and 288×432). The importer
+re-encodes them (`compress/mode=1`, `lossy_quality=0.85`, `mipmaps/generate=true`), so the pack carries 1.66× the
+source bytes.
+
+**해결:** Measure the pack before optimising anything else. For UI-only art that is never minified much, turning off
+mipmaps or lowering `lossy_quality` is where the megabytes are; fonts, audio and code are small in comparison.

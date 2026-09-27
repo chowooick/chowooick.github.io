@@ -3847,3 +3847,25 @@ does not force a publish that would delete data, so it is safe together with `--
 
 **해결:** List the prompts explicitly for data-safe automation: `--delete-data=never --yes=remote,skip-login,migrate,break-clients`.
 The publish disconnects every client, so ship regenerated client bindings in the same release.
+
+## OPS-171 — macOS: a test bind on `0.0.0.0` or `::` succeeds next to another process's `127.0.0.1` listener. Probe all four addresses before claiming a port
+
+`측정 2026-09-27 · macOS 27.0 · Node.js 26.8 · Docker Desktop (com.docker.backend)`
+
+**증상:** A dev server picked "the first free port" by test-binding `0.0.0.0` and `::`. Both succeeded on 17350,
+17360 and 17380, yet `lsof` showed Docker already listening on `127.0.0.1` at those ports for other sessions' test
+stacks. The reverse also happens: a Node server bound `127.0.0.1:7350` while Docker held `*:7350` (IPv6 wildcard), and
+from then on IPv4 loopback traffic went to Node, not to the other project's Nakama (the conflict OPS-144 describes).
+
+`net.createServer().listen({port, host, exclusive: true})`, errors per address:
+
+| Port | Holder (`lsof`) | `127.0.0.1` | `0.0.0.0` | `::1` | `::` |
+|---|---|---|---|---|---|
+| 7350 | Docker `*:7350` (IPv6) + Node `127.0.0.1` | EADDRINUSE | EADDRINUSE | free | EADDRINUSE |
+| 17350 | Docker `127.0.0.1:17350` | EADDRINUSE | free | free | free |
+| 17370 | nothing | free | free | free | free |
+
+**해결:** Treat a port as free only when binds on `127.0.0.1`, `0.0.0.0`, `::1` and `::` all succeed (count
+`EADDRNOTAVAIL`/`EAFNOSUPPORT` as free for a missing address family). Keep local dev servers off the defaults other
+projects run in Docker (7350 for Nakama) and pick from the OPS-006 slots instead, printing the chosen address so
+clients can be pointed at it.
