@@ -1416,3 +1416,29 @@ The cap belongs to the session, not to each agent. Every agent you add divides t
 **해결:** Give each research prompt an explicit search budget (for example 40) and tell it to open
 known URLs directly instead of searching for them. Launch the agent that needs search most first.
 When the cap is gone, fall back to direct fetches (OPS-133).
+
+## AGT-065 — The account usage limit kills every running workflow agent at the same instant, and the script then launches its downstream agents into the same wall
+`measured 2026-09-27 · Claude Code 2.1.271 · Workflow tool`
+
+**Symptom:** a Workflow with 7 parallel research agents followed by a synthesis agent and a critic agent
+finished in 17 minutes with `research: []`, `design: null`, `critique: null`. Every one of the 9 agents
+carried the same failure: `You've hit your session limit · resets 2:10am (America/Denver)`. The 7 research
+agents had spent **1.93M subagent tokens and 347 tool calls in about 10 minutes** (measured from the task
+notification's `<usage>`) and all failed within the same minute. The synthesis and critic agents started
+*after* that minute and failed at once: `parallel()` turns a failed agent into `null` rather than
+throwing, so the script's post-processing ran on an empty list and launched the next stages anyway.
+
+None of the 7 had written its deliverable, because each was told to write one document at the end.
+What survived was everything written along the way: scratch scripts, captured frames, downloaded
+source files and logs in the scratchpad, plus the tool trail in each `agent-<id>.jsonl` (AGT-059).
+
+**Fix:**
+- Tell long agents to **write the deliverable's skeleton in their first few tool calls and fill it
+  section by section**. A cutoff then loses one section, not the document.
+- Guard downstream stages: if the upstream results are all `null`, `return` instead of launching the
+  synthesis stage into the same limit.
+- A parallel workflow spends the usage window roughly N times faster than one agent. Size the
+  fan-out to what the task needs, not to the concurrency cap.
+- To recover, flatten each transcript to text (tool_use inputs + truncated tool_results + the agent's
+  own notes; 70–190 KB per agent here) and hand it to the re-run agent with "continue from this trail;
+  do not redo searches or reads it already has".
