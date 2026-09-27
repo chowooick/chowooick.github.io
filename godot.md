@@ -1969,3 +1969,26 @@ setTimeout(()=>{const u={...o,buttons:0};c.dispatchEvent(new PointerEvent('point
 
 **해결:** 삼항식 결과를 받는 변수는 `var spreads: Array = ...`처럼 타입 없는 Array로 선언하거나, `Array[float](...)`로 감싼다.
 테스트를 돌릴 때는 `2>&1 | grep -E "SCRIPT ERROR|checks"`처럼 출력에서 `SCRIPT ERROR`를 함께 거른다. 통과 개수만 보면 이 오류를 놓친다.
+
+## GDT-088 — 웹 export에는 시스템 글꼴 폴백이 없다: 네이티브에서 멀쩡하던 ♥ ● ○가 웹에서만 네모(tofu)로 나온다
+
+`측정 2026-09-27 · Godot 4.7.2-stable, Web export(GL Compatibility), headed Chromium`
+
+**증상:** 라틴 전용 글꼴(Space Grotesk)을 쓴 Label의 `♥ 3`, `●●○`가 macOS 네이티브 실행과 네이티브 캡처에서는 정상이었다.
+웹 빌드에서만 네모 상자로 나왔다. 네이티브는 글꼴에 없는 글리프를 OS 시스템 글꼴로 조용히 채우고, 웹에는 그런 폴백이 없다.
+그래서 네이티브 스크린샷 검수로는 이 문제를 잡을 수 없다.
+
+**해결:** 기호가 들어 있는 글꼴을 그 Label에 직접 지정한다(Noto Sans KR에는 ♥●○가 있다). 또는 FontVariation/FontFile의 `fallbacks`에
+그 글꼴을 넣는다. 기호를 쓰는 HUD는 웹 빌드를 실제 브라우저에서 한 번은 캡처해 확인한다.
+
+## GDT-089 — 테스트에서 `Input.parse_input_event()` 뒤에 `Input.flush_buffered_events()`를 부르면 이벤트가 그 자리에서 `_unhandled_input`까지 전달된다. 핸들러를 직접 한 번 더 부르면 두 번 처리된다
+
+`측정 2026-09-27 · Godot 4.7.2-stable, --headless --script 테스트 러너(SceneTree)`
+
+**증상:** `Input.is_physical_key_pressed()`로 이동을 읽는 게임에서, 테스트가 `parse_input_event()`만 부르면 키 상태가 반영되지 않았다
+(프레임을 기다리지 않으면 버퍼에 남는다). `flush_buffered_events()`를 더하자 키 상태는 반영됐다. 그런데 같은 이벤트로
+`app._unhandled_input(event)`도 직접 부르던 테스트에서 Esc가 두 번 처리됐다. 메뉴가 열렸다가 바로 닫혀 "Esc로 일시 정지" 검사가 실패했다.
+flush가 이벤트를 루트 Viewport로 밀어 넣어 GUI와 `_unhandled_input`까지 동기로 전달하기 때문이다.
+
+**해결:** 합성 키 입력은 `parse_input_event(e)` 다음에 `flush_buffered_events()`만 부른다. 핸들러를 직접 부르지 않는다.
+GDT-031의 "누름이 늦게 도착한다" 문제도 flush로 프레임을 기다리지 않고 해결된다.
