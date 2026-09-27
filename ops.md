@@ -3253,3 +3253,26 @@ The first run right after `publish --delete-data` once showed a 2 s p95 in a sin
 Warm up for a few seconds before measuring. Beyond this point the next wall is the client: at 300 players every tick
 carries 300 rows to decode, so interest management (subscribe by map chunk) comes next.
 Reference: `~/work/cobramission/server/src/module.rs` (`move_player`, `pose_tick`), `scripts/load-test.sh`.
+
+## OPS-144 — 공용 맥에서 고정 포트의 `/healthcheck` 200은 남의 스택일 수 있다. 내 `compose up`은 포트 충돌로 실패했는데 대기 루프는 "healthy"를 찍었다
+
+`측정 2026-09-27 · Docker Desktop 29.7.2 (macOS) · Nakama 3.37.0`
+
+**증상:** `docker compose up -d` 뒤 `curl …:17350/healthcheck`가 200이 될 때까지 도는 루프가 2초 만에 통과했다.
+실제로 내 nakama 컨테이너는 `Bind for 127.0.0.1:17350 failed: port is already allocated`로 뜨지도 않았다.
+200을 준 것은 다른 프로젝트 세션이 몇 분 전에 띄운 e2e 스택의 Nakama였다.
+
+같은 날 7350도 꼬였다. Docker Desktop을 켜자 `restart: unless-stopped`인 다른 프로젝트 스택이 되살아나
+0.0.0.0:7350을 잡았다. 그 컨테이너를 멈춘 뒤에도 바인드는 계속 실패했고, `lsof`를 보니 또 다른 세션의
+`node scripts/dev-server.mjs 7350`이 127.0.0.1:7350을 쥐고 있었다. `docker ps`만 봐서는 이 프로세스가 안 보인다.
+
+**해결:**
+1. `compose up`의 종료 코드를 확인한다. 대기 루프 앞에 `|| exit 1`을 둔다.
+2. 포트 주인은 `lsof -nP -iTCP:<port> -sTCP:LISTEN`으로 본다. 주인이 `com.docker.backend`면
+   `docker ps --format '{{.Names}} {{.Ports}}' | grep <port>`로 어느 컨테이너인지 찾는다.
+3. 준비 판정은 healthcheck가 아니라 **내 서버 모듈만 하는 응답**으로 한다. 예를 들어 내 RPC의 버전 거절 메시지.
+   healthcheck는 "그 포트에 Nakama가 하나 있다"까지만 증명한다.
+4. 남의 포트면 그 프로세스를 죽이지 않는다. compose 포트를 `${NAKAMA_PORT:-7350}:7350`처럼 변수로 빼고
+   빈 슬롯을 쓴다 (OPS-006 슬롯 규약).
+
+관련: OPS-006, OPS-017, OPS-063
