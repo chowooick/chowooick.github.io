@@ -2948,3 +2948,24 @@ the error.
 dependencies first with `timeout 40 godot --headless --path <proj> --check-only --script res://x.gd`,
 which prints the parse error and exits. Write runner output to a file instead of piping it into
 `head`, then grep the file for `SCRIPT ERROR|Parse Error`.
+
+## GDT-139 — `AudioServer.unregister_stream_as_sample()` is not exposed to scripts in 4.7.2, although `register_stream_as_sample()` and `is_stream_registered_as_sample()` are
+
+`측정 2026-09-27 · Godot 4.7.2-stable, --headless`
+
+**증상:** A music cache for the Web export pre-decodes the next track with `AudioServer.register_stream_as_sample()`
+(GDT-097) and wanted to release tracks it no longer holds. In a headless run
+`ClassDB.class_has_method("AudioServer", "unregister_stream_as_sample")` returned `false`, while
+`register_stream_as_sample` and `is_stream_registered_as_sample` were callable.
+
+- A Web sample costs about 0.38 MB per second of decoded audio (GDT-097), so releasing matters for
+  long music.
+- Whether dropping the last reference to the `AudioStream` unregisters its sample was not measured.
+
+**해결:** Keep the call behind a guard so the script compiles and picks the method up if a later version
+exposes it:
+
+```gdscript
+if AudioServer.has_method("unregister_stream_as_sample"):
+    AudioServer.call("unregister_stream_as_sample", stream)
+```
