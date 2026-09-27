@@ -2151,6 +2151,10 @@ Measured facts:
   playback. A 67.2 s track's first play fell inside a 1.37 s main-thread long task during boot.
 - **No bus effects.** Bus effects (for example `AudioEffectLowPassFilter`) do not process
   sample playback.
+- **Reading the mode.** To check at runtime whether a build is in Sample mode, read the setting
+  with `ProjectSettings.get_setting_with_override("audio/general/default_playback_type")`. In the
+  Web export it returned 1 (Sample), while plain `get_setting()` of the same key returned 0,
+  the base value: plain `get_setting()` ignores the `.web` feature override.
 
 **해결:**
 - Keep Sample playback for music on the Web, and put a transient (crash, kick or stab) at
