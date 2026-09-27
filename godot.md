@@ -3268,3 +3268,29 @@ source bytes.
 
 **해결:** Measure the pack before optimising anything else. For UI-only art that is never minified much, turning off
 mipmaps or lowering `lossy_quality` is where the megabytes are; fonts, audio and code are small in comparison.
+
+## GDT-156 — Web export: a focused `LineEdit` takes text through a hidden `div.ime`. IME composition reaches it, but Playwright's `keyboard.type('한글')` and `insertText()` never do
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export · Chrome 헤드리스 + Playwright · 한국어 이름 입력칸`
+
+**증상:** A browser test clicked a `LineEdit` in the Web build and typed a Korean name with `page.keyboard.type('하늘')`.
+The field stayed empty and the form answered "이름을 알려 주세요!". A player typing with a real Korean IME had no
+problem.
+
+Clicking a `LineEdit` moves `document.activeElement` to a hidden `<div class="ime">` (opacity 0, 1 px font, fixed
+position) that the engine uses for text input. Measured on three fields of the same form:
+
+| Input method | Reached the `LineEdit` |
+|---|---|
+| `page.keyboard.type('Haneul')`: ASCII, one keydown per character | yes |
+| `page.keyboard.insertText('햇살')`: text inserted with no composition | **no** |
+| CDP `Input.imeSetComposition` ('ㄸ' → '딸'), then `Input.insertText('딸기')`: composition like a real IME | yes |
+
+Playwright's `keyboard.type()` falls back to `insertText` for characters that are not on the US layout, so every
+Korean, Japanese or Chinese string takes the path that does not work.
+
+**해결:** In tests, type CJK text as an IME would, through a CDP session:
+`cdp.send('Input.imeSetComposition', {text, selectionStart: n, selectionEnd: n})`, then
+`cdp.send('Input.insertText', {text})`. Before concluding that Korean input is broken, try it with a real IME.
+Input methods that insert text without composition, such as some autofill and dictation tools, will not reach the
+field either.
