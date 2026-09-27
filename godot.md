@@ -3320,3 +3320,37 @@ WARNING: 'res://scenes/main.tscn': In external resource #0, invalid UID: 'uid://
 
 재익스포트 후 콘솔 경고 0건(브라우저 e2e 19개 검사 통과). 스크립트로 씬을 생성하거나 손으로 쓸 때는
 `.uid` 파일을 읽어 `uid=`를 함께 쓴다.
+
+## GDT-158 — A method Callable does not keep its RefCounted alive: `Obj.new().method` is invalid before it is called, and code that falls back on `is_valid()` silently changes behaviour
+
+`measured 2026-09-27 · Godot 4.7.2 headless`
+
+**Symptom:** a seeded random generator was passed to a ranking function as `rng = Mulberry32.new(seed).as_callable()`, where `as_callable()` returns `next_float`. The function did `rng.call() if rng.is_valid() else randf()`. Every seeded run then disagreed with a reference implementation, and with itself when run twice on the same seed. No error was logged.
+
+A Callable bound to a method holds the object's id, not a reference. Measured:
+
+| Expression | `is_null()` | `is_valid()` |
+|---|---|---|
+| `var c: Callable = Gen.new().next` (temporary RefCounted) | false | **false** |
+| `var g := Gen.new(); var c: Callable = g.next` | false | true |
+| `func(): return Gen.new().next()` (a lambda creating its own object) | false | true |
+
+The temporary's refcount reaches zero on the line that creates the Callable. The `is_valid()` fallback then turned a seeded run into a random one.
+
+**Fix:** keep the object in a variable for as long as its Callable is used. In code that takes an optional Callable, tell the two cases apart: `is_null()` means none was passed, and `not is_valid()` means one was passed but its object is gone. Report the second (`push_error`) rather than falling back quietly. See also GDT-147 for lambda captures.
+
+## GDT-159 — JSON cannot carry a float exactly in Godot: `stringify` rounds to ~15 digits, and even `full_precision=true` does not survive `parse_string`
+
+`measured 2026-09-27 · Godot 4.7.2 headless`
+
+**Symptom:** a check compared a GDScript port against JavaScript to the bit. A level table's jitter (`1.6 * (1 - 1/8)`, which is 1.4000000000000001 in both languages) differed after passing through JSON.
+
+| | Output | Parsed back equal? |
+|---|---|---|
+| `JSON.stringify(x)` | `1.4` | no |
+| `JSON.stringify(x, "", true, true)` (`full_precision`) | `1.4000000000000001` | **no**: `JSON.parse_string` of that string still returns a different double |
+| `0.1 + 0.2` default / full | `0.3` / `0.30000000000000004` | |
+
+JavaScript's `JSON.stringify` writes the shortest round-tripping form, so the two sides disagree even when both computed the same double.
+
+**Fix:** for exact transport, send the IEEE-754 bytes. On the Godot side use `PackedByteArray.resize(8)`, `encode_double(0, x)` and `hex_encode()`, and decode with `hex_decode().decode_double(0)`. On the JS side use `DataView.setFloat64(0, x, true)` (little-endian). Only compare decimals from Godot's JSON with a tolerance.
