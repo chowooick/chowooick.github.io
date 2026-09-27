@@ -2120,3 +2120,44 @@ matched: the client and the server both produced `f256051205efd6e4` for the same
 **해결:** Keep the value as a signed int and format the halves:
 `"%08x%08x" % [(h >> 32) & 0xFFFFFFFF, h & 0xFFFFFFFF]`. Write the offset basis as its signed value
 (`-3750763034362895579`) because the hex literal overflows.
+
+## GDT-096 — Web export sample playback loops music by restarting from the `ended` event: every loop point gaps (median 11 ms, up to 113 ms). Stream playback in a no-threads build dropped out 55 % of the time under load
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (nothreads template), headless Chromium + SwiftShader WebGL2`
+
+**증상:** An `AudioStreamOggVorbis` with `loop = true` loops on the Web, but not seamlessly, even
+when the file itself loops sample-exactly.
+
+On the Web the default `audio/general/default_playback_type.web` is Sample. In that mode the engine
+JS (`GodotAudio.SampleNode` in the exported `index.js`) never sets `AudioBufferSourceNode.loop`.
+When the source fires `ended` and the sample's `loopMode` is `forward`, `_restart()` creates a new
+source and calls `start()` with the same start time. That time is "now", so the new source begins
+whenever the main thread gets to the event.
+
+Measured facts:
+
+- **Loop gap.** Probing the `ended` event with the game's title screen rendering: the restart came
+  0.7 to 112.7 ms after the buffer end, median 11.3 ms, over 24 trials. A 67.2 s music loop was
+  watched end to end and restarted 67.25 s after it began.
+- **Stream playback drops out.** Forcing `AudioStreamPlayer.playback_type = PLAYBACK_TYPE_STREAM`
+  on the music gives sample-exact loops and working bus effects. In the no-threads build, though,
+  the mixer is fed from main-thread messages to an AudioWorklet ring buffer. With frames at a
+  median 41.7 ms (max 624 ms), a monitor worklet counted 4,659 of 8,389 render quanta silent:
+  404 dropouts, the longest 226 quanta (0.6 s). Sample playback kept playing through the same
+  stalls.
+- **Decode and memory.** A sample is decoded into a Float32 `AudioBuffer` at the context rate
+  (48 kHz stereo: 0.38 MB per second of audio) on its first play or on
+  `AudioServer.register_stream_as_sample()`. `getAudioBuffer()` duplicates that buffer for every
+  playback. A 67.2 s track's first play fell inside a 1.37 s main-thread long task during boot.
+- **No bus effects.** Bus effects (for example `AudioEffectLowPassFilter`) do not process
+  sample playback.
+
+**해결:**
+- Keep Sample playback for music on the Web, and put a transient (crash, kick or stab) at
+  sample 0 of every loop so its attack masks the restart gap.
+- Call `AudioServer.register_stream_as_sample(stream)` for the next track while the screen is
+  covered, so the decode does not land on gameplay.
+- Fake Web "muffle" effects with volume.
+- For the measurement, wrap `AudioBufferSourceNode.prototype.start` and the `AudioWorkletNode`
+  constructor in an inline `<script>` placed before `index.js`, and launch Chromium with
+  `--use-angle=swiftshader --enable-unsafe-swiftshader` so the WebGL2 game runs headless.
