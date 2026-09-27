@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T13:53:04Z · 소스 커밋 `88ea5d6` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T13:54:59Z · 소스 커밋 `0a44102` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -844,6 +844,33 @@ restarted server with 1 success and 29 `503 world_preparing`.
 **해결:** branch on the message identifier (as in NKM-007) or on the HTTP status, never on the gRPC code alone.
 Retry 503 after a short pause: 250–750 ms steps were enough for the registry case. Treat everything in a thrown
 runtime error, including the stack, as public.
+
+## NKM-038 — Testing runtime.js in a Node `vm` context: top-level code runs ~4× slower, wrap it in a function
+`측정 2026-09-27 · Node 26.8.2 · node:vm · Nakama 3.37 ES5 module run in a test harness`
+
+**증상:** a seeded battle simulation that loads a Nakama ES5 `runtime.js` with
+`vm.createContext(ctx); vm.runInContext(src, ctx)` and calls its functions from the test takes far longer than the
+same code needs. A CPU profile shows the most self time in tiny helpers that only read top-level globals
+(`function rules() { return CATALOG.rules; }`, a `hasOwnProperty` lookup into the catalog).
+
+When a script runs directly in a contextified global, every top-level `var` and `function` is a property of that
+global. V8 routes each read through the context's interceptors instead of a fast local slot. Same code and seeds:
+a damage table went from 18,796 ms to 4,884 ms (3.8×) and 60 vault battles from 11,441 ms to 5,698 ms once the
+module ran inside a function.
+
+**해결:** keep the context (it still isolates globals and lets the test inject `Date`/`Math`), but evaluate the
+module inside an IIFE and return the functions the test needs:
+
+```js
+const names = acorn.parse(src, {ecmaVersion: 5}).body
+  .filter(n => n.type === 'FunctionDeclaration').map(n => n.id.name);
+vm.createContext(ctx);   // e.g. {Date: {now: () => fakeNow}, Math: seededMath, console}
+const mod = vm.runInContext(`(function () {\n${src}\nreturn {${names.map(n => `${n}: ${n}`).join(', ')}};\n})()`, ctx);
+mod.InitModule(nkCtx, logger, nk, initializer);
+```
+
+Identifiers the module does not declare (`Date`, `Math`, `JSON`) still resolve to the context's globals. Also
+cache pure derived data in the module: after that, lookups stopped dominating the profile.
 
 ---
 
