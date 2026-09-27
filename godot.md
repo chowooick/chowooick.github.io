@@ -2227,3 +2227,48 @@ in game. Inspecting the imported `AudioStreamWAV` showed `loop_end` = frames −
 `stream.loop_end = <total frame count>` (for 16-bit PCM, `stream.data.size() / (2 * channels)`). Alternatively omit the
 `smpl` chunk and set the loop only in code or in the import settings. Note that the importer's default compression
 for WAV is QOA. Reference: `~/work/cobramission/client/core/audio/audio.gd`.
+
+## GDT-100 — A `MeshInstance3D` built in code has an empty `skeleton` path: the skin is set, nothing errors, and the mesh renders in its rest pose
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Forward+ / Metal · skinned ArrayMesh + Skin built at runtime`
+
+**증상:** A procedural character (`Skeleton3D` → child `MeshInstance3D` with `mesh` and `skin`)
+never deformed. Bone poses changed (`get_bone_pose_rotation` returned animated values), but every
+screenshot showed the bind pose. No warning was printed.
+
+`MeshInstance3D.skeleton` defaults to `NodePath("")` in 4.x (the class reference lists
+`default="NodePath(&quot;&quot;)"`), not `".."`. Editor-imported scenes store the path explicitly, which is
+why this only shows up for nodes created from code. With an empty path the skin is never bound to
+a skeleton.
+
+**해결:** Set the path explicitly when you build the node: `mesh_instance.skeleton = NodePath("..")`
+(or the path to the `Skeleton3D`). Verify with a pose change in a screenshot, not with bone values.
+
+## GDT-101 — An `AnimationNodeTransition` built in code outputs nothing until a state is requested
+
+`측정 2026-09-27 · Godot 4.7.2-stable · AnimationTree with a code-built AnimationNodeBlendTree`
+
+**증상:** A code-built AnimationTree (`BlendSpace1D` → `TimeScale` → `Transition` → `OneShot` →
+output) was active and processing, the library held 13 clips, and the same library animated the
+skeleton through an `AnimationPlayer`. Through the tree, every bone stayed at rest.
+`parameters/state/current_state` read `""`.
+
+A `Transition` node added with `add_input()` has no current state until the first
+`transition_request`; it then passes nothing downstream, so the whole tree blends to rest.
+
+**해결:** Right after activating the tree, request the default state for every Transition node:
+`tree.set("parameters/state/transition_request", "loco")`.
+
+## GDT-102 — An inverted-hull outline that scales its offset by `VIEWPORT_SIZE` in `vertex()` drew no silhouette lines; the same offset from `PROJECTION_MATRIX` alone works
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Forward+ / Metal (M1 Max) · next_pass ShaderMaterial, cull_front, POSITION written`
+
+**증상:** A pixel-width outline (next pass, `cull_front`, vertices pushed along the view-space normal,
+`POSITION = PROJECTION_MATRIX * vp`) showed no lines around silhouettes. The offset was
+`width_px * (VIEWPORT_SIZE.y / 1080.0) * 2.0 * depth / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y)`.
+A constant 12 mm offset in the same pass drew clean silhouettes. `VIEWPORT_SIZE.y` itself reads
+above 100 in `vertex()` in the color pass, so the value is not simply zero. The cause is not isolated.
+
+**해결:** Leave `VIEWPORT_SIZE` out of the vertex offset. Use a resolution-relative width:
+`2.0 * depth / (abs(PROJECTION_MATRIX[1][1]) * 1080.0) * width_px`. Check an outline change by
+counting outline-coloured pixels in a windowed screenshot; thin dark lines are easy to miss by eye.
