@@ -3458,6 +3458,13 @@ and count failed views separately from findings. Split the matrix over 4 process
 10-core Mac with other sessions running, 8 processes made each one slower (load average up to 195) rather than the
 run shorter.
 
+When the workstation itself is saturated (load average 300–500 later the same day), run the browsers on the server
+next to the app instead: `docker run --rm --network host --ipc=host mcr.microsoft.com/playwright:v1.63.0-noble`
+with the harness mounted and `npm i playwright@1.63.0` inside (the image carries the browsers, not the package).
+Three containers at `--cpus 2` measured 228 Chromium views in about 9 minutes on a 12-vCPU arm64 host, against
+about 40 minutes on the Mac. Keep Safari-specific checks (select heights, OPS-151) on macOS WebKit: the image's
+WebKit is the Linux port.
+
 ## OPS-151 — Desktop WebKit draws a `<select>` 23px tall as soon as it has any border, radius or background, ignoring the author's `min-height` and `padding`; `appearance: none` restores them
 
 `측정 2026-09-27 · WebKit 26.6 and Chromium 153 via Playwright 1.63 on macOS · standards and quirks mode, 16px text`
