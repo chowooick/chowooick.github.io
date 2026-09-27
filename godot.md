@@ -2440,3 +2440,39 @@ linear values: `float lum = dot(to_linear(COLOR.rgb), vec3(0.3, 0.55, 0.15));` (
 Alternatively keep sRGB maths and calibrate constants on sRGB values (a mid green is ~0.35–0.45).
 Verify colour logic with a pixel probe of a rendered sheet (PIL `getpixel`), not by eye: the
 washed-out result looks like "bright lighting" until the numbers are compared.
+
+## GDT-110 — `RenderingServer.global_shader_parameter_get_list()` returns an empty list in a running game: it only reports parameters in the editor
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS, Forward+`
+
+**증상:** A city generator registered its global shader parameters (`wetness`, `city_night`, …) at runtime with
+`RenderingServer.global_shader_parameter_add()` and guarded against double registration by checking
+`global_shader_parameter_get_list()`. At runtime the list is always empty, so the guard never fired and a second
+build logged duplicate-add errors. A footstep script that asked the same list "does `wetness` exist?" never
+found it and never played the wet-footstep sounds, although the parameter existed and rendered.
+
+**해결:** Do not use the list at runtime. Keep your own flag (or `Engine` meta) for "registered", or catch the
+parameters you declared in `project.godot` separately. `global_shader_parameter_get(name)` works for reading values.
+
+## GDT-111 — SDFGI costs about 2 ms in an empty test scene but about 6 ms in a dense generated city; three cascades, 0.4 m cells and half-resolution GI win most of it back
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Apple M1 Max, Metal, Forward+, 1920×1080`
+
+**증상:** A stylized town (about 1,100 collision shapes, 166 merged meshes, 270 dynamic lights) held 60 fps on HIGH
+until SDFGI was enabled with default settings; frame time rose by about 6 ms, while the same settings in an empty
+scene cost about 2 ms. Measuring SDFGI in a test scene underestimates it by roughly 3×.
+
+**해결:** `sdfgi_cascades = 3`, `sdfgi_min_cell_size = 0.4`, and `RenderingServer.gi_set_use_half_resolution(true)`
+brought the HIGH preset back to 66–77 fps in the busiest shots. Budget GI in the real scene, not in an empty one.
+
+## GDT-112 — `CharacterBody3D.move_and_slide()` can be called in a plain loop outside the physics step: fast, headless collision tests for curbs and door access
+
+`측정 2026-09-27 · Godot 4.7.2-stable · --headless · Jolt Physics`
+
+**증상:** Verifying that a capsule (radius 0.35, height 1.8) can climb every curb, walk every street corridor and
+reach every door point by stepping the real game loop takes minutes per run.
+
+**해결:** After the level geometry exists, set `velocity` and call `move_and_slide()` directly in a loop (for
+example 120 iterations per probe) and read `global_position` / `is_on_floor()` afterwards. It resolves against the
+current collision state without waiting for physics frames; a 47-check curb and door test runs in seconds headless.
+Collision shapes added this frame are included once the body is in the tree.
