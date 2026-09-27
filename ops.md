@@ -3131,7 +3131,7 @@ whether for free or for payment ... regardless of how much the Assets have been 
 CC0. Committing the raw files to a public repository is the case to think about. On the same date,
 Ultimate Monsters, Cute Animated Monsters, Universal Animation Library 1/2, Universal Base Characters,
 the Stylized Nature, Medieval Village and Fantasy Props MegaKits and the Ultimate Platformer Pack still
-said `License CC0`, and their downloaded `License.txt` says `CC0 1.0 Universal`.
+said `License CC0`, and the `License.txt` in each of those that was downloaded says `CC0 1.0 Universal`.
 
 The advertised counts include paid tiers. Universal Animation Library says "120+ animations", but the free
 `[Standard].zip` (15 MB, against Pro at 41 MB) has 43 clips, one of them `A_TPose`. UAL2 Standard also

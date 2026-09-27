@@ -2165,3 +2165,52 @@ Measured facts:
 - For the measurement, wrap `AudioBufferSourceNode.prototype.start` and the `AudioWorkletNode`
   constructor in an inline `<script>` placed before `index.js`, and launch Chromium with
   `--use-angle=swiftshader --enable-unsafe-swiftshader` so the WebGL2 game runs headless.
+
+## GDT-098 — KayKit 2.0 characters ship with no animations; the separate `Rig_Medium_*.glb` files drive them in Godot with zero retargeting (2,316 of 2,316 tracks resolve)
+
+`측정 2026-09-27 · Godot 4.7.2-stable, KayKit Adventurers 2.0 / Skeletons 1.1 / Character Animations 1.1 (itch.io free tiers)`
+
+**증상:** In the current KayKit packs, `Knight.glb`, `Skeleton_Minion.glb` and the other characters
+import with no `AnimationPlayer`. The 1.0 repositories on GitHub embed 76 clips in each character,
+on a different 41-joint rig named `Rig` (checked on `Knight.glb`); 2.0 moved every clip into `Character Animations` as `Rig_Medium_General.glb`,
+`_MovementBasic`, `_MovementAdvanced`, `_CombatMelee`, `_CombatRanged`, `_Simulation`, `_Special` and
+`_Tools` (131 clips plus a `T-Pose` in each file). A second, bigger rig, `Rig_Large`, has 28 clips.
+
+Every Rig_Medium character and every Rig_Medium animation file has a root node named `Rig_Medium`
+and the same 23 joints (`root hips spine chest head upperarm.l ... handslot.l handslot.r ... toes.r`).
+Node translation, rotation and scale matched exactly for all six characters checked, even though
+the joint order differs between files. In Godot the skeleton imports as
+`Rig_Medium/Skeleton3D` on both sides. The animation tracks address bones by name, so they fit as-is.
+
+Measured headless: add an `AnimationPlayer` under the character, copy each animation file's clips
+into an `AnimationLibrary`, add the libraries. Of 2,316 tracks, 0 failed to resolve against
+`Knight.glb` and 0 against `Skeleton_Minion.glb`. `play("Rig_Medium_CombatMelee/Melee_1H_Attack_Chop")`
+plus `seek(0.35, true)` moved `upperarm.r`.
+
+**해결:** Do not set up retargeting (BoneMap or SkeletonProfile) between KayKit characters.
+Import the `Rig_Medium_*.glb` files once, save their clips as `AnimationLibrary` resources, and share
+them across all Rig_Medium characters. Weapons attach to `handslot.l` / `handslot.r` through a
+`BoneAttachment3D`.
+
+## GDT-099 — Two free asset packs import with the wrong shading: Kenney Nature Kit as fully metallic, Quaternius Cute Animated Monsters as unshaded
+
+`측정 2026-09-27 · Godot 4.7.2-stable glTF importer, Kenney Nature Kit 2.1, Quaternius Cute Animated Monsters (Drive glTF)`
+
+**증상:** The models look wrong under scene lighting, and the importer gives no warning.
+
+- **Kenney Nature Kit** (`Models/GLTF format/*.glb`): every material is a flat `baseColorFactor` with
+  `metallicFactor: 1` and `roughnessFactor: 1`. The file lists `KHR_materials_unlit` in
+  `extensionsUsed` but no material applies it. Godot imports `shading_mode = PER_PIXEL`,
+  `metallic = 1.00`. A fully metallic material takes its color from reflections, not from lights,
+  so the leaves and rocks come out dark in an ordinary scene.
+- **Quaternius Cute Animated Monsters** (`glTF/*.gltf`): the materials carry
+  `KHR_materials_unlit`, and Godot imports `shading_mode = UNSHADED`. Lights and shadows do not
+  touch them.
+
+For comparison, KayKit (roughness 0.5, metallic 0), Kenney Platformer/Fantasy Town (metallic 0) and
+Quaternius Ultimate Monsters (metallic 0, roughness 1) import as ordinary lit materials.
+
+**해결:** Override the materials on import. Use per-material "Use External" with a replacement
+`StandardMaterial3D`, or an `EditorScenePostImport` script that sets `metallic = 0` and
+`shading_mode = SHADING_MODE_PER_PIXEL`. Check `metallic` and `shading_mode` of a newly imported pack
+in a headless script before judging its look.
