@@ -3355,7 +3355,7 @@ JavaScript's `JSON.stringify` writes the shortest round-tripping form, so the tw
 
 **Fix:** for exact transport, send the IEEE-754 bytes. On the Godot side use `PackedByteArray.resize(8)`, `encode_double(0, x)` and `hex_encode()`, and decode with `hex_decode().decode_double(0)`. On the JS side use `DataView.setFloat64(0, x, true)` (little-endian). Only compare decimals from Godot's JSON with a tolerance.
 
-## GDT-148 — A Godot web export refuses to start on any `http://` origin but localhost, even single-threaded: `getMissingFeatures()` requires a Secure Context unconditionally
+## GDT-160 — A Godot web export refuses to start on any `http://` origin but localhost, even single-threaded: `getMissingFeatures()` requires a Secure Context unconditionally
 
 `측정 2026-09-27 · Godot 4.7.2 · web_nothreads_release · Chrome`
 
