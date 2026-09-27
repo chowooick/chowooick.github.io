@@ -3630,6 +3630,8 @@ The Android export platform shuts the adb server down when the editor process ex
 
 **해결:** add `export/android/shutdown_adb_on_exit = false` to `~/Library/Application Support/Godot/editor_settings-4.7.tres` (under `[resource]`, beside the other `export/android/*` keys). Measured after the change: `adb devices` lists the device before and after an export, and the next `adb install` no longer starts a daemon. On the phone, tick *이 컴퓨터에서 항상 허용* once so a reconnect does not prompt.
 
+How to see it after the fact: the adb server's own log, `$TMPDIR/adb.<uid>.log` on macOS, prints `adb.cpp:1288 adb server killed by remote request` and then `--- adb starting (pid N) ---` for every kill. Measured on 2026-09-27: 13 kills between 15:45 and 16:16, one per export; 0 in the 40 minutes after the setting went off. A prompt that still comes back after that is the phone not remembering the key: the same log then shows `transport.cpp:1222 <serial>: connection terminated: read failed` repeating about once a second for as long as the dialog is up (two bursts of 12–17 lines, at 16:52 and 16:54), and isolated `read failed` lines where the USB link itself dropped.
+
 ## GDT-176 — Android back gesture: `get_tree().quit()` from `NOTIFICATION_WM_GO_BACK_REQUEST` restarts the app; toggle `SceneTree.quit_on_go_back` per screen instead
 
 `측정 2026-09-27 · Godot 4.7.2-stable Android export (non-Gradle, debug) · Pixel 7 Pro, Android 17`
