@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:51:13Z · 소스 커밋 `c50efa5` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:57:34Z · 소스 커밋 `b3075d4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3235,6 +3235,41 @@ linear values: `float lum = dot(to_linear(COLOR.rgb), vec3(0.3, 0.55, 0.15));` (
 Alternatively keep sRGB maths and calibrate constants on sRGB values (a mid green is ~0.35–0.45).
 Verify colour logic with a pixel probe of a rendered sheet (PIL `getpixel`), not by eye: the
 washed-out result looks like "bright lighting" until the numbers are compared.
+
+## GDT-110 — `RenderingServer.global_shader_parameter_get_list()` returns an empty list in a running game: it only reports parameters in the editor
+
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS, Forward+`
+
+**증상:** A city generator registered its global shader parameters (`wetness`, `city_night`, …) at runtime with
+`RenderingServer.global_shader_parameter_add()` and guarded against double registration by checking
+`global_shader_parameter_get_list()`. At runtime the list is always empty, so the guard never fired and a second
+build logged duplicate-add errors. Any script that asks the same list "does `wetness` exist?" gets no, although
+the parameter exists and renders.
+
+**해결:** Do not use the list at runtime. Keep your own flag (or `Engine` meta) for "registered", or catch the
+parameters you declared in `project.godot` separately. `global_shader_parameter_get(name)` works for reading values.
+
+## GDT-111 — SDFGI costs about 2 ms in an empty test scene but about 6 ms in a dense generated city; three cascades, 0.4 m cells and half-resolution GI win most of it back
+
+`측정 2026-09-27 · Godot 4.7.2-stable · Apple M1 Max, Metal, Forward+, 1920×1080`
+
+**증상:** A stylized town (about 1,100 collision shapes, 166 merged meshes, 270 dynamic lights) held 60 fps on HIGH
+until SDFGI was enabled with default settings; frame time rose by about 6 ms, while the same settings in an empty
+scene cost about 2 ms. Measuring SDFGI in a test scene underestimates it by roughly 3×.
+
+**해결:** `sdfgi_cascades = 3`, `sdfgi_min_cell_size = 0.4`, and `RenderingServer.gi_set_use_half_resolution(true)`
+brought the HIGH preset back to 66–77 fps in the busiest shots. Budget GI in the real scene, not in an empty one.
+
+## GDT-112 — `CharacterBody3D.move_and_slide()` can be called in a plain loop outside the physics step: fast, headless collision tests for curbs and door access
+
+`측정 2026-09-27 · Godot 4.7.2-stable · --headless · Jolt Physics`
+
+**증상:** Verifying that a capsule (radius 0.35, height 1.8) can climb every curb, walk every street corridor and
+reach every door point by stepping the real game loop takes minutes per run.
+
+**해결:** After the level geometry exists, set `velocity` and call `move_and_slide()` directly in a loop, then
+read `global_position` / `is_on_floor()`. It resolves without waiting for physics frames; a 47-check curb, corridor
+and door-access test ran this way headless (reference: `~/work/cobramission/client/world/city/tests/`).
 
 ---
 
@@ -7813,7 +7848,11 @@ Also measured in the same project:
 (`typespace.types[table.product_type_ref].Product.elements[i].name.some`) and accept both shapes. Handle
 `TransactionUpdate` and `TransactionUpdateLight` alike. Reference-count rows per primary key
 (+1 per insert, -1 per delete, summed over all `updates` entries of the table before emitting
-anything); a row exists while its count is above 0. Reference implementation:
+anything); a row exists while its count is above 0. Apply every table of a transaction before
+firing any row callback: a handler for one table often reads another (a new character's `player`
+and `pose` rows are inserted by one reducer, and the table order inside the update is not fixed;
+firing per table spawned the player at the origin because its pose was not in the cache yet).
+Reference implementation:
 `~/work/cobramission/client/core/net/spacetime_client.gd`.
 
 ## OPS-135 — Cloudflare D1 rejects a compound SELECT with more than five terms (`too many terms in compound SELECT`); local D1 fails the same way, node:sqlite does not
@@ -8256,4 +8295,29 @@ Quirks and standards mode gave the same numbers. Flex stretch still makes the se
 no-repeat` and `padding-right: 30px`; `select[multiple]{background-image:none}`. Any later rule that uses the
 `background` shorthand on a select (a light-theme override, a component rule) resets the image — use
 `background-color` there, or repeat the image after it. Measure select heights in WebKit, not only Chromium.
+
+## OPS-152 — `python3 -m http.server` on macOS resets connections when Chrome loads a page's ES modules in parallel: the listen backlog is 5
+
+`측정 2026-09-27 · Python 3.9.6 http.server (ThreadingHTTPServer) on macOS 27 · Chrome via Playwright 1.63, HTTP/1.1 to 127.0.0.1 and localhost`
+
+**증상:** A static page whose `app.js` is a module importing ~17 sibling modules failed to boot about half the time
+under `python3 -m http.server 8091 --directory web`. Nothing in the page's own code threw; the network log showed
+`net::ERR_CONNECTION_RESET` for a different set of `ui/*.js` files on each load (and sometimes for plain
+`<script src>` files), so the module graph never finished and the entry module never ran. It is not the disk,
+not IPv6 vs IPv4 and not logging: the same four loads against `127.0.0.1` failed 4/4 with the stock server and
+passed 4/4 when only the backlog was raised.
+
+`socketserver.TCPServer.request_queue_size` is 5. Chrome opens up to 6 parallel HTTP/1.1 connections per host as
+soon as it discovers the imports, and macOS answers connections beyond a full accept queue with RST (Linux drops
+the SYN and the client retries, which hides the problem there).
+
+**해결:** For local testing, raise the backlog (same directory listing, same MIME types):
+
+```sh
+python3 -c 'import http.server as h, functools as f; h.ThreadingHTTPServer.request_queue_size = 128; h.test(HandlerClass=f.partial(h.SimpleHTTPRequestHandler, directory="web"), ServerClass=h.ThreadingHTTPServer, port=8091, bind="127.0.0.1")'
+```
+
+or serve from the test itself with Node's `http.createServer` (default backlog 511). A random boot failure on a
+multi-module page under the stock Python server says nothing about the code; production servers (nginx) are not
+affected.
 
