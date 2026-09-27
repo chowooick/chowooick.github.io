@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T22:38:29Z · 소스 커밋 `8dac2fc` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T22:48:49Z · 소스 커밋 `dea60e3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10391,4 +10391,32 @@ correct image of the page.
 **해결:** do not judge image rendering or canvas capture of a Flutter web build from headless Chromium without WebGL.
 Run the check with `browse --headed` (every command needs the flag, or run `browse stop` first), or fetch the uploaded
 file and look at it directly.
+
+## OPS-191 — Dokploy GitLab-provider app by API: `saveGitlabProvider` fields, `saveEnvironment` needs `createEnvFile`, and the push hook is not created for you
+
+`측정 2026-09-27 · Dokploy on dokploy.mnori.com (misa) · GitLab.com provider already connected · Dockerfile build`
+
+**증상:** three things stop a GitLab-sourced application set up through the API (as opposed to the UI):
+
+- `application.saveEnvironment` with `env`, `buildArgs`, `buildSecrets` returns 400
+  `fieldErrors: {"createEnvFile": ["Invalid input: expected nonoptional, received undefined"]}`.
+- `application.saveGitlabProvider` needs the provider's `gitlabId` (from an existing app's `application.one`, field `gitlabId`) and the GitLab numeric `gitlabProjectId`; with those it returned `true` first try.
+- After all of it, `autoDeploy: true` and a successful first deploy, the GitLab project has **no hooks** (`GET projects/:id/hooks` → `[]`), so a push deploys nothing. The existing app that auto-deploys has one hook to `https://<dokploy>/api/deploy/<token>`.
+
+**해결:** this order worked first time:
+
+```sh
+POST project.create {"name":..}                                    # returns environment.environmentId
+POST application.create {"name":"web","appName":"x","environmentId":..}
+POST application.saveGitlabProvider {"applicationId":..,"gitlabId":..,"gitlabProjectId":<n>,"gitlabRepository":"repo",
+     "gitlabOwner":"user","gitlabBranch":"main","gitlabBuildPath":"/","gitlabPathNamespace":"user/repo","watchPaths":[],"enableSubmodules":false}
+POST application.saveBuildType {..,"buildType":"dockerfile","dockerfile":"deploy/Dockerfile","dockerContextPath":".","dockerBuildStage":"","herokuVersion":null,"railpackVersion":null}
+POST application.saveEnvironment {"applicationId":..,"env":"K=V\n..","buildArgs":"","buildSecrets":"","createEnvFile":false}
+POST application.update {"applicationId":..,"autoDeploy":true}
+POST domain.create {"host":..,"path":"/","port":80,"https":true,"certificateType":"letsencrypt","applicationId":..,"domainType":"application"}
+POST application.deploy {"applicationId":..}                        # empty body back; poll application.one
+glab api -X POST projects/<id>/hooks -f url=https://<dokploy>/api/deploy/<application.one.refreshToken> -f push_events=true
+```
+
+Measured: the first Dockerfile deploy (Godot web export, three stages) went from `running` to `done` in about 3.5 minutes, the letsencrypt certificate was served right away, and after adding the hook a push to `main` started a new deployment. Also check the GitLab path before creating: `chowooick/bearhunter2` already existed as a fork, and `POST projects` with that name returned an error mixed into the JSON rather than a clean failure.
 
