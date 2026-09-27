@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T09:26:28Z · 소스 커밋 `7afa592` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T13:42:51Z · 소스 커밋 `f7a59c6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3565,6 +3565,45 @@ with albedo (0.8, 0.2, 0.2), rendered side by side and read back from the viewpo
 
 **해결:** `f * ATTENUATION * LIGHT_COLOR / PI` reproduces the engine's Lambert exactly. Do not multiply by `ALBEDO`
 inside `light()` — it gets squared.
+
+## GDT-125 — `var x := dict.get(k, default)` does not compile: inferring from a Variant is an error by default, and it breaks every script that preloads the file
+
+`측정 2026-09-27 · Godot 4.7.2-stable, default project settings (no warnings overrides)`
+
+**증상:** A single line `var tint := {"a": Color(...), "b": Color(...)}.get(kind, Color(...))` in a static library
+script produced
+
+```
+SCRIPT ERROR: Parse Error: The variable type is being inferred from a Variant value, so it will be typed as Variant. (Warning treated as error.)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+SCRIPT ERROR: Invalid call. Nonexistent function 'character' in base 'GDScript'.
+```
+
+The first line names the library. The second and third come from the test script that preloads
+it: its call site fails as if the function did not exist. `Dictionary.get()` returns Variant,
+and so does `Image.duplicate()` (typed as Resource): `var out := img.duplicate()` is followed by
+`Cannot infer the type of "w" variable` wherever `out.get_width()` is used.
+
+**해결:** Annotate the type: `var tint: Color = {...}.get(kind, Color(...))`,
+`var out: Image = img.duplicate()`. After editing a library, run one headless script that
+preloads it, because the editor is not there to show the warning.
+
+## GDT-126 — Headless: right after `AnimationPlayer.seek(t, true)`, `Skeleton3D.get_bone_global_pose()` still returned the rest pose; read the pose from the tracks instead
+
+`측정 2026-09-27 · Godot 4.7.2-stable --headless, SceneTree script (_initialize), KayKit Rig_Medium character`
+
+**증상:** To check which frames raise the hands above the head, the probe called `ap.play(clip)`,
+`ap.seek(len * f, true)`, then `skel.get_bone_global_pose(skel.find_bone("hand.l"))`. Over 13
+clips and 5 times each, every value was identical (`hand.l - head` = +0.06, the rest pose),
+including Idle_A and PickUp.
+
+**해결:** Evaluate the chain from the Animation directly. Walk parent first. For each bone, use
+`anim.rotation_track_interpolate(anim.find_track(NodePath("Rig_Medium/Skeleton3D:" + bone), Animation.TYPE_ROTATION_3D), t)`
+and `position_track_interpolate`, and fall back to `skel.get_bone_rest(b)` when a track is
+missing. The same probe then gave distinct values: Idle_A hands −0.59, Cheering +0.05 to +0.20,
+PickUp right hand −0.73. The same `get_bone_global_rest()` / `get_bone_rest()` data can compute
+new poses, for example arms aimed along a model-space direction with
+`Quaternion(current_dir, wanted_dir)`, and bake them into an Animation.
 
 ---
 
