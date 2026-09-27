@@ -1485,3 +1485,28 @@ Sonnet agent were added. Twenty minutes later the tracker showed **31%** of the 
 **해결:** before fanning out, read the cache. Watch the 5-hour percentage while subagents run. If the burn rate would
 exhaust the window long before `resetsAt`, `TaskStop` the least critical subagent and resume it with `SendMessage`
 when capacity returns. Exhausting the window also blocks the user's other sessions until the reset.
+
+## AGT-068 — Format-character escapes such as `\u200b` and `\u202e` written with the Write tool can land as the real invisible characters, and the AGT-057 `[[:cntrl:]]` check does not see them
+
+`측정 2026-09-27 · Claude Code (Opus 5.5) · Write tool`
+
+**증상:** a JS name sanitizer was written as
+`/[\u0000-\u001f\u007f-\u009f<>\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g`, and a test used
+`'\u202e'` and `'\u200b'`. In both saved files the `\u0000`–`\u009f` escapes stayed six-character escapes, but
+every escape from `\u200b` up became the real character (U+200B ZERO WIDTH SPACE, U+202E RIGHT-TO-LEFT OVERRIDE,
+U+FEFF and so on). The regex still meant the same thing and every test passed, so nothing failed. `od -c` shows the
+UTF-8 bytes (`342 200 213` for U+200B). `LC_ALL=C grep '[[:cntrl:]]'` reports nothing, because these are Unicode
+format characters (category Cf), not ASCII control bytes. A bidi override inside source also makes an editor show
+code in a different order than it runs.
+
+In AGT-057 the control-range escapes were the ones that became real bytes; here they survived. Which escapes
+survive is not predictable, so check every file that was written with `\u` escapes.
+
+**해결:** after writing, list control, format and separator characters by Unicode category:
+
+```sh
+python3 -c "import sys,unicodedata as u;s=open(sys.argv[1],encoding='utf-8').read();print([(i,hex(ord(c)),u.name(c,'?')) for i,c in enumerate(s) if u.category(c) in ('Cc','Cf','Zl','Zp') and c not in '\n\t'])" FILE
+```
+
+Replace each hit from Python with escape text built from parts, for example
+`s.replace(chr(0x202e), chr(92) + 'u202e')`, so the fix itself cannot be decoded a second time.

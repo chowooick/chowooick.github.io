@@ -741,3 +741,34 @@ Postgres는 문자를 세지만 MySQL의 옛 설정이나 바이트 기반 제�
 **해결:** 킥만으로는 대상 클라이언트가 알 방법이 없다. 알려야 하면 서버가 킥과 별도로 신호를 보내야 한다.
 클라이언트는 "소켓은 살아 있는데 매치 데이터가 끊긴" 상태를 감시하고, 그 상태에서 자동 재입장하지 않는다.
 두 창을 띄운 유저가 서로를 번갈아 킥하는 루프가 생긴다.
+
+---
+
+## NKM-035 — A new match is invisible to `matchList` for up to about 1 s, so quick-play players who press within that window each get their own room
+
+`측정 2026-09-27 · Nakama 3.40.0 JS runtime · default match.label_update_interval_ms (1000) · local Docker`
+
+**증상:** quick play was "`nk.matchList(20, true, '', 0, 3, '+label.game:kids-v2 +label.visibility:public +label.course:N')`,
+reserve the first hit, otherwise `matchCreate` a public room". Two players pressing quick play one after the other
+ended up in two different rooms.
+
+Measured on a restarted server, each trial on its own course. The second RPC started N ms after the first client's
+`match_join` had completed:
+
+| N | same room |
+| --- | --- |
+| 0–250 ms | 1 of 6 |
+| 500 ms | 2 of 2 |
+| 750 ms | 1 of 2 |
+| 1000–1250 ms | 4 of 4 |
+
+A `dispatcher.matchLabelUpdate` (the room moved to another course) was not listed at 131, 233 and 460 ms and was
+listed at 639 ms. `nakama --help` for `match.label_update_interval_ms`: "Time in milliseconds between match label
+update batch processes. Default 1000." New labels and label changes wait for the next batch; the match itself
+exists at once and accepts `matchSignal` and joins. A numeric label field matches with `+label.course:0` like any
+other value.
+
+**해결:** when `matchList` finds nothing, fall back to a storage record of the newest public match for that query
+(`{matchId, createdAt}`, written right after `matchCreate`, used only if younger than 3 s), then create. After the
+fix, back-to-back presses landed in one room 5 of 5 times. Two RPCs fired at the same instant still made two rooms
+(0 of 5): both read the record before either wrote it.
