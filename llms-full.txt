@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T15:12:00Z · 소스 커밋 `1995af9` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T15:13:20Z · 소스 커밋 `3cfb762` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4280,6 +4280,60 @@ JavaScript's `JSON.stringify` writes the shortest round-tripping form, so the tw
 In the 4.7.2 engine loader (`godot.js`), `Engine.getMissingFeatures({ threads })` pushes `Secure Context` whenever `window.isSecureContext` is false, **before and independent of** the `threads` flag — `threads: false` only drops the Cross-Origin-Isolation and SharedArrayBuffer requirements. The default web shell (and any custom shell that copies its boot code) calls it and stops if anything is missing. Measured: the same image loaded as `http://button.test:8081` (mapped to 127.0.0.1) never booted, and booted in 5.2 s with 0 console errors once Chrome was told to treat that origin as secure.
 
 **해결:** serve over HTTPS, or use `localhost` (browsers treat it as potentially trustworthy). For a browser test of a non-localhost origin over HTTP, launch Chrome with `--unsafely-treat-insecure-origin-as-secure=http://host:port` (plus `--host-resolver-rules=MAP host 127.0.0.1` to route a made-up name). For a phone on the LAN, `adb reverse tcp:PORT tcp:PORT` and open `http://localhost:PORT` on the phone.
+
+## GDT-161 — Compatibility renderer: unshadowed `OmniLight3D`/`SpotLight3D` add no draw calls; six shadowed spots added 5
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility`
+
+**증상:** a 3D stage for a web export needed a key light, rim lights, footlights and spots, and the budget assumed every
+light costs extra passes in the Compatibility renderer.
+
+In a test scene, 0, 1, 3 and 6 unshadowed spot/omni lights all rendered in **4 draw calls**. Six spot lights with
+`shadow_enabled = true` added **5**. The finished stage (all lights unshadowed, glow and post on) measured 54 WebGL draw
+calls per frame in the web build at 1280×720 @2×, and 34–36 natively.
+
+**해결:** add fill, rim and accent lights freely when they cast no shadow. Fake contact shadows with blob or projected
+silhouette meshes and enable `shadow_enabled` only where it pays.
+
+## GDT-162 — Web export: `RenderingServer.render_loop_enabled = false` stops WebGL work completely (0 draw calls in 1.2 s) for a 3D iframe hidden behind an HTML UI
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (Compatibility, nothreads) · Chrome, macOS`
+
+**증상:** a Godot canvas sits in an iframe behind an HTML interface. On menu screens that cover the stage it still
+rendered every frame and competed with the page's animations.
+
+Setting `RenderingServer.render_loop_enabled = false` and `Engine.max_fps = 5` while the stage is covered, a test that
+wraps the WebGL2 draw functions counted **0 draw calls over 1.2 s**. JavaScriptBridge commands still arrive in that
+state, so the command that shows the stage again re-enables the loop.
+
+**해결:** drive `render_loop_enabled` from the page's view state (hidden → false, shown → true) instead of leaving the
+covered canvas rendering.
+
+## GDT-163 — Timelines advanced by `_process(delta)` ran 13% long on a loaded web build (3.45 s → 3.9 s); wall-clock deltas × `Engine.time_scale` with `run/delta_smoothing` off stayed at 1.00×
+
+`측정 2026-09-27 · Godot 4.7.2-stable Web export (nothreads) · Chrome, macOS, busy host`
+
+**증상:** a cinematic authored at 3.45 s took 3.9 s in the web build while the host was loaded, overrunning the time
+budget the HTML side waited on before continuing. The timeline summed the `delta` passed to `_process` with the default
+`application/run/delta_smoothing = true`: under load, the summed delta trailed the wall clock.
+
+Advancing the same timelines by wall-clock deltas (`Time.get_ticks_usec()`) multiplied by `Engine.time_scale`, capped at
+0.5 s per frame, with `run/delta_smoothing = false`, replayed 48 battle events with a worst case of **1.00×** the
+authored length.
+
+**해결:** for fixed-length presentation (cut-ins, cameras, anything another system waits on), step the timeline with
+wall-clock deltas scaled by `Engine.time_scale` so slow motion still works, and turn delta smoothing off. The animation
+drops frames instead of stretching.
+
+## GDT-164 — `tween_property(material, "shader_parameter/x", …)` fails with "property does not exist" until `set_shader_parameter("x", …)` has run once
+
+`측정 2026-09-27 · Godot 4.7.2-stable`
+
+**증상:** tweening a `ShaderMaterial` uniform that still held its shader default logged that the tweened property does not
+exist, and nothing animated. After one `set_shader_parameter()` call with the same name, the identical tween worked.
+
+**해결:** when creating the material, seed every uniform you will tween with `set_shader_parameter(name, start_value)`,
+then tween `"shader_parameter/<name>"`.
 
 ---
 
@@ -9766,4 +9820,77 @@ read the database. The expected saving mostly did not happen.
 of server time instead of 987 ms. The docs list custom domains as having working cache operations (zone routes
 worked here too); a Worker with no route of its own is not in that list, so the placed Worker keeps no cache. Do not
 cache results that carry one member's data.
+
+## OPS-174 — ffmpeg `loudnorm` second pass with `linear=true` falls back to dynamic mode without an error when the measured LRA exceeds the target `LRA` (default 7) or is exactly 0; only the JSON `normalization_type` shows it
+
+`측정 2026-09-27 · ffmpeg 9.0.1 loudnorm · I=-16:TP=-1.5`
+
+**증상:** music normalised by two-pass `loudnorm` landed near −16 LUFS, but a 3.7 s defeat stinger with a long decaying
+tail (LRA 10.2) came out at **−17.54 LUFS** measured on the decoded MP3.
+
+Linear mode is used only when the measured LRA is at or below the target `LRA` and the linear gain keeps the true peak
+under `TP`. Otherwise the filter silently switches to dynamic mode:
+
+| Source (second pass, `linear=true`) | measured LRA | target LRA | `normalization_type` | output I |
+| --- | --- | --- | --- | --- |
+| sine with a 4.5 s exponential tail | 21.4 | 7 | `dynamic` | −16.36 |
+| same | 21.4 | 25 | `linear` | −15.64 |
+| constant sine | **0.00** | 7 | `dynamic` | −15.95 |
+| the stinger after shortening its tail | 0.9 | 7 | — | −16.58 (shipped) |
+
+A measured LRA of exactly 0 also blocks linear mode.
+
+**해결:** check `normalization_type` in the second pass's `print_format=json` output. When it says `dynamic`, either raise
+the target `LRA` above the measured value or reduce the source's range (shorter tails, trimmed silence). Verify the result
+by measuring the decoded output (OPS-132).
+
+## OPS-175 — Google Fonts CSS2 API: only 1 of 88 `@font-face` blocks for a Korean face carried a `/* subset */` comment; picking subsets by comment silently drops the rest
+
+`측정 2026-09-27 · fonts.googleapis.com/css2 · Black Han Sans`
+
+**증상:** a self-hosting script downloaded the subsets named in the `/* latin */`-style comments of the CSS2 response.
+For Black Han Sans the response held 88 `@font-face` blocks, and only 1 had a comment (`latin`). The other 87 Korean
+slices have no comment, so the script kept Latin only and dropped all Hangul without an error.
+
+**해결:** select blocks by `unicode-range`, or keep every block. The slice number is in the file URL (`….N.woff2`), not in
+a comment.
+
+## OPS-176 — Vite 8.3.1 `import.meta.glob` with no matching file returns `{}` and the build passes; a file added later is bundled as its own chunk with no code change
+
+`측정 2026-09-27 · Vite 8.3.1`
+
+**증상:** a client had to import a generated module (a local battle engine) that another parallel ticket had not produced
+yet. A static `import` breaks the build until the file exists.
+
+`import.meta.glob('../generated/engine.js')` returned `{}` while the file was missing, and `vite build` passed. When the
+file appeared, the next build emitted it as a lazy chunk (36.1 KB gzip) with no source edit.
+
+**해결:** when a parallel ticket codes against another ticket's future output, load it through `import.meta.glob` and
+handle the empty map (fall back to a stub).
+
+## OPS-177 — Deterministic GSAP frames in Playwright: `gsap.globalTimeline.pause()` + `.time(t)`, but awaiting a tween's promise while the clock is paused hangs until the test timeout
+
+`측정 2026-09-27 · GSAP 3.15 · Playwright 1.63 · Chrome`
+
+**증상:** screenshots of UI animations taken with `waitForTimeout` caught different frames on each run. Freezing the clock
+fixed that, but a later `page.evaluate` that awaited an animation's completion promise hung for the full 90 s test
+timeout.
+
+`gsap.globalTimeline.pause()` stops every tween; `gsap.globalTimeline.time(t)` then renders the exact frame at `t`
+seconds. Completion promises and `onComplete` callbacks only fire when the timeline reaches the end, so they never
+resolve while it is paused unless the test moves `time()` past the end.
+
+**해결:** pause, seek to each frame to photograph, then either seek past the end or `resume()` before awaiting any
+completion.
+
+## OPS-178 — Under a load average of 100–110, the Vite dev server took 27.7 s to start and the first page load exceeded Playwright's 30 s `goto` timeout; `vite build` + `vite preview` ran stably
+
+`측정 2026-09-27 · Vite 8.3.1 · Playwright 1.63 · macOS, many parallel sessions`
+
+**증상:** UI tests failed at the first `page.goto` with a timeout. The dev server's on-demand transform of the whole
+module graph on first load took longer than the default 30 s while other sessions kept the machine at load 100–110.
+
+**해결:** on a shared machine, run Playwright against a production build: `webServer.command: 'vite build && vite preview
+--port <own port> --strictPort'` with `timeout: 120_000` (own port per OPS-006). The preview server serves static files,
+so the first load does not pay transform time.
 
