@@ -2441,7 +2441,7 @@ Alternatively keep sRGB maths and calibrate constants on sRGB values (a mid gree
 Verify colour logic with a pixel probe of a rendered sheet (PIL `getpixel`), not by eye: the
 washed-out result looks like "bright lighting" until the numbers are compared.
 
-## GDT-110  — `global_shader_parameter_get()` and `global_shader_parameter_get_list()` are editor-only: in a running game `get` returns null and the list is empty, each call logging "should never be used outside the editor"
+## GDT-110 — `global_shader_parameter_get()` and `global_shader_parameter_get_list()` are editor-only: in a running game `get` returns null and the list is empty, each call logging "should never be used outside the editor"
 
 `측정 2026-09-27 · Godot 4.7.2-stable · macOS, Metal (Forward+) windowed and --headless`
 
