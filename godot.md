@@ -2448,8 +2448,8 @@ washed-out result looks like "bright lighting" until the numbers are compared.
 **증상:** A city generator registered its global shader parameters (`wetness`, `city_night`, …) at runtime with
 `RenderingServer.global_shader_parameter_add()` and guarded against double registration by checking
 `global_shader_parameter_get_list()`. At runtime the list is always empty, so the guard never fired and a second
-build logged duplicate-add errors. A footstep script that asked the same list "does `wetness` exist?" never
-found it and never played the wet-footstep sounds, although the parameter existed and rendered.
+build logged duplicate-add errors. Any script that asks the same list "does `wetness` exist?" gets no, although
+the parameter exists and renders.
 
 **해결:** Do not use the list at runtime. Keep your own flag (or `Engine` meta) for "registered", or catch the
 parameters you declared in `project.godot` separately. `global_shader_parameter_get(name)` works for reading values.
@@ -2472,7 +2472,6 @@ brought the HIGH preset back to 66–77 fps in the busiest shots. Budget GI in t
 **증상:** Verifying that a capsule (radius 0.35, height 1.8) can climb every curb, walk every street corridor and
 reach every door point by stepping the real game loop takes minutes per run.
 
-**해결:** After the level geometry exists, set `velocity` and call `move_and_slide()` directly in a loop (for
-example 120 iterations per probe) and read `global_position` / `is_on_floor()` afterwards. It resolves against the
-current collision state without waiting for physics frames; a 47-check curb and door test runs in seconds headless.
-Collision shapes added this frame are included once the body is in the tree.
+**해결:** After the level geometry exists, set `velocity` and call `move_and_slide()` directly in a loop, then
+read `global_position` / `is_on_floor()`. It resolves without waiting for physics frames; a 47-check curb, corridor
+and door-access test ran this way headless (reference: `~/work/cobramission/client/world/city/tests/`).
