@@ -3061,3 +3061,37 @@ error by default. One parse error also fails every script that preloads that one
 `var th: Th` and `func setup(theme: Th)`. Calls then return typed values, so `:=` works again.
 Type the results of `Dictionary.get()` and ternaries explicitly (`var big: bool = ...`). Before
 running anything, check with `godot --headless --path . --check-only --script <file>`.
+
+## GDT-145 — Toon shaders look washed out for two measurable reasons: Filmic lifts mid-tones, and the default `SPECULAR 0.5` adds a sky sheen at grazing angles
+
+`측정 2026-09-27 · Godot 4.7.2 · gl_compatibility · Apple M1 Max`
+
+**증상:** A custom toon `light()` world (full light colour once N·L passes the band, sky ambient) rendered pale and hazy; distant ground faded to blue-white. Tuning fog and ambient did not fix it.
+
+Measured on a 0.5-grey plane lit by one sun (energy 1.05) and sky ambient 0.45, reading the SubViewport pixel:
+
+| setup | pixel (sRGB) |
+|---|---|
+| Linear tonemap, sun + ambient | 0.545 0.604 0.667 |
+| **Filmic** tonemap, same | **0.682 0.741 0.800** |
+| Linear, sun only, ambient energy 0 | 0.533 0.573 0.635 (blue tint = sky reflection) |
+
+With ambient energy 0 the surface still turns blue: default `SPECULAR` is 0.5 and `ROUGHNESS` 1.0, so the sky is reflected, and Fresnel makes it strong at grazing angles (the far ground). A toon band gives every lit face the full light colour, so any extra term shows.
+
+`source_color` uniform defaults are not the cause: `uniform vec3 c : source_color = vec3(0.5)` and a set `Color(0.5, 0.5, 0.5)` both render 0.502 unshaded under Linear (defaults are linearized like set values).
+
+**해결:** Write `SPECULAR = 0.0;` in painterly/toon fragment shaders (keep a custom highlight in `light()` for metal). Judge colours under Linear or compensate Filmic with lower exposure. Keep glow `hdr_threshold` above the brightest lit albedo (1.6 here) or bloom adds haze.
+
+## GDT-146 — GL Compatibility (4.7.2) supports per-instance shader tricks: MultiMesh `MODEL_MATRIX`, instance uniforms, alpha-scissor shadows, `world_vertex_coords`
+
+`측정 2026-09-27 · Godot 4.7.2 · gl_compatibility · Apple M1 Max`
+
+Checked by rendering, not by docs:
+
+- In `vertex()`, `MODEL_MATRIX[3].xyz` of a MultiMesh instance is that **instance's** world origin (six boxes coloured by it came out six colours). Per-instance tint and wind phase can be derived from it without `INSTANCE_CUSTOM`. `world_vertex_coords` also works with MultiMesh.
+- `instance uniform vec3 glow_color` works: two MeshInstance3Ds sharing one ShaderMaterial showed different colours after `set_instance_shader_parameter()`. The value set on the node is saved in a PackedScene.
+- An alpha-scissor card (`ALPHA` + `ALPHA_SCISSOR_THRESHOLD`, `cull_disabled`) casts a cut-out directional shadow, not a solid quad.
+- With `cull_disabled`, back faces get a flipped `NORMAL` before user fragment code; `if (!FRONT_FACING) NORMAL = -NORMAL;` restores baked "outward from the canopy" normals on leaf cards.
+- Godot front faces are clockwise: a quad given counter-clockwise as seen from the front must be emitted (a, c, b), (a, d, c).
+
+**해결:** For foliage drawn with MultiMeshInstance3D, derive variation from `MODEL_MATRIX`; for per-object glow colours use instance uniforms instead of duplicating materials.
