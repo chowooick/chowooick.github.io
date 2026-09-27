@@ -2969,3 +2969,23 @@ exposes it:
 if AudioServer.has_method("unregister_stream_as_sample"):
     AudioServer.call("unregister_stream_as_sample", stream)
 ```
+
+---
+
+## GDT-140 — Headless Monte-Carlo tests in GDScript cost 30–180 µs per simulated 60 Hz step: 2,000 simulated games took 100 s
+
+`측정 2026-09-27 · Godot 4.7.2-stable (editor binary, --headless --script), Apple Silicon`
+
+**증상:** A minigame test ran a fixed-step simulation (about 40 lines of float math and 3–5 `RandomNumberGenerator` calls per step, in an inner `RefCounted` class) for a few thousand seeded games. The first version took 7 s; after raising the seed counts and time caps it took 292 s.
+
+Measured costs per simulated step:
+- The bare `step()` call: 30 µs.
+- The same step driven through a `Callable` policy plus per-step bookkeeping: 88 µs.
+- A variant that picked new random targets more often: 178 µs.
+
+A 6-second game at 60 Hz is 360 steps, or 15–60 ms. Games that stall until a time cap dominate the total: one 120 s cap costs 7,200 steps.
+
+**해결:**
+- Budget statistical tests in steps, not in games: steps = games × average length × 60.
+- Give every simulated game a short time cap (15–40 s), and exclude timed-out games from the outcome checks.
+- Spend large seed counts only on the borderline case you are asserting (for example 200 seeds at the threshold difficulty, 24 elsewhere).
