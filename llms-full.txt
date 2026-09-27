@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T09:19:35Z · 소스 커밋 `a698e9c` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T09:25:56Z · 소스 커밋 `24c7f20` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -3292,18 +3292,25 @@ Alternatively keep sRGB maths and calibrate constants on sRGB values (a mid gree
 Verify colour logic with a pixel probe of a rendered sheet (PIL `getpixel`), not by eye: the
 washed-out result looks like "bright lighting" until the numbers are compared.
 
-## GDT-110 — `RenderingServer.global_shader_parameter_get_list()` returns an empty list in a running game: it only reports parameters in the editor
+## GDT-110  — `global_shader_parameter_get()` and `global_shader_parameter_get_list()` are editor-only: in a running game `get` returns null and the list is empty, each call logging "should never be used outside the editor"
 
-`측정 2026-09-27 · Godot 4.7.2-stable · macOS, Forward+`
+`측정 2026-09-27 · Godot 4.7.2-stable · macOS, Metal (Forward+) windowed and --headless`
 
-**증상:** A city generator registered its global shader parameters (`wetness`, `city_night`, …) at runtime with
-`RenderingServer.global_shader_parameter_add()` and guarded against double registration by checking
-`global_shader_parameter_get_list()`. At runtime the list is always empty, so the guard never fired and a second
-build logged duplicate-add errors. Any script that asks the same list "does `wetness` exist?" gets no, although
-the parameter exists and renders.
+**증상:** Global shader parameters (`wetness`, `city_night`, …) were registered at runtime with
+`RenderingServer.global_shader_parameter_add()` and set with `global_shader_parameter_set()`. Reading them back:
 
-**해결:** Do not use the list at runtime. Keep your own flag (or `Engine` meta) for "registered", or catch the
-parameters you declared in `project.godot` separately. `global_shader_parameter_get(name)` works for reading values.
+| Call | Windowed (Metal) | `--headless` |
+|---|---|---|
+| `global_shader_parameter_get(&"probe")` right after add + set | `null`, plus `ERROR: This function should never be used outside the editor, it can severely damage performance.` | `null` |
+| `global_shader_parameter_get_list()` | `[]`, same ERROR | `[&"probe"]` |
+
+A guard "register only if not in the list" therefore never fires in a real window and a second registration logs
+duplicate-add errors; gameplay code doing `float(global_shader_parameter_get(...))` hits
+`Invalid call. Nonexistent 'float' constructor` on every call.
+
+**해결:** Treat both calls as editor-only. Keep a static "registered" flag in the script that registers the
+parameters, and publish the current values for gameplay yourself (for example `Engine.set_meta(&"city_wetness", v)`
+next to the `global_shader_parameter_set` call). Shaders keep reading the global uniform as usual.
 
 ## GDT-111 — SDFGI costs about 2 ms in an empty test scene but about 6 ms in a dense generated city; three cascades, 0.4 m cells and half-resolution GI win most of it back
 
