@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:31:21Z · 소스 커밋 `8069401` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:33:17Z · 소스 커밋 `0d677df` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4640,6 +4640,30 @@ whatever the agents did. In that window the agents rewrote the watched scripts s
   visible in any check whose output you act on.
 - For subagents, act on the harness's completion notification; a file-quiet watcher is only a hint.
 
+## AGT-067 — Pace parallel subagents from the VS Code usage tracker's cache, not the rate-limited API; a stopped `Agent` subagent resumes with `SendMessage`
+
+`측정 2026-09-27 · Claude Code (VS Code extension) · Agent tool background subagents · YahyaShareef.claude-code-usage-tracker cache`
+
+**증상:** five background `Agent` subagents (Opus) were launched for one remake. About 25 minutes later all five
+failed together with `You've hit your session limit · resets 2:10am`, as in AGT-065. Other projects' sessions share
+the same account limit, so the window was not only ours. After the reset, three were resumed, then a fourth and a
+Sonnet agent were added. Twenty minutes later the tracker showed **31%** of the 5-hour window used.
+
+**Facts:**
+- The tracker's last fetched value is readable without any API call:
+  `sqlite3 "file:$HOME/Library/Application Support/Code/User/globalStorage/state.vscdb?mode=ro" "select value from ItemTable where key='YahyaShareef.claude-code-usage-tracker'"`
+  → JSON `claudeUsage.cache.v2.data` with `fiveHour.utilization`, `fiveHour.resetsAt`, `sevenDay.utilization`, per-model
+  weekly limits and `fetchedAt`. The value only changes when the extension refreshes (every 10–20 min here, OPS-119).
+  A background `Monitor` loop can print it whenever it changes.
+- A subagent that died on the limit keeps its transcript. `SendMessage` to its agent id resumed it with the full
+  context: 4 of 4 continued. The art subagent then finished its whole ticket (62 assets, validated manifest). No
+  transcript flattening is needed for `Agent` subagents (compare AGT-065, which covers Workflow agents).
+- `TaskStop` on a running subagent pauses it the same way. `SendMessage` later resumes it.
+
+**해결:** before fanning out, read the cache. Watch the 5-hour percentage while subagents run. If the burn rate would
+exhaust the window long before `resetsAt`, `TaskStop` the least critical subagent and resume it with `SendMessage`
+when capacity returns. Exhausting the window also blocks the user's other sessions until the reset.
+
 ---
 
 <!-- source: ops.md -->
@@ -7956,4 +7980,38 @@ the browser's `new WebSocket(url, protocols)` (`get_selected_protocol()` read ba
 and `v3.bsatn.spacetimedb`).
 
 관련: OPS-134 (the JSON protocol's own quirks)
+
+## OPS-146 — `codex exec` image tool for a full game cast: "fully transparent background" gave RGBA 55/55, a full-body master passed with `-i` held 18/18 derived images on-model — including a landscape close-up, so the framing can change
+
+`측정 2026-09-27 · codex-cli 0.154.0 built-in image tool · 70 generations (62 final assets + 8 retries), 4 in parallel`
+
+**증상:** a card-battle game needed 8 characters × (full-body idle, attack pose, landscape eye-level cut-in), 29 spirit
+figures, a boss and 6 backgrounds, all original, as cutouts for 3D billboards and UI.
+
+Measured:
+- **Transparency on request.** Every prompt that ended with "isolated on a fully transparent background" came back as an
+  RGBA PNG with transparent corners: 55/55 full-body and bust images. Cut-ins (1536×1024 extreme close-ups): 9/9 RGBA,
+  opaque corners only where the hair was asked to bleed off the frame. Backgrounds asked to be "fully opaque": 6/6 RGB.
+  No hand masking was needed. (OPS-076/OPS-128 saw transparency only sometimes, when it was not asked for.)
+- **Reference consistency across poses and framing.** Passing the approved full-body master as a reference kept face,
+  hair, mask, costume and palette in 18/18 derived images: 9 attack poses (portrait) and 9 cut-ins (landscape, "extreme
+  close-up from forehead to chin"). Unlike OPS-139, the framing followed the prompt here: the prompt changed the canvas
+  shape as well as the crop, and it said "keep face, hair, mask, costume, colours and proportions" without mentioning
+  framing. The command put the reference last: `codex exec ... - -i master.png`, with `-` (stdin prompt) before `-i`. That
+  works because `-i` takes several files and nothing follows it.
+- **Outfit drift beyond OPS-128, one case each, fixed 4/4 by one explicit coverage sentence:** "torn band tee" → crop top
+  with bare midriff; "jacket over a hoodie" → cropped hoodie; "long-sleeved bodysuit" → open back; "cargo shorts over
+  leggings" → thigh straps.
+- **Shapes need geometry, not nouns.** "Mask shaped like a stylized spade (points up over the brow)" returned a plain
+  domino mask 2/2. Describing the geometry fixed it 1/1: "the pointed tip rises along the middle of the forehead to the
+  hairline, the two round lobes cover the eyes". "Three-legged crow" drew two legs. "Exactly THREE legs, one in the centre
+  and one on each side" fixed it 1/1.
+- **Effects get cropped.** "All effects stay inside the frame" still let 1 of 9 attack poses cut a muzzle flash at the
+  edge. Naming the effect and adding "fades out well before the left edge" fixed it.
+- **Time:** median 72 s per image without a reference, 98 s with one. No failures. One 9-minute stretch ran 297–469 s per
+  image, still without errors.
+
+**해결:** for game cutouts, ask for transparency explicitly and verify colour type 6 and the corners in code. Approve one
+full-body master per character, then derive every pose and cut-in from it with `-i`. Write coverage sentences for every
+garment likely to shrink. Describe signature shapes as geometry. Name the effects that must stay in frame.
 
