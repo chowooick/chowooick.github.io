@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-27T08:12:37Z · 소스 커밋 `e9e2a2a` · 이 파일은 자동 생성물이다.
+생성 2026-09-27T08:18:26Z · 소스 커밋 `8af17ad` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7394,4 +7394,156 @@ Stock SQLite allows 500 terms (`SQLITE_MAX_COMPOUND_SELECT`), so a test on `node
 results in order). Or nest so no level has more than five terms. Run new SQL once against local D1
 (`wrangler d1 execute --local`, or the binding from `getPlatformProxy()`, OPS-106) before trusting a
 node:sqlite test.
+
+## OPS-136 — itch.io free and pay-what-you-want downloads can be scripted without a browser, but the `/file/` call fails with `invalid key` if you pass the key from the download-page URL
+
+`측정 2026-09-27 · itch.io web flow (static.itch.io extern.min.js of that date), Python 3.9 stdlib urllib + cookiejar`
+
+**증상:** Asset packs from kaylousberg.itch.io (KayKit) and quaternius.itch.io exist only on itch.io in their
+newest versions (KayKit Adventurers 2.0 and Character Animations 1.1 are not on the KayKit GitHub account,
+which stops at 1.0). A plain `curl` of the page has no file links. The obvious last step,
+POST `/<game>/file/<upload_id>?key=<key from the /download/<key> URL>`, returns
+`{"errors":["invalid key"]}`.
+
+The browser flow, reproduced with one cookie jar kept across all steps:
+
+```
+GET  https://<creator>.itch.io/<game>/purchase        -> <input name="csrf_token" value="...">
+POST https://<creator>.itch.io/<game>/download_url    csrf_token=...  (X-Requested-With: XMLHttpRequest)
+     -> {"url": "https://<creator>.itch.io/<game>/download/<key>"}
+GET  that url                                           -> one data-upload_id="..." per file you may download
+POST https://<creator>.itch.io/<game>/file/<upload_id>?source=game_download&after_download_lightbox=1&as_props=1
+     csrf_token=...                                     -> {"url": "https://itchio-mirror.<hash>.r2.cloudflarestorage.com/..."}
+GET  that url                                           -> the zip (Content-Disposition has the file name)
+```
+
+The page JS (`GameDownload.download_upload` in `extern.min.js`) adds `key` only when the page's
+`init_GameDownload(...)` options contain one. For a $0 name-your-own-price game they do not, so the
+access comes from the session cookie and the key must be left out. The download page lists only the
+tiers you may take at $0 (the paid "Source"/"Pro" uploads do not appear). 13 KayKit and 5 Quaternius
+packs came down this way. One 153 MB transfer (Medieval Village MegaKit) stopped at 82.8 MB and
+left a zip with no central directory (`unzip -t` prints `No zipfiles found`).
+
+**해결:** Follow the flow above and send no `key` parameter. Run `unzip -t` on every zip and compare its size with the size the page lists. Read the upload name from
+`<strong title="..." class="name">` next to each `data-upload_id` to pick the free tier. This is the
+publisher's own distribution, so it is not an unofficial mirror; record the itch page URL, not the
+signed R2 link (it expires).
+
+## OPS-137 — A public Google Drive folder can be listed and downloaded with curl: `embeddedfolderview` gives the file IDs, `drive.usercontent.google.com` gives the bytes
+
+`측정 2026-09-27 · drive.google.com public "anyone with the link" folders (Quaternius packs), Python 3.9 stdlib`
+
+**증상:** Older Quaternius packs (Ultimate Monsters, Cute Animated Monsters, Ultimate Animated
+Character, Ultimate RPG) link only to a Google Drive folder. `curl` on the `.../drive/folders/<id>`
+link returns a JavaScript app with no file list.
+
+- `GET https://drive.google.com/embeddedfolderview?id=<folderId>` returns static HTML. Each entry is
+  `<div class="flip-entry" id="entry-<id>">` with an `<a href>` (it contains `/folders/` for a
+  subfolder) and `<div class="flip-entry-title">name</div>`. A 52-file folder was listed complete.
+- `GET https://drive.usercontent.google.com/download?id=<fileId>&export=download&confirm=t` returns
+  the file itself, with no virus-scan interstitial page.
+
+Recursing and skipping the `Blends`/`FBX`/`OBJ` subfolders pulled 57 files (32.7 MB) and
+43 files (15.7 MB) with 0 errors; one file in a later folder needed a retry after `The read operation timed out`.
+
+**해결:** Walk the folder with the two URLs above. Check that a response does not start with
+`<!doctype html` before writing it. Record the folder URL from the publisher's page as the source.
+
+## OPS-138 — Quaternius moved new packs to its own "Quaternius Asset License (QAL)", not CC0; free "Standard" tiers are subsets of what the page advertises
+
+`측정 2026-09-27 · quaternius.com pack pages and /license.html (QAL v1.0, "Last updated: 8/28/2026")`
+
+**증상:** Quaternius assets are widely described as CC0, and most still are. But
+`Bestiary - Dungeon Monsters Kit` shows `License QAL` on its pack page, linking to
+`https://quaternius.com/license.html`. QAL allows commercial games with no credit, and it forbids
+redistributing the assets "as a standalone asset, asset pack, stock file, template, or similar product,
+whether for free or for payment ... regardless of how much the Assets have been modified". It is not
+CC0. Committing the raw files to a public repository is the case to think about. On the same date,
+Ultimate Monsters, Cute Animated Monsters, Universal Animation Library 1/2, Universal Base Characters,
+the Stylized Nature, Medieval Village and Fantasy Props MegaKits and the Ultimate Platformer Pack still
+said `License CC0`, and their downloaded `License.txt` says `CC0 1.0 Universal`.
+
+The advertised counts include paid tiers. Universal Animation Library says "120+ animations", but the free
+`[Standard].zip` (15 MB, against Pro at 41 MB) has 43 clips, one of them `A_TPose`. UAL2 Standard also
+has 43. Stylized Nature MegaKit Standard ships 68 of the 116 models, and its `License_Standard.txt`
+says so.
+
+**해결:** Read the `License` row on each pack page, not the author's reputation. Treat QAL packs as
+"not CC0" wherever a project requires CC0 or CC-BY. Count clips and models in the downloaded Standard
+zip before planning around the advertised number.
+
+
+## OPS-139 — `codex exec -i <base.png>` keeps a generated character on-model across expression variants; the framing follows the reference, not the prompt
+
+`측정 2026-09-27 · codex-cli 0.154.0 built-in image tool · 5 reference runs, 1024x1536 portraits`
+
+**증상:** a dialogue system needs one character in several expressions. Two text-only runs of the same
+character prompt gave similar but visibly different faces (jaw, nose, hair parting), so identical description text
+alone does not hold a character across images.
+
+Attaching the approved base image with `-i` and telling Codex "The attached image is the approved model sheet of
+this character. Use it as the visual reference: keep the same face, hair, outfit, colours, art style, framing and
+plain background, and change only what the description below asks for" gave on-model variants in 5 of 5 runs:
+same face, hair, outfit, palette, head size and position; hands correct (5 fingers) in all of them. The framing of
+the variant follows the reference image even when the prompt asks for a different crop.
+
+**해결:** generate and approve one base image per character, then make every variant with
+`codex exec -i <base.png> --skip-git-repo-check -C <empty dir> --sandbox workspace-write -`. Keep the base image
+outside the empty output folder. `-i` accepts several files, so put it before the other flags, not right before the
+`-` that reads stdin.
+
+## OPS-140 — "Waist-up" in a 2:3 portrait canvas returns a mid-thigh 3/4 shot; a raised fist "just below the top edge" gets cropped
+
+`측정 2026-09-27 · codex-cli 0.154.0 built-in image tool · 1024x1536 generations: 13 dialogue portraits, 11 enemy figures`
+
+**증상:** "waist-up bust" and then "a close medium shot framed from the waist up. The bottom edge of the image
+crosses the character's waist at the belt line, so no hips or legs are visible" both returned figures cut at
+mid-thigh, with the belt at 72-80% of the image height. The model fills the canvas width with the shoulders, and at
+2:3 that leaves room down to the thighs. (OPS-128 measured the same effect for full-body framing.)
+
+For a figure with one arm raised overhead, "framed from just below the knees" came back head-to-feet (1 of 1).
+Adding "the bottom edge crosses her shins, so her feet are out of frame" fixed the crop, but "her raised fist sits
+just below the top edge" cut the fist off in 2 of 2. "Her whole raised arm, wristband and fist are inside the frame,
+with a clear strip of plain background above the fist" kept it in 2 of 2.
+
+**해결:** do not fight the canvas. Generate at 1024x1536 and crop every portrait to one common canvas afterwards
+(here 1024x1280 from the top). For raised limbs, ask for background above the limb instead of naming the edge.
+
+## OPS-141 — Vision person segmentation returns 1512x2016 for portrait inputs; background slivers between hair strands survive the foreground mask
+
+`측정 2026-09-27 · macOS 27 · Vision from Swift 6.4 · 15 generated anime character images 1024x1536 on flat light grey`
+
+**증상 1:** `VNGeneratePersonSegmentationRequest` (`.accurate`) returned **1512x2016** masks for 1024x1536 (2:3
+portrait) inputs. OPS-122 measured 2016x1512 on a 3:2 landscape input: the output is 4:3 in the input's own
+orientation. Resizing to the input size still aligns. Coverage against `VNGenerateForegroundInstanceMaskRequest`:
+0.2% vs 73.7%, 9.4% vs 33.1%, 55.4% vs 67.3% (coat missed) and 56.8% vs 74.2% on 4 of 15; the foreground mask stayed
+within 1 point of a flat-background colour key on 15 of 15 (consistent with OPS-127).
+
+**증상 2:** cutouts showed a pale grey fringe along hair on dark UI. It is background trapped between the hair
+mass and thin outer strands: the foreground mask keeps it, and a flood fill from the image border cannot reach it
+through the strands. Pixel check: 5-7 px runs of RGB within 12 of the background grey, bounded on both sides by
+hair colour. Removing background-coloured components (distance < 12) that come within 12 px of the transparent
+region deleted 23-31 slivers (1,200-1,500 px) per portrait and left grey hair and white shirts intact.
+
+**해결:** use the foreground instance mask, set everything the border flood fill (distance < 18) reaches to
+transparent, then remove the trapped slivers, choke 1 px and decontaminate edge colours (OPS-127). Where the figure
+touches the image border the mask fades over the last 4-5 px; copy the alpha from 6 px inside so cropped limbs end
+in a hard edge.
+
+## OPS-142 — `VNDetectHumanBodyPoseRequest` finds 16-18 joints on generated anime fighters when the arms are held apart on a flat background
+
+`측정 2026-09-27 · macOS 27 · Vision from Swift 6.4 · 6 generated enemy portraits 1024x1536, knees-up, facing the viewer`
+
+**증상:** a first-person duel needs per-part hit boxes (face, neck, chest, arms, hands, legs) on each enemy
+portrait. OPS-127 found body pose unreliable on anime key visuals (head joints on 1 of 4 images).
+
+Prompting for "facing the viewer head-on ... both arms and both hands fully visible and held clearly apart from the
+torso, with background showing between each arm and the body ... plain flat light-grey background" gave 16-18 of 19
+joints on 6 of 6 figures (confidence 0.17-0.88), with Vision's left/right being the subject's own side (the image's
+right for a figure facing the viewer). `VNDetectFaceLandmarksRequest` found the face on only 3 of 6.
+
+**해결:** derive boxes from joints (face from eye spacing and the nose, chest from shoulders to mid-torso, stomach to
+the hips, arms from shoulder-elbow-wrist plus 0.45 of the forearm past the wrist for the fist, legs widened to the
+silhouette below the knees, head top from the mask above the face only). Joints put the wrist at the wrist, so open
+hands, gloves, bandaged hands and raised knees still need a look at a debug overlay and a hand-set box.
 
