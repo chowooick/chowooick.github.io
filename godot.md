@@ -3572,6 +3572,8 @@ What worked, both architectures:
 - The editor prints `ERROR: Unable to load fontconfig, system font support is disabled.` about twenty times on a slim image. Harmless when the project brings its own fonts, but it makes a failed build's log open with a page of errors that are not the failure: `apt-get install libfontconfig1` took it to 0.
 - Timing: the import and export took seconds natively on arm64, and **22.0 s** for the x86 editor under emulation on an M1 Max. The resulting `index.wasm` is the template's `godot.wasm` byte for byte (39,514,754), and served with nginx `brotli_static` it went out as 6,902,599 bytes.
 
+- On the real host (Dokploy, building from a git clone), the first build of this Dockerfile went from `git push` to the new page being served in **269 s**, including the editor download and brotli 11 over the 39.5 MB engine.
+
 **해결:** vendor the one template file with its own SHA-512, download the editor per `TARGETARCH` against the release's SHA-512, import then export, and keep the three version pins (project, editor download, template) moving in one commit.
 
 ## GDT-173 — `(dict[k] as PackedVector3Array).append(x)` appends to a throwaway copy, and `set("prop", untyped_array)` on an `Array[Color]` export does nothing without an error
