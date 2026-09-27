@@ -1992,3 +1992,58 @@ flush가 이벤트를 루트 Viewport로 밀어 넣어 GUI와 `_unhandled_input`
 
 **해결:** 합성 키 입력은 `parse_input_event(e)` 다음에 `flush_buffered_events()`만 부른다. 핸들러를 직접 부르지 않는다.
 GDT-031의 "누름이 늦게 도착한다" 문제도 flush로 프레임을 기다리지 않고 해결된다.
+
+## GDT-090 — On HiDPI macOS, `window_width_override` and `DisplayServer.window_set_size()` are in device pixels: a 1280 × 800 setting opens a 640 × 400 point window
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · macOS 27, 4K display at 2× scaling (3840 × 2160 px, 1920 × 1080 pt)`
+
+**증상:** The project set `window/size/window_width_override=1280` and `window_height_override=800` with `allow_hidpi=true`. On a 4K display at 2× scaling, the game opened in a window one third of the screen width. The user reported that the screen was far too small. Measured values:
+- `DisplayServer.window_get_size()` returned `(1280, 800)`, and `window_get_size_with_decorations()` returned `(1280, 864)`. The 64 px title bar is 32 pt at 2×, so the numbers are device pixels.
+- `DisplayServer.screen_get_size(0)` returned `(3840, 2160)` with `screen_get_scale(0) = 2.0`.
+- The saved framebuffer image (`get_texture().get_image()`) was 1280 × 800.
+- `DisplayServer.window_set_size(Vector2i(2880, 1800))` likewise produced a 1440 × 900 point window.
+
+**해결:** Size the window from the screen at runtime, not from the project override:
+
+```gdscript
+var screen := DisplayServer.window_get_current_screen()
+var scale := maxf(1.0, DisplayServer.screen_get_scale(screen))
+var usable := DisplayServer.screen_get_usable_rect(screen)   # also device pixels
+DisplayServer.window_set_min_size(Vector2i(Vector2(960, 600) * scale))
+DisplayServer.window_set_size(Vector2i(Vector2(usable.size) * 0.84))   # restore size
+DisplayServer.window_set_position(usable.position + (usable.size - DisplayServer.window_get_size()) / 2)
+DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+```
+
+- Skip this code for `OS.has_feature("web")` and for the `headless` display server.
+- Once maximized, the window measured 3840 × 2036 px, which is the whole usable area.
+
+## GDT-091 — Under `canvas_items` stretch, `get_viewport().get_texture().get_size()` is not the framebuffer size: it is the window size multiplied by the stretch scale
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · stretch mode canvas_items, aspect expand, base 1440 × 900 · macOS`
+
+**증상:** A screenshot script printed `root.get_texture().get_size()` next to each saved PNG, and the numbers did not match the files:
+
+| Window | `get_texture().get_size()` | Saved image |
+| --- | --- | --- |
+| 1280 × 800 | 1138 × 712 | 1280 × 800 |
+| 1000 × 600 | 667 × 400 | 1000 × 600 |
+| 3840 × 2036 | 8690 × 4606 | 3840 × 2036 |
+
+In every row the texture size equals the window size multiplied by the stretch scale, which is `min(window / base)`.
+
+**해결:**
+- Read the real size from the image: `get_texture().get_image().get_size()`.
+- For device pixels per layout pixel, use `get_viewport().get_final_transform().get_scale().x`. It gave 0.889 at 1280 × 800 and 2.26 at 3840 × 2036.
+
+함께 걸림: GDT-006
+
+## GDT-092 — The headless display server's window is square: under `canvas_items` + `expand`, a 1440 × 900 layout becomes 1440 × 1440 in `--headless` tests
+
+`측정 2026-09-27 · Godot 4.7.2-stable · --headless --script test runner (SceneTree) · stretch canvas_items / expand, base 1440 × 900`
+
+**증상:** A UI test checked that the HUD chose its layout for a 16:10 window. The check passed in a windowed run and failed headless. In headless mode the root Control measured `1440 × 1440`. Because `expand` keeps the base width and grows the height to the window's aspect ratio, a square headless window yields a square layout. Any layout that depends on aspect ratio, such as letterbox docking or fit-to-window boards, takes a different branch in headless tests.
+
+**해결:**
+- At the start of the test, set the root window's size before instancing the scene: `root.size = Vector2i(1440, 900)`.
+- To test other aspect ratios, give the scene's root Control top-left anchors first with `set_anchors_preset(Control.PRESET_TOP_LEFT)`, then set its `size`. Setting `size` on a full-rect-anchored Control logs "Nodes with non-equal opposite anchors will have their size overridden".
