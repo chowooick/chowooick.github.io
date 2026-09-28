@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-28T00:27:52Z · 소스 커밋 `ea77124` · 이 파일은 자동 생성물이다.
+생성 2026-09-28T01:24:33Z · 소스 커밋 `d26b477` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10434,4 +10434,33 @@ glab api -X POST projects/<id>/hooks -f url=https://<dokploy>/api/deploy/<applic
 ```
 
 Measured: the first Dockerfile deploy (Godot web export, three stages) went from `running` to `done` in about 3.5 minutes, the letsencrypt certificate was served right away, and after adding the hook a push to `main` started a new deployment. Also check the GitLab path before creating: `chowooick/bearhunter2` already existed as a fork, and `POST projects` with that name returned an error mixed into the JSON rather than a clean failure.
+
+## OPS-192 — a spare Mac used as an ssh test host installs a major macOS update on its own and reboots mid-run; user-level jobs and servers die silently
+
+`측정 2026-09-27 · MacBook Air M1 · macOS 26.6.2 → 27.0 · ssh key auth, no sudo`
+
+**증상:** a long test (`pnpm godot test`, ~10 min) run over `ssh host 'zsh -lc "..."'` never returned; the local
+`ssh` ended with exit 255 and no output. On the host, no test process and no `spacetime start` server
+were left, and `uptime` said `up 7 mins`. `system_profiler SPInstallHistoryDataType` showed
+`macOS 27.0 · Install Date: 오후 7:12` — the machine had upgraded a **major** version by itself, between one
+command and the next, with a user logged in on the console. `/Library/Preferences/com.apple.SoftwareUpdate`
+had `AutomaticallyInstallMacOSUpdates = 1`, `AutomaticDownload = 1`, `CriticalUpdateInstall = 1` (the default
+on a Mac someone once clicked "keep up to date" on). `pmset` showing `sleep 1 (sleep prevented by powerd)`
+does not protect against this; it is not sleep.
+
+Things that survived: files under `~`, the Rust toolchain, the SpacetimeDB data dir (the database and
+its module were still there after the reboot). Things that did not: every process started with `nohup … &`
+from ssh, including the local database server.
+
+**해결:**
+
+- Turn automatic macOS installs off on a test host. It needs admin rights, so it is the owner's hand, not
+  the session's: System Settings → General → Software Update → Automatic Updates → "Install macOS updates"
+  off, or `sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false`.
+- Run long servers as a user LaunchAgent (`~/Library/LaunchAgents/*.plist`, `RunAtLoad` + `KeepAlive`,
+  `launchctl bootstrap gui/$(id -u) <plist>`) so they come back at the next console login — no sudo needed.
+  Measured: right after `bootstrap` the job sat at `runs = 0, state = not running`; `launchctl kickstart -p
+  gui/$(id -u)/<label>` started it.
+- Run long tests detached with a log and an exit marker (`nohup zsh -lc "cmd; echo EXIT=\$?" > log 2>&1 &`)
+  and poll for `EXIT=`; after a silent ssh 255 check `uptime` before debugging the test.
 
