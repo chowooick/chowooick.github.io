@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-28T01:24:33Z · 소스 커밋 `d26b477` · 이 파일은 자동 생성물이다.
+생성 2026-09-28T04:00:39Z · 소스 커밋 `66071a8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4627,6 +4627,19 @@ This is a caveat to GDT-146, which recommends instance uniforms for per-object g
 - Five `textureLod` taps at lod ≈ 3.4 (GDT-130) ran in the Web export with no console errors; the whole scene stayed at 110 fps natively.
 
 **해결:** post layer below, HUD layer above, glass material on panels only, shadow off, alpha divided by a small threshold. Related: GDT-128, GDT-130.
+
+## GDT-180 — Web export: `document.documentElement.requestFullscreen()` called through `JavaScriptBridge.eval` from a `Button.pressed` handler succeeds — Godot's delayed input dispatch still counts as the user's gesture
+
+`측정 2026-09-28 · Godot 4.7.2-stable · Web export (debug) · Chrome 153 (GPU, macOS), clicks sent by CDP Input.dispatchMouseEvent`
+
+**증상:** Browsers only allow full screen during a user gesture. Godot's web build does not run GDScript inside the DOM `pointerup` handler; it queues the event and dispatches it on the next frame. It was unclear whether a `Button.pressed` callback still counts as the gesture.
+
+- A GDScript `pressed` handler that runs `JavaScriptBridge.eval("document.documentElement.requestFullscreen()")` entered full screen on one click. A second click in the same handler ran `document.exitFullscreen()` and left full screen. `document.fullscreenElement` confirmed each state within 200 ms.
+- Requesting full screen on `documentElement` rather than through `DisplayServer.window_set_mode` also takes the page's own HTML (background, overlays) into full screen, not only the canvas.
+- The browser leaves full screen on Esc without telling GDScript. `get_tree().root.size_changed` fires either way, so it is a good place to refresh the button's icon.
+- Hide the button when `document.fullscreenEnabled || document.webkitFullscreenEnabled` is false. This is a feature check, not a measurement; iPhone Safari was not tested.
+
+**해결:** call `requestFullscreen`/`exitFullscreen` through `JavaScriptBridge.eval` straight from the button handler (with `webkit*` fallbacks), and refresh the button's state on `root.size_changed`.
 
 ---
 
