@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-28T20:42:24Z · 소스 커밋 `d93a762` · 이 파일은 자동 생성물이다.
+생성 2026-09-28T21:41:10Z · 소스 커밋 `3ac9c37` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10663,4 +10663,26 @@ and set PocketBase `trustedProxy.headers = ["X-Real-IP"]` (settings API, no rest
 change 11 of 11 curl runs through Cloudflare subscribed (204) and received `@oauth2` within 100 ms, and a real Google
 sign-in completed. Test any PocketBase-behind-a-proxy setup with two separate requests, not one process that happens to
 reuse a connection.
+
+---
+
+## OPS-199 — A placed Worker with no route can use `caches.default`, and because it runs in one place its cache is shared by visitors from every data center
+
+`측정 2026-09-28 · Cloudflare Workers, service binding to a Worker with `placement: {mode: "targeted", region: "aws:us-west-2"}`, no route, `workers_dev: false``
+
+**증상:** a site Worker's own Cache API entries live in the visitor's data center, so at low traffic almost every page
+found them empty. It was unclear whether a Worker reached only through a service binding (no route, no zone) could
+use `caches.default` at all; the docs say Cache API operations are no-ops on workers.dev.
+
+Measured: the data Worker (placed, `cf-placement: remote-SEA`) put each database response into `caches.default` under
+a URL on the site's zone host that nothing serves, with `Cache-Control: max-age=60`. On the next page 1–4 seconds
+later the reads were hits (`match` returned the entry), and across 16 page loads from Denver 31 of 44 reads were hits,
+including the first read of pages whose data had been read by another page. Its time for a page fell from 47–68 ms to
+11–20 ms when every read was a hit.
+
+**해결:** when a Worker is placed next to its origin, cache the origin reads there rather than in the calling Worker:
+the placement concentrates every visitor's requests on the same data center, so one cache serves all of them. Keep
+keys on a hostname path that no public route serves, never cache requests carrying a user's token, and add a
+generation number to the keys so an admin change can invalidate everything with one `put` (the Cache API has no
+prefix purge).
 
