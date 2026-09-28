@@ -4420,7 +4420,7 @@ use `caches.default` at all; the docs say Cache API operations are no-ops on wor
 
 Measured: the data Worker (placed, `cf-placement: remote-SEA`) put each database response into `caches.default` under
 a URL on the site's zone host that nothing serves, with `Cache-Control: max-age=60`. On the next page 1–4 seconds
-later the reads were hits (`match` returned the entry), and across 15 page loads from Denver 25 of 36 reads were hits,
+later the reads were hits (`match` returned the entry), and across 16 page loads from Denver 31 of 44 reads were hits,
 including the first read of pages whose data had been read by another page. Its time for a page fell from 47–68 ms to
 11–20 ms when every read was a hit.
 
