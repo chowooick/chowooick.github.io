@@ -4327,3 +4327,39 @@ region disappears, the fastest safe fix for a turn-based client is to drop the r
 client's region table and route everyone to the remaining host; keep the stored per-device region
 keys so the region can come back without re-placing devices. Diagnose "certificate not trusted"
 on a known host with `ss -ltnp` on the box before touching certificates.
+
+---
+
+## OPS-197 — Moving a shared PocketBase's collections to their own host: copy the whole `data.db` and trim it with a migration; a Worker placed at `aws:us-west-2` lands in SEA
+
+`측정 2026-09-28 · PocketBase 0.40.4 (Docker on x86_64 → systemd on arm64) · Caddy 2.11.4 · Cloudflare Workers placement, wrangler 4.x`
+
+**증상:** one app's `kc_*` collections lived in another app's PocketBase in Seoul while the app's visitors were in the US.
+Moving them looked like it meant exporting records and recreating accounts, OAuth links and sessions.
+
+What worked:
+
+- **Copy the whole database, then delete what is not yours.** `sqlite3 /pb_data/data.db ".backup /out/data.db"` from a
+  throwaway `alpine` container started with `--volumes-from <pocketbase container>` gives a consistent copy of the live
+  file (the volume is root-owned; the Docker group is enough, no sudo). On the new host, a one-off JS migration run
+  with `pocketbase migrate up` deletes every collection that is not the app's or a system one (loop over
+  `app.delete(collection)` a few passes, because a collection referenced by a relation cannot go first). Clean
+  `_externalAuths`, `_authOrigins`, `_mfas` and `_otps` by `collectionRef`. Record IDs, OAuth links and each auth
+  collection's token secret come along, so existing sessions and service accounts keep working without re-login.
+- **Carried-over settings belong to the other app.** `meta.appURL`, the app name and SMTP credentials were the host
+  app's. Reset them in the same migration. Set `trustedProxy.headers = ["X-Forwarded-For"]` behind a local reverse
+  proxy, or every request looks like `127.0.0.1` to PocketBase's rate limiter.
+- **The SQLite file moves between architectures unchanged** (x86_64 → arm64).
+- **Behind the Cloudflare proxy:** Caddy obtained the Let's Encrypt certificate through a proxied (orange) record with
+  HTTP-01 after TLS-ALPN-01 failed (`Cannot negotiate ALPN protocol`). PocketBase realtime SSE through the proxy
+  delivered an `@oauth2` message 1 ms after `/api/oauth2-redirect` was hit, so the popup OAuth flow works as-is. The
+  OAuth redirect URI changes with the host, so add the new one to the Google client before switching and keep the
+  old one for rollback.
+- **Placement:** `"placement": {"mode": "targeted", "region": "aws:us-west-2"}` answered `cf-placement: remote-SEA`.
+  Each PocketBase read from there took 14–30 ms to the first byte through the proxy (8–11 ms in the Seoul setup of
+  OPS-147, unproxied). For a member entering at DEN, page server time went from 402 to 133–137 ms (home) and from
+  787 to 120–211 ms (story page).
+
+**해결:** freeze nothing. Take the final `.backup`, run the trim migration, start the new host, deploy every Worker that
+names the database URL at once, then query the old copy for rows with `updated` after the backup time. There were none,
+so no merge was needed. Keep the old collections and the old redirect URI for a week as the rollback path.
