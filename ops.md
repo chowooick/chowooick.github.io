@@ -4247,3 +4247,25 @@ The response carries a `"user"` object; afterwards `/` returns 200 (the login pa
 by hand in two places that must agree — `/etc/dokploy/traefik/dynamic/dokploy.yml` and the
 `webServerSettings` row (`host`, `https`, `"certificateType"`, `"letsEncryptEmail"`) — and the
 installer's ACME email `test@localhost.com` in `traefik.yml` should be replaced.
+
+## OPS-194 — Traefik answers `/.well-known/acme-challenge/` itself above any user router; to forward a name's certificate check to another box, use TLS-ALPN-01 through a TCP passthrough
+
+`측정 2026-09-27 · Traefik v3.6.25 (Dokploy v0.30.7), hosting.co.kr DNS`
+
+**증상:** A new A record `dokploy.oregon.mxox.com` → the new box was answered by ns2–ns4 of
+hosting.co.kr within minutes, but ns1 kept returning the older `*.mxox.com` wildcard (another
+Traefik box) for over 20 minutes with the same zone serial on all four. Let's Encrypt HTTP-01 kept
+landing on the wrong box: `403 … 121.174.3.182: Invalid response from http://…/.well-known/acme-challenge/…: 404`.
+The hosting.co.kr console also refuses a multi-level wildcard such as `*.oregon`.
+
+Forwarding the name at the wrong box with an HTTP router does not help for the challenge: that
+Traefik's built-in `acme-http@internal` router takes every `/.well-known/acme-challenge/` path for
+every host. A user router cannot outrank it — `priority: 9223372036854775807` is rejected with
+`the router priority … exceeds the max user-defined priority 9223372036854774807`.
+
+**해결:** On the wrong box, add a TCP router with `HostSNI(`<name>`)`, `tls: {passthrough: true}`,
+pointing at `<right-ip>:443` (and an HTTP router for the `web` entrypoint for plain traffic). On
+the right box switch the resolver from `httpChallenge` to `tlsChallenge: {}` in `traefik.yml`
+and restart Traefik. TLS-ALPN-01 rides the SNI passthrough, so the certificate issues whichever
+nameserver Let's Encrypt asked; the first try after the switch succeeded. Watch the failed-validation
+limit (5 per hostname per hour) — four failures had already been spent before the switch.
