@@ -4269,3 +4269,40 @@ the right box switch the resolver from `httpChallenge` to `tlsChallenge: {}` in 
 and restart Traefik. TLS-ALPN-01 rides the SNI passthrough, so the certificate issues whichever
 nameserver Let's Encrypt asked; the first try after the switch succeeded. Watch the failed-validation
 limit (5 per hostname per hour) — four failures had already been spent before the switch.
+
+---
+
+## OPS-195 — Dokploy v0.30.7 on an idle 2 GB box: 546 MB of live V8 heap after a forced GC, against a 1015 MB heap limit
+
+`측정 2026-09-27 · Dokploy v0.30.7 (Node 24.4.0) · Ubuntu, 2 vCPU / 1.8 GB RAM + 4 GB swap · 0 applications`
+
+**증상:** on a fresh Dokploy install with nothing deployed, `docker stats` shows the `dokploy`
+service at 858 MiB of 1.79 GiB, and host `MemAvailable` is 484 MB. The node process
+(`dist/server.mjs`) has `VmRSS` 860 MB and `VmHWM` 1,070 MB after 45 minutes of uptime.
+`smaps_rollup`: 804 MB anonymous, 57 MB file-backed, so it is heap, not mapped code.
+Postgres (60 MiB) and Traefik (19 MiB) are not the cause.
+
+Measured inside the process through the inspector (`kill -USR1` in the container, CDP over
+`127.0.0.1:9229` from `docker exec`, `HeapProfiler.collectGarbage`, then `inspector.close()`):
+
+| | before GC | after full GC |
+|---|---|---|
+| rss | 846 MB | 796 MB |
+| heapUsed | 552 MB | 546 MB |
+| old_space used | 491 MB | 487 MB |
+| heap_size_limit | 1015 MB | 1015 MB |
+
+So about 550 MB is live data, not garbage the GC has not collected yet. The service sets no
+`NODE_OPTIONS`, and V8 sized the heap limit from the 1.8 GB of RAM. Over 9 minutes of idling after
+the GC, RSS grew from 767 MB to 777 MB, about 1 MB/min. Upstream issues report the same:
+Dokploy#3909 (about 1 GB on a fresh 2 GB VPS, crash and restart every 12–16 h, maintainer blames
+the Next.js server), Dokploy#3755 (healthcheck-driven growth since v0.27.1), and Dokploy#5504
+(v0.30.6–0.30.7: the docker-stats interval keeps running after the Monitoring page websocket
+closes).
+
+**해결:** treat about 800 MB RSS as Dokploy's idle baseline, not a leak to hunt, and size the box
+for it: the documented minimum is 2 GB, and a 2 GB box has little left for apps. Do not set
+`--max-old-space-size=512`; the live heap is already above 512 MB, so V8 would hit its limit
+right away. Close the Monitoring page when you are done with it (#5504), and if RSS keeps climbing
+across days, restart the service with `docker service update --force dokploy`, or move to a
+4 GB box.
