@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-28T13:52:48Z · 소스 커밋 `7c7a6f1` · 이 파일은 자동 생성물이다.
+생성 2026-09-28T20:42:24Z · 소스 커밋 `d93a762` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10619,4 +10619,48 @@ What worked:
 **해결:** freeze nothing. Take the final `.backup`, run the trim migration, start the new host, deploy every Worker that
 names the database URL at once, then query the old copy for rows with `updated` after the backup time. There were none,
 so no merge was needed. Keep the old collections and the old redirect URI for a week as the rollback path.
+
+---
+
+## OPS-198 — PocketBase behind Cloudflare: `trustedProxy: X-Forwarded-For` breaks realtime subscriptions, so the popup Google sign-in stalls with no error
+
+`측정 2026-09-28 · PocketBase 0.40.4 · Caddy 2.11.4 · Cloudflare proxied (orange) record`
+
+**증상:** after moving PocketBase behind Caddy and a proxied Cloudflare record, the web login (PocketBase's realtime popup
+OAuth flow) stopped after the Google account was chosen. The popup closed, the page kept saying "log in in the Google
+window", and nothing reached `auth-with-oauth2`. It had worked once right after the move. Reproduced with curl through
+Cloudflare: open `GET /api/realtime`, then `POST /api/realtime {"clientId":..,"subscriptions":["@oauth2"]}` answers
+`400 {"message":"Invalid realtime client."}`; `/api/oauth2-redirect?state=<clientId>` then redirects to
+`/_/#/auth/oauth2-redirect-failure`. The same sequence against `127.0.0.1:8090` on the host works.
+
+Cause, from `apis/realtime.go`: the connect handler stores `e.RealIP()` on the client, and the subscribe handler
+rejects a request whose `RealIP()` differs (`the subscription request IP doesn't match with the realtime client IP`).
+With `trustedProxy.headers = ["X-Forwarded-For"]` and `useLeftmostIP: false`, RealIP is the rightmost entry, which
+Caddy appends: the Cloudflare edge address. The SSE request and the POST usually arrive from different edges (seen:
+four different edge IPs in a minute, some via MIA), so the check fails. Using the leftmost entry would fix the
+mismatch but trusts a header any client can set.
+
+**해결:** let Caddy decide the client address and hand PocketBase one header:
+
+```
+{
+	servers {
+		trusted_proxies static <every range from https://www.cloudflare.com/ips-v4 and ips-v6>
+		client_ip_headers CF-Connecting-IP
+	}
+}
+db.example.com {
+	@compressible not path /api/realtime
+	encode @compressible zstd gzip
+	reverse_proxy 127.0.0.1:8090 {
+		header_up X-Real-IP {client_ip}
+	}
+}
+```
+
+and set PocketBase `trustedProxy.headers = ["X-Real-IP"]` (settings API, no restart). `{client_ip}` is taken from
+`CF-Connecting-IP` only when the connection comes from a trusted range, so a direct request cannot spoof it. After the
+change 11 of 11 curl runs through Cloudflare subscribed (204) and received `@oauth2` within 100 ms, and a real Google
+sign-in completed. Test any PocketBase-behind-a-proxy setup with two separate requests, not one process that happens to
+reuse a connection.
 
