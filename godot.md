@@ -3661,3 +3661,16 @@ This is a caveat to GDT-146, which recommends instance uniforms for per-object g
 **증상:** a two-process test polled a file for a room code with `var code := ""` and `await _wait(func() -> bool: code = FileAccess.get_file_as_string(f).strip_edges(); return code.length() == 4, 15.0)`. The wait returned true (the lambda saw four digits), and the next line `join(code)` sent `""` — the outer `code` was never assigned. No warning or error.
 
 **해결:** capture a container and write into it: `var code := [""]` … `code[0] = …` … `join(code[0])`. Arrays and Dictionaries are references, so the lambda and the caller see the same object; primitives (`int`, `String`, `bool`, `Vector2`) are copied at capture time.
+
+## GDT-179 — Frosted-glass HUD panels in `gl_compatibility`: a `hint_screen_texture` material on a `PanelContainer`, and a second `CanvasLayer` gets its own screen copy (it sees the layer below already post-processed)
+
+`측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · Apple M1 Max (native) and Chrome WebGL2 (Web export)`
+
+**증상:** A full-screen post pass (tilt-shift + grade, `CanvasLayer.layer = 0`) and blurred-glass HUD panels (`layer = 2`) both need the screen texture. It was unclear whether the HUD's copy would be the raw 3D frame or the post-processed one, and how to keep a stylebox's rounded, anti-aliased edge when a shader replaces its colour.
+
+- Each `CanvasLayer` that uses `hint_screen_texture` gets a fresh copy: the HUD panels showed the **post-processed** (blurred, vignetted) frame, not the raw 3D. Order the layers so the glass sees what you want.
+- A `ShaderMaterial` set as `material` on a `PanelContainer` affects only its own stylebox draw; child Labels keep the default material and stay sharp.
+- In the fragment, `COLOR` is the stylebox colour with its alpha. `COLOR = vec4(mix(blur, COLOR.rgb, COLOR.a), clamp(COLOR.a / 0.1, 0.0, 1.0))` gives an opaque glass body (any alpha above 0.1) with the corner anti-aliasing intact. Set the stylebox `shadow_size = 0` — the drop shadow would be frosted too. Do not put this material on a `Button` with text: glyph edges have low alpha and get the same treatment.
+- Five `textureLod` taps at lod ≈ 3.4 (GDT-130) ran in the Web export with no console errors; the whole scene stayed at 110 fps natively.
+
+**해결:** post layer below, HUD layer above, glass material on panels only, shadow off, alpha divided by a small threshold. Related: GDT-128, GDT-130.
