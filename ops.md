@@ -4220,3 +4220,30 @@ from ssh, including the local database server.
   gui/$(id -u)/<label>` started it.
 - Run long tests detached with a log and an exit marker (`nohup zsh -lc "cmd; echo EXIT=\$?" > log 2>&1 &`)
   and poll for `EXIT=`; after a silent ssh 255 check `uptime` before debugging the test.
+
+## OPS-193 — A fresh Dokploy install leaves `/register` open to whoever reaches it first; create the admin from the shell
+
+`측정 2026-09-27 · Dokploy v0.30.7, Ubuntu 24.04 arm64 (AWS t4g, 1.8GB RAM + 4GB swap)`
+
+**증상:** `curl -sSL https://dokploy.com/install.sh | sudo sh` ends with "Please go to http://<ip>:3000".
+Until someone registers, every request to the dashboard 307-redirects to `/register`, and the first
+account registered becomes the owner. Removing the host publish of 3000 does not close it: Traefik
+still serves the dashboard on 443 for any request carrying the dashboard's `Host` header.
+
+Also measured on the same install: the `dokploy` container idles at 762MiB, so a 2GB box has about
+550MiB available after the install, before any app.
+
+**해결:** Register the admin immediately, from the shell, against the domain router:
+
+```bash
+curl -sk --resolve <domain>:443:<ip> -H 'Content-Type: application/json' \
+  -H 'Origin: https://<domain>' \
+  -d '{"email":"…","password":"…","name":"…","lastName":"…"}' \
+  https://<domain>/api/auth/sign-up/email
+```
+
+The response carries a `"user"` object; afterwards `/` returns 200 (the login page) instead of the
+307 to `/register`. `--resolve` works before public DNS points at the box. The domain itself is set
+by hand in two places that must agree — `/etc/dokploy/traefik/dynamic/dokploy.yml` and the
+`webServerSettings` row (`host`, `https`, `"certificateType"`, `"letsEncryptEmail"`) — and the
+installer's ACME email `test@localhost.com` in `traefik.yml` should be replaced.
