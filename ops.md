@@ -4306,3 +4306,24 @@ for it: the documented minimum is 2 GB, and a 2 GB box has little left for apps.
 right away. Close the Monitoring page when you are done with it (#5504), and if RSS keeps climbing
 across days, restart the service with `docker service update --force dokploy`, or move to a
 4 GB box.
+
+## OPS-196 — A regional game server has more tenants than the session wiping it knows about; list every database on the box before emptying it
+
+`측정 2026-09-28 · SpacetimeDB 2.8.0, AWS Oregon box oregon.mxox.com`
+
+**증상:** A second game's US players could not connect the morning after a box was "emptied and
+reinstalled with Dokploy". Publishing to it failed with `The certificate was not trusted`, and
+`openssl s_client` showed `CN=TRAEFIK DEFAULT CERT` — which looks like a certificate problem and is
+not one. `ss -ltnp` showed only Traefik on 80/443; no SpacetimeDB was running at all.
+
+One SpacetimeDB process on one box held several games' databases (`bearhunter`, `button`, …).
+The session that emptied the box was working on one game and archived the data directory as a
+whole (`data/spacetimedb/`), so nothing was lost — but the other game's client still routed its
+Americas players to that host, and nothing told that game's repository.
+
+**해결:** Before emptying a shared host, list its databases (`spacetime` data dir, or
+`GET /v1/database/<name>` for each name the family uses) and say which games go down. When a
+region disappears, the fastest safe fix for a turn-based client is to drop the region from the
+client's region table and route everyone to the remaining host; keep the stored per-device region
+keys so the region can come back without re-placing devices. Diagnose "certificate not trusted"
+on a known host with `ss -ltnp` on the box before touching certificates.
