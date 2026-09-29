@@ -3794,3 +3794,33 @@ Measured with `get_aabb()` on four texts, `HORIZONTAL_ALIGNMENT_LEFT`, default f
 
 **해결:** start each indented line with U+2060 (WORD JOINER, zero width) before the spaces. The
 line then begins with a non-space glyph that draws nothing, and the spaces after it are laid out.
+
+## GDT-187 — A loading cover over a 3D scene still pays for drawing the 3D world every frame; `Viewport.disable_3d` under the cover made a time-sliced build 6.7x faster
+
+`측정 2026-09-29 · Godot 4.7.2 · Forward+ · MacBook Air M1 (windowed)`
+
+**증상:** a city built at runtime was split into slices (yield a frame after ~32 ms of work) so a
+loading screen could animate over it. On an M1 Max the build stayed near its unsliced 1.9 s, but on
+an M1 Air it took **26.2 s** and the whole boot 95 s. The loading screen is an opaque `Control` on a
+`CanvasLayer`, yet every yielded frame still rendered the half-built city behind it (273 lights,
+166 meshes): about 55 frames of full 3D cost.
+
+**해결:** set `get_viewport().disable_3d = true` while the opaque cover is up and back to `false`
+a few frames before revealing, so the first real frames (pipeline compiles: 90 ms and 64 ms measured)
+still happen under the cover. Same Air, same build: **3.9 s**, boot 5.4 s. Remember whether you
+turned it off yourself before turning it back on.
+
+## GDT-188 — Web export: `engine.startGame()` can resolve before the last `onProgress` call; a custom shell that reacts to "download complete" must ignore it after resolve
+
+`측정 2026-09-29 · Godot 4.7.2 Web export (single-threaded) · Chrome for Testing 1243 headless, local server`
+
+**증상:** a custom HTML shell ran its bar to 100 % in `startGame().then(...)` and, in `onProgress`,
+switched to a "starting the engine" state (cap at 99 %) when `current >= total`. From an unthrottled
+local server the bar showed 100 % at 1.0 s, then 99 % from 3 s on, and the overlay never left
+(still up at 30 s) although the game was running behind it: an `onProgress` with `current >= total`
+arrived after the promise had resolved and put the cap back. With an 80 Mbps throttle the order was
+normal, so it only shows on fast connections.
+
+**해결:** once `startGame()` has resolved, ignore `onProgress`, and never let a cap lower the target
+(`target += max(0, cap - target) * k`). After the fix the same run left the loading screen at 2–3 s.
+Related: GDT-127 (driving the check with raw CDP).

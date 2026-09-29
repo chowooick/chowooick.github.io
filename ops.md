@@ -4658,3 +4658,19 @@ grep -rhoE 'Host\(`[^`]+`\)' /etc/dokploy/traefik/dynamic/ | sort -u
 ```
 Swarm services keep their labels on the service (`docker service inspect -f '{{.Spec.Labels}}'`). A routed host can
 still answer 404 (no backend), so follow with one `curl -o /dev/null -w '%{http_code}'` per host.
+
+## OPS-214 — macOS LibreSSL `openssl genpkey -algorithm EC` writes explicit curve parameters; SpacetimeDB then answers 500 `InvalidEcdsaKey`
+
+`측정 2026-09-29 · SpacetimeDB standalone 2.8.0 · macOS 27 /usr/bin/openssl (LibreSSL 3.3.6) vs Homebrew OpenSSL 3.6.4`
+
+**증상:** a dev script that makes the server's JWT key with
+`openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1` worked on a Mac with Homebrew
+OpenSSL first on PATH. On a Mac with only the system `/usr/bin/openssl` the server started, but the
+first CLI call failed with `HTTP status server error (500 Internal Server Error) for url (…/v1/identity)`
+and the server log said `internal error: InvalidEcdsaKey`. Both keys begin `-----BEGIN PRIVATE KEY-----`;
+`openssl asn1parse` shows the difference: LibreSSL's key carries `prime-field` and the whole curve
+(377-byte key), OpenSSL 3's names the curve (`prime256v1`, 135 bytes).
+
+**해결:** add `-pkeyopt ec_param_enc:named_curve` to the `genpkey` call. Both LibreSSL and OpenSSL 3
+accept it and write the named-curve form, which SpacetimeDB loads. Delete the old key pair first; the
+server keeps its data dir.
