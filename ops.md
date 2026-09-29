@@ -4495,3 +4495,23 @@ why code that never checked the type ran fine.
 copy: `pocketbase migrate up --dir=<copy of pb_data> --migrationsDir=<dir with the new file>` applies it and exits,
 and `pocketbase serve` on another port lets you probe the rules with impersonated tokens. If a live start fails,
 move the migration file out first — that restores service — then debug.
+
+## OPS-204 — Changing an auth collection's `authRule` makes PocketBase issue a new token secret: every existing token turns into "no auth", silently
+
+`측정 2026-09-29 · PocketBase 0.40.4, JSVM migration saving `kc_members` with a new `authRule``
+
+**증상:** after a migration that only removed an email list from `kc_members.authRule`, the site kept working for
+signed-in members but everything the database scoped to them quietly failed: an admin's list of member profiles came
+back 200 with 0 items, an admin PATCH answered 404 `sql: no rows in result set`, member-only writes were refused.
+The request log (`auxiliary.db` `_logs`, `data.auth`) showed `auth: ""` for every site request from the migration
+restart on, where it had been `kc_members` until 30 seconds before.
+
+`options.authToken.secret` of the collection differed between the backup taken just before and the live database. A
+later migration on the same collection that changed list/view/create/update rules and added a field did **not**
+change it, so the `authRule` change is what rotated it. Record `tokenKey`s were unchanged. Tokens are not rejected
+with 401: they are treated as anonymous, so reads succeed with empty results.
+
+**해결:** treat an `authRule` change as "all tokens revoked". An app that keeps the PocketBase token inside its own
+session must make its users sign in again — here the site refuses sessions issued before the change time
+(`SESSIONS_VALID_FROM`). To find it after the fact, compare `authToken.secret` hashes across backups and look for
+the moment `data.auth` goes empty in `_logs`.
