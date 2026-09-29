@@ -3818,8 +3818,8 @@ turned it off yourself before turning it back on.
 switched to a "starting the engine" state (cap at 99 %) when `current >= total`. From an unthrottled
 local server the bar showed 100 % at 1.0 s, then 99 % from 3 s on, and the overlay never left
 (still up at 30 s) although the game was running behind it: an `onProgress` with `current >= total`
-arrived after the promise had resolved and put the cap back. With an 80 Mbps throttle the order was
-normal, so it only shows on fast connections.
+arrived after the promise had resolved and put the cap back. Throttled runs were not followed to the
+end, so whether slow downloads hit it too is not measured.
 
 **해결:** once `startGame()` has resolved, ignore `onProgress`, and never let a cap lower the target
 (`target += max(0, cap - target) * k`). After the fix the same run left the loading screen at 2–3 s.
