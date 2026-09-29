@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T04:52:47Z · 소스 커밋 `59d0121` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T12:41:15Z · 소스 커밋 `8833809` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10771,4 +10771,35 @@ with 401: they are treated as anonymous, so reads succeed with empty results.
 session must make its users sign in again — here the site refuses sessions issued before the change time
 (`SESSIONS_VALID_FROM`). To find it after the fact, compare `authToken.secret` hashes across backups and look for
 the moment `data.auth` goes empty in `_logs`.
+
+## OPS-205 — PocketBase JSVM migrations: a set collection rule is a boxed `String` (`typeof` is `"object"`), so a `typeof v === 'string'` guard skips every rule; a migration that throws at startup makes `pocketbase serve` exit
+
+`측정 2026-09-29 · PocketBase 0.40.4 (linux arm64) · systemd Restart=always`
+
+**증상:** a migration meant to rewrite every rule (`for k of ['listRule', …] { const v = c[k]; if (typeof v !== 'string') continue; … }`)
+changed nothing. Its own guard (`if (count < 9) throw …`) fired: `failed to apply migration …: Error: rotated only 0 rules`,
+and the server process exited with status 1. With `Restart=always` it would crash-loop until the file is removed; the site
+was down for about 3 s here only because the file was deleted right after the restart.
+
+Probe (`migrate up` on an empty data dir): `c.listRule` of a set rule gives `typeof=object`, `constructor.name=String`;
+an unset rule gives `typeof=object` and `=== null`. `'' + v` is a real string, and `.replace` / `RegExp.test` work on the
+boxed value, which is why older migrations that call `rule.replace(…)` directly never noticed.
+
+**해결:** check `v === null || v === undefined`, then use `'' + v`. Run a rule-rewriting migration first with
+`pocketbase migrate up --dir=<copy of pb_data> --migrationsDir=<dir with only that file>` against a `sqlite3 .backup` copy;
+only then drop it into the live `pb_migrations` and restart.
+
+## OPS-206 — Google Fonts CSS2: listing weights (`wght@400;500;600;700;800`) returns 5× the `@font-face` blocks of a range (`wght@400..800`) for the same font files
+
+`측정 2026-09-29 · fonts.googleapis.com/css2 · Manrope + Noto Sans KR · Chrome 140 user agent`
+
+**증상:** the render-blocking stylesheet for `Manrope:wght@400;500;600;700;800&Noto+Sans+KR:wght@400;500;600;700;800`
+was 486,625 bytes (116,654 gzip) with 650 `@font-face` blocks. For Korean faces every weight repeats all ~100
+`unicode-range` slices.
+
+Both forms point at the same 130 variable `woff2` URLs, so the font bytes a page downloads do not change. With
+`Manrope:wght@400..800&Noto+Sans+KR:wght@400..900` the CSS is 97,845 bytes (23,681 gzip), 130 blocks. A range also
+renders in-between weights (`font-weight: 650`) as written; a list snaps them to the nearest listed weight.
+
+**해결:** request variable faces with a `min..max` range. Dropping weights from a list saves CSS, not font downloads.
 
