@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T21:23:50Z · 소스 커밋 `5e2fb96` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T21:29:58Z · 소스 커밋 `8473570` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4713,6 +4713,21 @@ The engine JS still keeps `godot_js_display_window_icon_set`, which creates or r
   `launcher_icons/adaptive_background_432x432`, `launcher_icons/adaptive_monochrome_432x432`
   (`res://` PNG paths; each lands as `icon*.webp` at 192 or 432 px). The launcher shows only the
   centre 288 of the 432 px layers, so a feathered edge on pasted art must sit outside that window.
+
+## GDT-185 — Web export: CDP `Input.dispatchKeyEvent` with a `text` field per character types into a focused `LineEdit` without an IME (extends GDT-156)
+
+`측정 2026-09-29 · Godot 4.7 Web export · Chrome stable 153 headless=new (ANGLE Metal) · raw CDP from Node 26`
+
+**증상:** a name form in a Godot web build (a `LineEdit` inside the canvas) stayed empty after
+`Input.insertText({text: "portal-review"})`, the same failure GDT-156 records for Playwright's `insertText`.
+A script that only wants ASCII into the field does not need GDT-156's IME composition route.
+
+Sending one `Input.dispatchKeyEvent` pair per character, `{type: "keyDown", key: c, text: c, unmodifiedText: c}`
+then `{type: "keyUp", key: c}`, filled the field and the form submitted with that name. The `text` field is what
+produces the `keypress`/`input` Godot reads; a `keyDown` without it moves nothing.
+
+**해결:** for ASCII, dispatch key events with `text` per character. For Hangul, use GDT-156
+(`Input.imeSetComposition` then `Input.insertText`).
 
 ---
 
@@ -10980,4 +10995,25 @@ no-camera state.
 
 **해결:** one Y4M per code (the capture file is fixed per browser launch), one browser launch per scenario. Headless
 is enough; no window opens on the test machine.
+
+## OPS-213 — Listing the subdomains a box actually serves: wildcard DNS answers every name and crt.sh does not list names under a wildcard certificate; read the reverse proxy's routers
+
+`측정 2026-09-29 · Traefik v3 behind Dokploy · crt.sh JSON API · dig 9.10`
+
+**증상:** the question was "which `*.example.com` sites exist". `dig anything-random.example.com` returned the box's
+IP, because DNS is a wildcard. crt.sh (`?q=%25.example.com&output=json`) listed 16 names, but three sites that
+had been live for days were missing: they are served under a `*.example.com` certificate, so no certificate
+names them. Guessing hostnames with `curl` found only the names that were guessed.
+
+The complete list was on the box. Dokploy puts per-app routers in Docker labels
+(`traefik.http.routers.<name>.rule=Host(\`…\`)`) and file-provider routers in `/etc/dokploy/traefik/dynamic/*.yml`.
+Reading both gave 24 hosts, including the three the other methods missed.
+
+**해결:**
+```
+docker ps -q | xargs docker inspect -f '{{range $k,$v := .Config.Labels}}{{$v}}{{"\n"}}{{end}}' | grep -oE 'Host\(`[^`]+`\)' | sort -u
+grep -rhoE 'Host\(`[^`]+`\)' /etc/dokploy/traefik/dynamic/ | sort -u
+```
+Swarm services keep their labels on the service (`docker service inspect -f '{{.Spec.Labels}}'`). A routed host can
+still answer 404 (no backend), so follow with one `curl -o /dev/null -w '%{http_code}'` per host.
 
