@@ -4751,3 +4751,18 @@ waives the fee for non-commercial 전체–15세 games by individuals without a 
 adult line has no legal identity-check duty. If it must stay adults-only, budget roughly 40 won per verified user
 (PG-backed mobile/integrated check), or accept manual fax/post ID checks as the only zero-fee legal route. Never ship
 social-login age fields as the adult check.
+
+## OPS-219 — Building a second copy of the same Cargo package into a shared `CARGO_TARGET_DIR` leaves the other copy's artifact in place; the next build says "Finished" and does not rewrite it
+
+`측정 2026-09-29 · cargo 1.9x · wasm32-unknown-unknown release · macOS`
+
+**증상:** to get the previous release's module, a copy of `Cargo.toml` plus the old `lib.rs` was built with
+`CARGO_TARGET_DIR=<repo>/server/target`. Then `cargo build --manifest-path server/Cargo.toml ...` printed
+`Finished ... in 0.04s` and `target/.../release/escape_online.wasm` was still the **old** module (same bytes; a
+string only the new code contains: 0 matches). Fingerprints are per source path, so the real package was
+"fresh", but the uplifted output file has one name per package and the copy had overwritten it. That file is
+what deploy scripts pick up.
+
+**해결:** build the other copy with its own `CARGO_TARGET_DIR`. If it already happened, `touch` a source file of
+the real package and rebuild, then check the artifact for a symbol only the intended version has
+(`grep -a -c <new_reducer_name> <file>.wasm`) before shipping it.

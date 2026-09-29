@@ -3836,3 +3836,20 @@ A probe scene exported to the web printed `DisplayServer.get_name()` = `web`, `O
 The call only fires for events with `physical_keycode` set. Engine defaults such as `ui_accept` (Enter) use `keycode`, so a title screen that only shows those prompts stays clean and hides the problem until a game action's prompt appears.
 
 **해결:** test platforms with feature tags (`OS.has_feature("web")`), not display-server names. When a name check is unavoidable, compare case-insensitively. Evaluate the check once, for example in a `static var`.
+
+## GDT-190 — Web export: the first drawn frame compiles every shader and freezes the whole page; a "ready" signal sent from `_ready()` fires seconds before the page responds
+
+`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Chrome 1xx, M1 Max and M1 Air`
+
+**증상:** a page shell enabled its start button when Godot called `ui.ready()` at the end of `_ready()`. Timestamps
+from the parent page: on an M1 Max, headless Chrome (`channel: 'chrome'`, `--enable-gpu`), `_ready` finished at
+5.6 s but the next `RenderingServer.frame_post_draw` came at 20.9 s; headed Chrome, same build: 2.05 s → 3.55 s.
+On an M1 Air against the live site: headless 27 s to a usable page, headed 9.7 s. During that first frame the
+iframe and the parent page share one main thread, so every timer, `waitForFunction` poll and input handler in the
+parent is frozen: the button looked enabled but the page did not react. Frames after the first took ~10 ms.
+
+**해결:** send "ready" after `await RenderingServer.frame_post_draw`, not at the end of `_ready()`. To show a
+"preparing" state before the freeze, report it, then set `get_viewport().disable_3d = true`, `await
+get_tree().process_frame` twice so the browser paints, set it back to `false` and await `frame_post_draw`.
+A/B on the M1 Air, headed, three runs each: old 6.4–6.9 s, new 6.6–6.9 s to a responsive page — the two
+skipped 3D frames cost nothing measurable. Time boot in headed Chrome; headless numbers are 3–6x too slow.
