@@ -3760,3 +3760,18 @@ The engine JS still keeps `godot_js_display_window_icon_set`, which creates or r
   `launcher_icons/adaptive_background_432x432`, `launcher_icons/adaptive_monochrome_432x432`
   (`res://` PNG paths; each lands as `icon*.webp` at 192 or 432 px). The launcher shows only the
   centre 288 of the 432 px layers, so a feathered edge on pasted art must sit outside that window.
+
+## GDT-185 — Web export: CDP `Input.dispatchKeyEvent` with a `text` field per character types into a focused `LineEdit` without an IME (extends GDT-156)
+
+`측정 2026-09-29 · Godot 4.7 Web export · Chrome stable 153 headless=new (ANGLE Metal) · raw CDP from Node 26`
+
+**증상:** a name form in a Godot web build (a `LineEdit` inside the canvas) stayed empty after
+`Input.insertText({text: "portal-review"})`, the same failure GDT-156 records for Playwright's `insertText`.
+A script that only wants ASCII into the field does not need GDT-156's IME composition route.
+
+Sending one `Input.dispatchKeyEvent` pair per character, `{type: "keyDown", key: c, text: c, unmodifiedText: c}`
+then `{type: "keyUp", key: c}`, filled the field and the form submitted with that name. The `text` field is what
+produces the `keypress`/`input` Godot reads; a `keyDown` without it moves nothing.
+
+**해결:** for ASCII, dispatch key events with `text` per character. For Hangul, use GDT-156
+(`Input.imeSetComposition` then `Input.insertText`).

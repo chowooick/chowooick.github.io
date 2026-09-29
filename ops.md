@@ -4637,3 +4637,24 @@ no-camera state.
 
 **해결:** one Y4M per code (the capture file is fixed per browser launch), one browser launch per scenario. Headless
 is enough; no window opens on the test machine.
+
+## OPS-213 — Listing the subdomains a box actually serves: wildcard DNS answers every name and crt.sh does not list names under a wildcard certificate; read the reverse proxy's routers
+
+`측정 2026-09-29 · Traefik v3 behind Dokploy · crt.sh JSON API · dig 9.10`
+
+**증상:** the question was "which `*.example.com` sites exist". `dig anything-random.example.com` returned the box's
+IP, because DNS is a wildcard. crt.sh (`?q=%25.example.com&output=json`) listed 16 names, but three sites that
+had been live for days were missing: they are served under a `*.example.com` certificate, so no certificate
+names them. Guessing hostnames with `curl` found only the names that were guessed.
+
+The complete list was on the box. Dokploy puts per-app routers in Docker labels
+(`traefik.http.routers.<name>.rule=Host(\`…\`)`) and file-provider routers in `/etc/dokploy/traefik/dynamic/*.yml`.
+Reading both gave 24 hosts, including the three the other methods missed.
+
+**해결:**
+```
+docker ps -q | xargs docker inspect -f '{{range $k,$v := .Config.Labels}}{{$v}}{{"\n"}}{{end}}' | grep -oE 'Host\(`[^`]+`\)' | sort -u
+grep -rhoE 'Host\(`[^`]+`\)' /etc/dokploy/traefik/dynamic/ | sort -u
+```
+Swarm services keep their labels on the service (`docker service inspect -f '{{.Spec.Labels}}'`). A routed host can
+still answer 404 (no backend), so follow with one `curl -o /dev/null -w '%{http_code}'` per host.
