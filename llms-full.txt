@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T21:21:35Z · 소스 커밋 `9fce9d7` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T21:23:50Z · 소스 커밋 `5e2fb96` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10927,4 +10927,57 @@ When a copied project behaves differently, compare file lists first: `rsync -an 
 A scalar column in the same row updates fine (`SET chosen = 0` succeeds), and `SELECT` prints the array as one run of digits (`300000…`), which is not a form it accepts back. The CLI's error hides the reason — POST the SQL to `/v1/database/<db>/sql` with curl to read it.
 
 **해결:** there is no SQL route to an array column. Either reach the state through the module's own reducers, or — for a picture of a screen only — build a throwaway client whose view code overrides the value, install it, photograph, and reinstall the real build. Never commit that override.
+
+## OPS-210 — the D1 `7403` "account is not valid" error is not limited to a new database: an hours-old one gave it once too
+
+`측정 2026-09-29 · wrangler 4.125.0 · D1 kyomincenter-coupons (created the same morning) · OAuth login`
+
+**증상:** `wrangler d1 migrations apply <db> --remote` for one new migration failed with
+`The given account is not valid or is not authorized to access this service [code: 7403]`. `wrangler whoami` listed
+the account and every D1 permission. The database had been created hours earlier, so OPS-201's "right after
+`d1 create`" explanation did not fit.
+
+**해결:** run the same command again; the second run applied `0003_partner_staff.sql ✅` with no change to login or
+token. Treat a single 7403 from D1 as transient and retry before touching credentials. Deploying code that needs the
+migration before the retry succeeds would ship a page whose queries hit a missing table.
+
+## OPS-211 — Playwright over plain http cannot carry a `__Host-` session cookie: `addCookies` refuses it, and an `extraHTTPHeaders` Cookie is lost on redirects
+
+`측정 2026-09-29 · playwright-core 1.63 · Chrome for Testing 1243 (headless, macOS) · Astro dev server on http://localhost`
+
+**증상:** testing signed-in pages of a local dev server whose session cookie is `__Host-…` (Secure, no Domain):
+
+- `context.addCookies([{ name: '__Host-kc_session', url: 'http://localhost:4399', secure: true, … }])` →
+  `Protocol error (Storage.setCookies): Invalid cookie fields` (same with `127.0.0.1`).
+- `newContext({ extraHTTPHeaders: { Cookie: '__Host-kc_session=…' } })` works for `goto` and `fetch`, but the request
+  that follows a server redirect (a form POST answered 303, then GET) arrives without it, so the app sees a signed-out
+  visitor. The cookie jar was empty (`context.cookies()` → `[]`), so it is not a jar cookie overriding the header.
+- A page whose script writes `document.cookie` and reloads (here an admin console storing the browser time zone) also
+  lost the session on the reload.
+- Rewriting the header in `context.route(… route.continue({ headers: { cookie } }))` did not get the cookie through either.
+
+**해결:** use `extraHTTPHeaders`, and after any step that redirects, `goto` the target URL again yourself to check it;
+the dev-server log shows the redirect itself (`[303] POST …` then `[302] /next`). Remove the reason for script cookie
+writes where you can (a matching `timezoneId` stopped the console's reload). Real browsers keep the cookie; this is a
+test-harness limit, not an app bug — for a true end-to-end check use https or the production site.
+
+## OPS-212 — test a web QR scanner headlessly: feed Chromium's fake camera a Y4M clip of the QR
+
+`측정 2026-09-29 · Chrome for Testing 1243 (headless, macOS arm64) · playwright-core 1.63 · jsqr 1.4.0`
+
+**증상:** a page that reads QR codes with `getUserMedia` + `BarcodeDetector` (or jsQR where `BarcodeDetector` is
+missing, as on Safari) needs a camera to test, and a desktop test machine has none facing a phone.
+
+Launch Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream
+--use-file-for-fake-video-capture=qr.y4m` and grant `permissions: ['camera']`. The clip can be written by hand: a
+`YUV4MPEG2 W640 H480 F10:1 Ip A1:1 C420jpeg` header, then 20 × (`FRAME\n` + 640×480 luma bytes + two 320×240 chroma
+planes of 128), with the QR drawn in the luma plane from `qrcode-generator`'s `isDark()` (dark 20, light 235,
+2-module quiet zone). Measured: headless Chrome for Testing on macOS **has** `BarcodeDetector` and read the clip; the
+page showed the result 4.2 s after `goto` (camera start and first module load included). With
+`addInitScript(() => { delete window.BarcodeDetector })` the jsQR fallback loaded and decoded in 16 ms.
+`--use-fake-device-for-media-stream=device-count=0` gives a machine with no camera (`NotFoundError`) for the
+no-camera state.
+
+**해결:** one Y4M per code (the capture file is fixed per browser launch), one browser launch per scenario. Headless
+is enough; no window opens on the test machine.
 
