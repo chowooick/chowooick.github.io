@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T23:08:23Z · 소스 커밋 `4122794` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T23:10:54Z · 소스 커밋 `613507d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4789,6 +4789,23 @@ A probe scene exported to the web printed `DisplayServer.get_name()` = `web`, `O
 The call only fires for events with `physical_keycode` set. Engine defaults such as `ui_accept` (Enter) use `keycode`, so a title screen that only shows those prompts stays clean and hides the problem until a game action's prompt appears.
 
 **해결:** test platforms with feature tags (`OS.has_feature("web")`), not display-server names. When a name check is unavoidable, compare case-insensitively. Evaluate the check once, for example in a `static var`.
+
+## GDT-190 — Web export: the first drawn frame compiles every shader and freezes the whole page; a "ready" signal sent from `_ready()` fires seconds before the page responds
+
+`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Chrome 1xx, M1 Max and M1 Air`
+
+**증상:** a page shell enabled its start button when Godot called `ui.ready()` at the end of `_ready()`. Timestamps
+from the parent page: on an M1 Max, headless Chrome (`channel: 'chrome'`, `--enable-gpu`), `_ready` finished at
+5.6 s but the next `RenderingServer.frame_post_draw` came at 20.9 s; headed Chrome, same build: 2.05 s → 3.55 s.
+On an M1 Air against the live site: headless 27 s to a usable page, headed 9.7 s. During that first frame the
+iframe and the parent page share one main thread, so every timer, `waitForFunction` poll and input handler in the
+parent is frozen: the button looked enabled but the page did not react. Frames after the first took ~10 ms.
+
+**해결:** send "ready" after `await RenderingServer.frame_post_draw`, not at the end of `_ready()`. To show a
+"preparing" state before the freeze, report it, then set `get_viewport().disable_3d = true`, `await
+get_tree().process_frame` twice so the browser paints, set it back to `false` and await `frame_post_draw`.
+A/B on the M1 Air, headed, three runs each: old 6.4–6.9 s, new 6.6–6.9 s to a responsive page — the two
+skipped 3D frames cost nothing measurable. Time boot in headed Chrome; headless numbers are 3–6x too slow.
 
 ---
 
@@ -11170,4 +11187,19 @@ waives the fee for non-commercial 전체–15세 games by individuals without a 
 adult line has no legal identity-check duty. If it must stay adults-only, budget roughly 40 won per verified user
 (PG-backed mobile/integrated check), or accept manual fax/post ID checks as the only zero-fee legal route. Never ship
 social-login age fields as the adult check.
+
+## OPS-219 — Building a second copy of the same Cargo package into a shared `CARGO_TARGET_DIR` leaves the other copy's artifact in place; the next build says "Finished" and does not rewrite it
+
+`측정 2026-09-29 · cargo 1.9x · wasm32-unknown-unknown release · macOS`
+
+**증상:** to get the previous release's module, a copy of `Cargo.toml` plus the old `lib.rs` was built with
+`CARGO_TARGET_DIR=<repo>/server/target`. Then `cargo build --manifest-path server/Cargo.toml ...` printed
+`Finished ... in 0.04s` and `target/.../release/escape_online.wasm` was still the **old** module (same bytes; a
+string only the new code contains: 0 matches). Fingerprints are per source path, so the real package was
+"fresh", but the uplifted output file has one name per package and the copy had overwritten it. That file is
+what deploy scripts pick up.
+
+**해결:** build the other copy with its own `CARGO_TARGET_DIR`. If it already happened, `touch` a source file of
+the real package and rebuild, then check the artifact for a symbol only the intended version has
+(`grep -a -c <new_reducer_name> <file>.wasm`) before shipping it.
 
