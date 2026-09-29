@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T23:10:54Z · 소스 커밋 `613507d` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T23:11:09Z · 소스 커밋 `4496089` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4792,7 +4792,7 @@ The call only fires for events with `physical_keycode` set. Engine defaults such
 
 ## GDT-190 — Web export: the first drawn frame compiles every shader and freezes the whole page; a "ready" signal sent from `_ready()` fires seconds before the page responds
 
-`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Chrome 1xx, M1 Max and M1 Air`
+`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Chrome 154, M1 Max and M1 Air`
 
 **증상:** a page shell enabled its start button when Godot called `ui.ready()` at the end of `_ready()`. Timestamps
 from the parent page: on an M1 Max, headless Chrome (`channel: 'chrome'`, `--enable-gpu`), `_ready` finished at
@@ -11190,7 +11190,7 @@ social-login age fields as the adult check.
 
 ## OPS-219 — Building a second copy of the same Cargo package into a shared `CARGO_TARGET_DIR` leaves the other copy's artifact in place; the next build says "Finished" and does not rewrite it
 
-`측정 2026-09-29 · cargo 1.9x · wasm32-unknown-unknown release · macOS`
+`측정 2026-09-29 · cargo 1.97.1 · wasm32-unknown-unknown release · macOS`
 
 **증상:** to get the previous release's module, a copy of `Cargo.toml` plus the old `lib.rs` was built with
 `CARGO_TARGET_DIR=<repo>/server/target`. Then `cargo build --manifest-path server/Cargo.toml ...` printed
