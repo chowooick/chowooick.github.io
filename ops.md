@@ -4429,3 +4429,37 @@ the placement concentrates every visitor's requests on the same data center, so 
 keys on a hostname path that no public route serves, never cache requests carrying a user's token, and add a
 generation number to the keys so an admin change can invalidate everything with one `put` (the Cache API has no
 prefix purge).
+
+## OPS-200 — PocketBase invite-only sign-in without superusers: an admin clause in the auth collection's `createRule`, and the `authRule` email list can go
+
+`측정 2026-09-29 · PocketBase 0.40.4, auth collection with password auth off and Google OAuth2 on`
+
+**증상:** a private site kept its member list three times (site code, a superuser-created auth record, and an
+`authRule` of `email = "..." || ...`), so adding a person meant a code deploy plus two manual database edits.
+
+Measured with impersonated tokens and the private header the rules require:
+
+- `createRule` = the admin clause (`@request.auth.collectionName = "<auth>" && (@request.auth.email = "a" || ...)`).
+  An admin token creates the account with `{email, emailVisibility: false, password, passwordConfirm}` → 200 (the
+  password field stays required even with password auth disabled; send a random 48-hex value). The same address
+  again → **400** with `data.email.code = "validation_not_unique"`, which is how to tell "already has an account".
+- A member token, an admin token without the header, and an anonymous request are all refused with **400, not 403**,
+  and no field errors. Code that treats only 403 as "no permission" misreads a rule failure as bad input.
+- OAuth2 still cannot create accounts for strangers: during the OAuth request `@request.auth` is empty, so the admin
+  clause fails. The first Google sign-in links to the admin-created record by email, as with superuser-created ones.
+- With that, the `authRule` email list is redundant; keep only the header boundary and let the site decide who may
+  sign in. `listRule`/`viewRule` = admin clause lists accounts for admins; members list 0.
+
+**해결:** keep the list in one place the app can write (here a D1 table checked on every request, a yes cached one
+minute, a no never cached), let admins create the auth record through the admin clause, and remove access in the app
+list instead of deleting the record (a cascade would delete the person's profile and comments).
+
+## OPS-201 — `wrangler d1 migrations apply --remote` right after `wrangler d1 create` answers 7403 "The given account is not valid or is not authorized"
+
+`측정 2026-09-29 · wrangler 4.135.0, new D1 database in ENAM`
+
+**증상:** the first `migrations apply --remote` a few seconds after `d1 create` failed with `code: 7403`, and a
+following `d1 execute` said `no such table`. Nothing was wrong with the account or the token.
+
+**해결:** wait about 20 seconds and run it again; it applied normally (`0001_init.sql ✅`). Do not rotate tokens or
+re-create the database over this error on a database created in the last minute.
