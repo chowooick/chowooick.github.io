@@ -3687,3 +3687,19 @@ This is a caveat to GDT-146, which recommends instance uniforms for per-object g
 - Hide the button when `document.fullscreenEnabled || document.webkitFullscreenEnabled` is false. This is a feature check, not a measurement; iPhone Safari was not tested.
 
 **해결:** call `requestFullscreen`/`exitFullscreen` through `JavaScriptBridge.eval` straight from the button handler (with `webkit*` fallbacks), and refresh the button's state on `root.size_changed`.
+
+## GDT-181 — A multi-line GDScript lambda must be the last argument of the call: `f(func(): … return x), a, b)` is a parse error
+
+`측정 2026-09-29 · Godot 4.7.2-stable`
+
+**증상:** `Parse Error: Expected end of statement after expression, found "," instead.` on the line that closes a multi-line lambda passed as an argument, when more arguments follow it:
+
+```gdscript
+_mi("crate", func() -> Kit.Builder:
+    var b := Kit.Builder.new()
+    return b), material, self)      # parse error here
+```
+
+The same lambda as the **last** argument parses — `x.connect(func() -> void:` … `)` and `cache("k", func():` … `return b.build())` are everywhere and fine. Only an argument *after* the multi-line body breaks it: the indented block ends the lambda, and the parser then expects the statement to end, not the argument list to continue.
+
+**해결:** reorder the parameters so the Callable comes last (`_mi(key, material, parent, make: Callable)`), or bind the lambda to a local first (`var make := func(): …` then `_mi("crate", make, material, self)`), or make it a named `static func` and pass `_name` / `_name.bind(…)`.
