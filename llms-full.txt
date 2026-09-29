@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T22:04:35Z · 소스 커밋 `11126de` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T22:37:19Z · 소스 커밋 `9fc9c35` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11081,4 +11081,29 @@ and the server log said `internal error: InvalidEcdsaKey`. Both keys begin `----
 **해결:** add `-pkeyopt ec_param_enc:named_curve` to the `genpkey` call. Both LibreSSL and OpenSSL 3
 accept it and write the named-curve form, which SpacetimeDB loads. Delete the old key pair first; the
 server keeps its data dir.
+
+## OPS-215 — Safari (WebKit) makes an `aspect-ratio: 1` box with a `height: 100%` SVG inside taller than wide
+
+`측정 2026-09-29 · Playwright WebKit 26.6 (webkit-2359), iPhone 13 profile · Chrome for Testing 1243 for comparison`
+
+**증상:** a white QR tile, `width: min(232px, 68vw); aspect-ratio: 1; padding: 12px` holding an inline
+`<svg style="width:100%;height:100%">`, measured 232×232 in Chromium and **232×256** in WebKit: the extra 24 px (the
+padding) went under the code as blank space. The box sat in a flex column.
+
+**해결:** give the box an explicit `height` equal to its width (`height: min(232px, 68vw); box-sizing: border-box`)
+instead of relying on `aspect-ratio` when its child's height is a percentage. Measure `boundingBox()` in both engines
+rather than trusting a Chromium screenshot for iPhone layouts.
+
+## OPS-216 — Playwright WebKit on a Mac without Google Fonts reachability never fires `load`, and screenshots hang "waiting for fonts to load"
+
+`측정 2026-09-29 · playwright-core 1.63 · WebKit 26.6 · MacBook Air (macOS) against a local Astro dev server`
+
+**증상:** `page.goto(url, { waitUntil: 'load' | 'networkidle' })` timed out at 120 s, and with `domcontentloaded`
+the page worked but `page.screenshot()` failed after 30 s with `waiting for fonts to load...`. The console showed
+`Failed to preconnect to https://fonts.googleapis.com/. Error: Preconnection timed out`. Chromium on the same machine
+and page loaded normally.
+
+**해결:** abort the font hosts in the test context — `context.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort())` —
+and wait with `domcontentloaded` plus a selector. The page then renders with fallback fonts; judge layout, not the
+exact glyphs, from those shots.
 

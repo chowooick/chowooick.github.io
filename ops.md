@@ -4675,7 +4675,7 @@ and the server log said `internal error: InvalidEcdsaKey`. Both keys begin `----
 accept it and write the named-curve form, which SpacetimeDB loads. Delete the old key pair first; the
 server keeps its data dir.
 
-## OPS-213 — Safari (WebKit) makes an `aspect-ratio: 1` box with a `height: 100%` SVG inside taller than wide
+## OPS-215 — Safari (WebKit) makes an `aspect-ratio: 1` box with a `height: 100%` SVG inside taller than wide
 
 `측정 2026-09-29 · Playwright WebKit 26.6 (webkit-2359), iPhone 13 profile · Chrome for Testing 1243 for comparison`
 
@@ -4687,7 +4687,7 @@ padding) went under the code as blank space. The box sat in a flex column.
 instead of relying on `aspect-ratio` when its child's height is a percentage. Measure `boundingBox()` in both engines
 rather than trusting a Chromium screenshot for iPhone layouts.
 
-## OPS-214 — Playwright WebKit on a Mac without Google Fonts reachability never fires `load`, and screenshots hang "waiting for fonts to load"
+## OPS-216 — Playwright WebKit on a Mac without Google Fonts reachability never fires `load`, and screenshots hang "waiting for fonts to load"
 
 `측정 2026-09-29 · playwright-core 1.63 · WebKit 26.6 · MacBook Air (macOS) against a local Astro dev server`
 
