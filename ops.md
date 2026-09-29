@@ -4719,3 +4719,35 @@ Also measured in the same change (a private "practice" room that must not show u
 
 **해결:** test a lookup with `!row` or `row == null`. To keep rows out of other clients' lists, filter the shared
 subscription and add a per-client subscription for the one row the client needs; enforce the rule in reducers.
+
+## OPS-218 — Korean adult (19+) verification: Kakao/Naver login age fields do not count, and the only free method the law names is a mailed or faxed ID copy
+
+`측정 2026-09-29 · 청소년 보호법 시행령 제17조 (2024-12-27 시행본) · Kakao DevTalk staff answers · 앱인토스 개발자 문서 llms-full.txt · PortOne 헬프센터`
+
+**증상:** a web service with adults-only content wants a real age check at no cost. The obvious free tools — Kakao Login
+`age_range` / `birthyear`, Naver Login age range / birthday, free SMS or MO (user-sends-a-text) phone checks, a yes/no
+button — look like age verification but none is accepted.
+
+- Kakao staff on DevTalk: Kakao is not an identity-verification agency, so login data "has no legal effect" and must not
+  be used for adult checks; the birth year is user-editable; CI is given only for duplicate-member checks after the service
+  already verifies through a licensed agency. An adult-content service reachable without real verification can lose Kakao
+  Login.
+- MO/SMS services (e.g. OCTOMO, 0 won) prove phone possession only; no birth date.
+- 청소년 보호법 시행령 제17조 lists the accepted means for providing material harmful to minors: (1) ID checked face to
+  face, or an ID copy received **by fax or post**; (2) a real-name electronic-signature certificate; (3)(4) the
+  resident-number substitutes (i-PIN and similar); (5) credit card; (6) mobile phone plus SMS/ARS. Only (1) has no
+  per-check fee.
+- Cheapest paid references found: KG이니시스 통합본인인증 40 won per success (VAT excl., no sign-up fee, needs a PG contract
+  and a business registration); 다날 mobile check 50,000 won/month for 1,200 checks via PortOne.
+- 앱인토스 (Toss mini apps): Toss Login returns birth date and CI and lists no fee today, but it needs a business
+  registration and a listed mini app, the content policy refuses content whose main element is sexual objectification,
+  and Toss's own docs send legal identity checks (web-board, adult services) to the separate, contracted "토스 인증".
+- Government mobile ID (모바일 신분증) can disclose only "adult: yes", but the integration needs an official letter,
+  DID registration and a server; fees are not published (contact 042-870-1498, mid_apply@komsco.com).
+
+**해결:** decide first whether the content really needs an adult rating. From 2025-10-09 the amended 게임산업법 exempts
+non-commercial games made by individuals or clubs from rating unless they contain 청소년이용불가-level content, and
+waives the fee for non-commercial 전체–15세 games by individuals without a business registration; a game below the
+adult line has no legal identity-check duty. If it must stay adults-only, budget roughly 40 won per verified user
+(PG-backed mobile/integrated check), or accept manual fax/post ID checks as the only zero-fee legal route. Never ship
+social-login age fields as the adult check.
