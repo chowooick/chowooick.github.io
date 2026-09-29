@@ -4699,3 +4699,23 @@ and page loaded normally.
 **해결:** abort the font hosts in the test context — `context.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort())` —
 and wait with `domcontentloaded` plus a selector. The page then renders with fallback fonts; judge layout, not the
 exact glyphs, from those shots.
+
+## OPS-217 — SpacetimeDB 2.8 TypeScript client: `table.pk.find()` returns `null` for a missing row, and a `WHERE flag = false` subscription plus a `WHERE id = '…'` one hides private rows from a lobby list without losing your own
+
+`측정 2026-09-29 · SpacetimeDB 2.8.0 standalone · spacetimedb npm 2.8.0 (TypeScript module and client) · Node 26`
+
+**증상:** a test asserted `assert.equal(conn.db.room.id.find(id), undefined)` after the row was deleted and failed with
+`actual: null`. The row was gone; the client cache answers a miss with `null`, not `undefined`, so `=== undefined`
+checks silently take the wrong branch.
+
+Also measured in the same change (a private "practice" room that must not show up in a public room list):
+
+- A subscription `SELECT * FROM room WHERE practice = false` (a `bool` column, no index) is accepted, and an observer
+  subscribed that way received no insert for a practice room during a whole game.
+- The practice room's own player subscribed both `room WHERE practice = false` and `room WHERE id = '<its id>'`. The SDK
+  kept its room row while it played and dropped it when that second subscription was replaced on leaving.
+- This is a bandwidth filter, not access control: a client subscribed to plain `SELECT * FROM room` still saw the row
+  and its `practice = true`. Refuse joining in the reducer as well.
+
+**해결:** test a lookup with `!row` or `row == null`. To keep rows out of other clients' lists, filter the shared
+subscription and add a per-client subscription for the one row the client needs; enforce the rule in reducers.
