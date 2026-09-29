@@ -4477,3 +4477,21 @@ for D1. The database was not created.
 text is only in the log (`~/Library/Preferences/.wrangler/logs/`), not on stdout, so check `d1 list` before assuming
 it was created. Do not re-login or rotate tokens over a single failure. Right after a create, see OPS-201 before the
 first `migrations apply --remote`.
+
+## OPS-203 — PocketBase JSVM migration: collection rules are Go `*string` (`typeof` "object"), and a migration that throws takes the server down in a restart loop
+
+`측정 2026-09-29 · PocketBase 0.40.4, systemd `Restart=always`, migrations applied at `serve` start`
+
+**증상:** a migration guarded with `typeof collection.viewRule === 'string'` skipped every rule, then its own sanity check
+threw. PocketBase logged `failed to apply migration ...` and exited; systemd restarted it every 3 seconds, and every
+start failed the same way, so the database (and the site on top of it) was down until the file was removed from
+`pb_migrations`. The failed migration had rolled back, so nothing was half-applied.
+
+In JSVM, `collection.listRule` and the other rules are Go `*string`: `typeof` is `"object"` for a set rule and the
+value is `null` for an unset one. `String(value)` gives the text; `.replace` on the raw value happens to work, which is
+why code that never checked the type ran fine.
+
+**해결:** read rules as `value == null ? null : String(value)`. Before copying a migration to a live host, run it on a
+copy: `pocketbase migrate up --dir=<copy of pb_data> --migrationsDir=<dir with the new file>` applies it and exits,
+and `pocketbase serve` on another port lets you probe the rules with impersonated tokens. If a live start fails,
+move the migration file out first — that restores service — then debug.
