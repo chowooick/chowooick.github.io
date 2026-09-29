@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T12:41:15Z · 소스 커밋 `8833809` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T15:02:30Z · 소스 커밋 `2cd2d52` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10802,4 +10802,15 @@ Both forms point at the same 130 variable `woff2` URLs, so the font bytes a page
 renders in-between weights (`font-weight: 650`) as written; a list snaps them to the nearest listed weight.
 
 **해결:** request variable faces with a `min..max` range. Dropping weights from a list saves CSS, not font downloads.
+
+## OPS-207 — Two `astro preview` (Cloudflare adapter) servers on one machine: the second answers 500 to every request because both workerd runtimes want inspector port 9229
+
+`측정 2026-09-29 · Astro 7.3 · @astrojs/cloudflare 14.3 · wrangler 4.135 · macOS`
+
+**증상:** a before/after comparison started two previews at once (`--port 4341` and `--port 4342`) from two copies of the
+same project. The second answered every page with HTTP 500 and a 455-byte body; the smoke run reported 36 of 36 failed.
+Its log repeated `Error: listen EADDRINUSE: address already in use 127.0.0.1:9229`. `--port` moves only the HTTP port.
+
+**해결:** run the previews one after another (stop the first before starting the second), or give each its own inspector
+port. Grep the preview log for `EADDRINUSE` before trusting a run where every page fails the same way.
 
