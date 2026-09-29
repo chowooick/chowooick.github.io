@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T20:28:59Z · 소스 커밋 `735b863` · 이 파일은 자동 생성물이다.
+생성 2026-09-29T21:05:33Z · 소스 커밋 `94c3dc9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4656,6 +4656,34 @@ _mi("crate", func() -> Kit.Builder:
 The same lambda as the **last** argument parses — `x.connect(func() -> void:` … `)` and `cache("k", func():` … `return b.build())` are everywhere and fine. Only an argument *after* the multi-line body breaks it: the indented block ends the lambda, and the parser then expects the statement to end, not the argument list to continue.
 
 **해결:** reorder the parameters so the Callable comes last (`_mi(key, material, parent, make: Callable)`), or bind the lambda to a local first (`var make := func(): …` then `_mi("crate", make, material, self)`), or make it a named `static func` and pass `_name` / `_name.bind(…)`.
+
+## GDT-182 — Engine focus navigation steps once per stick push, but custom `is_action_pressed` handlers see every motion event; replaying axis bindings as `InputEventAction` fixes both and adds hold-repeat
+
+`측정 2026-09-29 · Godot 4.7.2-stable · --headless, events injected with Input.parse_input_event`
+
+**증상:** one left-stick push with jitter (`0.1 → 1.0 → 0.97 → 1.0 → 0.0`, 12 `InputEventJoypadMotion` events) reported `is_action_pressed("ui_down")` on 8 of them. The engine's own focus navigation in a `VBoxContainer` of buttons still moved **one** row. Handlers that test `event.is_action_pressed(...)` themselves (a quantity stepper on `ui_left`, a duel `attack` bound to the right trigger) fire on every one of those events. Holding the stick does not repeat in menus either: no new motion events arrive while the value is steady. This narrows GDT-132: the multi-step problem is in custom handlers, not in built-in focus navigation.
+
+A small autoload removes the problem for every consumer:
+
+- At start, walk `InputMap.get_actions()`. For each action that is not analog (movement, camera), take its `InputEventJoypadMotion` events out with `action_erase_event` and remember `(axis, sign) → actions`. Engine `ui_up/down/left/right` carry left-stick axes by default and are included.
+- In `_input`, keep a per-`device:axis:sign` state: press when the value crosses 0.6, release below 0.3. On each edge, send `InputEventAction` (`pressed`, `strength`, `device`) through `Input.parse_input_event.call_deferred(e)`, because the call happens inside the dispatch of the motion event.
+- For `ui_*` directions, re-send the press after 0.38 s and then every 0.09 s while held. Engine focus navigation accepts repeated `InputEventAction` presses.
+
+Measured with that autoload: the same flick produced 1 `ui_down` and moved focus 1 row. Holding the stick for 0.8 s scrolled to row ≥ 5 and stopped on release. A jittery trigger pull (`0.65 → 0.7 → 0.68 → 0.9 → 1.0 → 0.95`) produced exactly 1 `attack`, `Input.is_action_pressed("attack")` stayed true while held and went false below 0.3. Analog `Input.get_vector` on movement is untouched.
+
+**해결:** strip axis bindings off button-like actions and replay them as edge-detected `InputEventAction`s from one autoload, as above. Call its rebuild again after remapping.
+
+## GDT-183 — macOS: an 8BitDo Ultimate 2 Wireless over Bluetooth LE reports `Input.get_joy_name()` = `"HID"` with Apple's vendor id, so name-based controller-family detection never sees "8BitDo"
+
+`측정 2026-09-29 · Godot 4.7.2-stable (windowed) · Darwin 27.0 · 8BitDo Ultimate 2 Wireless, BLE (system_profiler: vendor 0x2DC8, product 0x6012)`
+
+**증상:** code that picks button glyphs from `Input.get_joy_name(device)` (for example "dualsense" → PlayStation shapes) found nothing to match. Godot printed:
+
+`name=HID guid=0500b7b5ac05000004000000c4ef6d04 info={ "raw_name": "HID", "vendor_id": "1452", "product_id": "4" }`
+
+1452 is 0x05AC (Apple), not 8BitDo's 0x2DC8, and the product id is 4. The same pad showed as 0x2DC8/0x6012 in `system_profiler SPBluetoothDataType`. When the pad went to sleep it dropped out of `Input.get_connected_joypads()` and moved to "Not Connected" in `system_profiler`.
+
+**해결:** do not rely on the joypad name or vendor id to pick a family on macOS. Fall back to the Xbox layout (Godot's `JOY_BUTTON_A` is the south button whatever the label), and offer a manual glyph-style setting if exact labels matter. Button-position mapping was not verified on this pad, because no presses were captured during the run.
 
 ---
 
