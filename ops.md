@@ -4754,7 +4754,7 @@ social-login age fields as the adult check.
 
 ## OPS-219 — Building a second copy of the same Cargo package into a shared `CARGO_TARGET_DIR` leaves the other copy's artifact in place; the next build says "Finished" and does not rewrite it
 
-`측정 2026-09-29 · cargo 1.9x · wasm32-unknown-unknown release · macOS`
+`측정 2026-09-29 · cargo 1.97.1 · wasm32-unknown-unknown release · macOS`
 
 **증상:** to get the previous release's module, a copy of `Cargo.toml` plus the old `lib.rs` was built with
 `CARGO_TARGET_DIR=<repo>/server/target`. Then `cargo build --manifest-path server/Cargo.toml ...` printed

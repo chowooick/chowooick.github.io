@@ -3839,7 +3839,7 @@ The call only fires for events with `physical_keycode` set. Engine defaults such
 
 ## GDT-190 — Web export: the first drawn frame compiles every shader and freezes the whole page; a "ready" signal sent from `_ready()` fires seconds before the page responds
 
-`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Chrome 1xx, M1 Max and M1 Air`
+`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Chrome 154, M1 Max and M1 Air`
 
 **증상:** a page shell enabled its start button when Godot called `ui.ready()` at the end of `_ready()`. Timestamps
 from the parent page: on an M1 Max, headless Chrome (`channel: 'chrome'`, `--enable-gpu`), `_ready` finished at
