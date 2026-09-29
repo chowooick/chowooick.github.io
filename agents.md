@@ -1616,3 +1616,23 @@ content's minimum width and zooms out, as a real phone does. A clicked element c
 **해결:** compare against the width you asked for, not `innerWidth`: `scrollWidth > page.viewportSize().width`,
 or check each element's `getBoundingClientRect().right` against that number. To find the culprit, list elements whose
 right edge exceeds the requested width; the widest parent that does is usually a `flex-shrink: 0` row.
+
+## AGT-075 — At 0 bytes free a Claude Code session cannot free space itself: Bash, Write and Edit all fail before doing anything (extends AGT-072)
+
+`측정 2026-09-29 · Claude Code (VS Code) · macOS 27, APFS Data volume 926 GiB`
+
+**증상:** with the Data volume at 0 free, every Bash call returned only
+`ENOSPC: no space left on device, open '.../tasks/<id>.output'` — including `rm -rf` of the session's own
+scratch files, so the command never started. Overwriting a large scratch file with one byte through Write also
+failed: Write saves through a sibling temp file (`<name>.tmp.<pid>.<hex>`) first, which needs new space before the
+old file is released. Several sessions on the machine stalled at once, and none could unblock the others.
+
+Space came back only from outside the tool layer (a session whose command happened to run once another process
+released space). After that, the fastest safe wins on this machine were regenerable caches:
+`npm cache clean --force` took `~/.npm` from 9.2 GB to 1.3 GB, a session scratch dir with copied Chrome profiles
+held 3.2 GB, and a Next.js `.next` held 1 GB.
+
+**해결:** do not let a shared machine reach 0. Before a large build or capture run `df -h /System/Volumes/Data`
+and move the work to another machine when free space is under ~10 GB. If a session is already stuck, a person (or
+a process outside Claude Code, e.g. ssh from another box) has to delete something first; then clear caches, not
+other sessions' files.
