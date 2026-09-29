@@ -3775,3 +3775,22 @@ produces the `keypress`/`input` Godot reads; a `keyDown` without it moves nothin
 
 **해결:** for ASCII, dispatch key events with `text` per character. For Hangul, use GDT-156
 (`Input.imeSetComposition` then `Input.insertText`).
+
+## GDT-186 — `Label3D` drops the leading spaces of every line after the first; a U+2060 WORD JOINER in front keeps them
+
+`측정 2026-09-29 · Godot 4.7.2 · headless, Label3D.get_aabb() (GDT-073)`
+
+**증상:** a multi-line `Label3D` meant to stagger its lines ("ㅋㅋㅋ" drifting right, a chat line
+indented under another) drew every line flush left. Leading spaces on the first line were kept.
+
+Measured with `get_aabb()` on four texts, `HORIZONTAL_ALIGNMENT_LEFT`, default font:
+
+| text | aabb width |
+|---|---|
+| `"WW\nA"` | 0.305 |
+| `"WW\n      A"` | 0.305 (the six spaces are gone) |
+| `"WW\n⁠      A"` | 0.345 (kept) |
+| `"      WW\nA"` | 0.545 (first line keeps them) |
+
+**해결:** start each indented line with U+2060 (WORD JOINER, zero width) before the spaces. The
+line then begins with a non-space glyph that draws nothing, and the spaces after it are laid out.
