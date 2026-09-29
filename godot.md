@@ -3733,3 +3733,30 @@ Measured with that autoload: the same flick produced 1 `ui_down` and moved focus
 **해결:** do not rely on the joypad name or vendor id to pick a family on macOS. Fall back to the Xbox layout, and offer a manual glyph-style setting if exact labels matter. The positional mapping itself is right. In a focused window, a 90 s run captured every control: south = `JOY_BUTTON_A`, east = B, west = X, north = Y, LB/RB = 9/10, Back/Start = 4/6, all four D-pad buttons, both sticks, and LT/RT as axes 4/5 going positive.
 
 Two runs, 50 s each, captured nothing. In both, the tester read the prompt only after the window had closed. Do not read a silent probe as "the pad does not reach Godot" until the tester confirms they pressed buttons while it was running.
+
+## GDT-184 — Web export always ships the raw `application/config/icon` file in the pck, even when `exclude_filter` names it; a `config/icon.web` override swaps in a small one
+
+`측정 2026-09-29 · Godot 4.7.2-stable, Web (nothreads) and Android (template APK) export, macOS`
+
+**증상:** Setting a 1024 px PNG as `application/config/icon` grew a Web pck by 2.0 MB: the imported
+`.ctex` (0.84 MB) plus the raw PNG file (1.19 MB). Adding the PNG to the Web preset's `exclude_filter`
+dropped the `.ctex` but the raw PNG stayed (`strings index.pck | grep` still listed it). The exporter
+copies the icon file outside the import system so `Main` can load it as an image at startup.
+
+`html/export_icon=true` writes `index.icon.png` and `index.apple-touch-icon.png` from that same icon,
+so an icon drawn with transparent margins (a macOS-style squircle) becomes an apple-touch icon with
+transparent corners. `html/export_icon=false` removes both files and both `<link>` tags;
+`html/head_include` is then the place for your own favicon, touch icon, manifest and `theme-color`.
+The engine JS still keeps `godot_js_display_window_icon_set`, which creates or rewrites
+`<link id="-gd-engine-icon" rel="icon">` with a PNG blob when the window icon is set.
+
+**해결:**
+- Put a per-platform override in `project.godot`: `config/icon.web="res://<small favicon>.svg"`.
+  The Web export then stores the 1.2 KB SVG instead of the PNG (pck back to its previous size to
+  within 12 KB), and any runtime window-icon update on the Web also shows the favicon.
+- Keep the desktop icon in `exclude_filter` of the Web preset to drop its `.ctex` too.
+- Android preset keys that work with the template APK (no Gradle build), checked by unzipping
+  `res/mipmap-xxxhdpi-v4/`: `launcher_icons/main_192x192`, `launcher_icons/adaptive_foreground_432x432`,
+  `launcher_icons/adaptive_background_432x432`, `launcher_icons/adaptive_monochrome_432x432`
+  (`res://` PNG paths; each lands as `icon*.webp` at 192 or 432 px). The launcher shows only the
+  centre 288 of the 432 px layers, so a feathered edge on pasted art must sit outside that window.
