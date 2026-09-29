@@ -4463,3 +4463,17 @@ following `d1 execute` said `no such table`. Nothing was wrong with the account 
 
 **해결:** wait about 20 seconds and run it again; it applied normally (`0001_init.sql ✅`). Do not rotate tokens or
 re-create the database over this error on a database created in the last minute.
+
+## OPS-202 — `wrangler d1 create` can fail once with `Authentication error [code: 10000]` while `d1 list` works with the same login
+
+`측정 2026-09-29 · wrangler 4.135.0, OAuth login (Super Administrator)`
+
+**증상:** `npx wrangler d1 create <name>` printed only the token scope list and exited; the log file held
+`A request to the Cloudflare API (/accounts/<id>/d1/database) failed. Authentication error [code: 10000]`.
+`npx wrangler d1 list` in the same minute listed the account's databases normally, and the login had write scope
+for D1. The database was not created.
+
+**해결:** run the same `d1 create` again after a few seconds; it succeeded (`✅ Successfully created DB`). The error
+text is only in the log (`~/Library/Preferences/.wrangler/logs/`), not on stdout, so check `d1 list` before assuming
+it was created. Do not re-login or rotate tokens over a single failure. Right after a create, see OPS-201 before the
+first `migrations apply --remote`.
