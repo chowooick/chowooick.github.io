@@ -4570,3 +4570,17 @@ copy: rsync exclude patterns are shell globs, so `[backup]` matched the one-char
 **해결:** escape the brackets, `--exclude '\[backup\]'`, or anchor the name you mean (`--exclude '/\[backup\]/'`).
 When a copied project behaves differently, compare file lists first: `rsync -an --itemize-changes` or
 `diff <(cd a && find . | sort) <(ssh host 'cd b && find . | sort')`.
+
+## OPS-209 — SpacetimeDB 2.8 SQL cannot write an array column: `UPDATE t SET counts = [..]` is refused, so a `Vec<u32>` row cannot be seeded by hand
+
+`측정 2026-09-29 · SpacetimeDB 2.8.0 · local standalone · spacetime CLI and HTTP /v1/database/<db>/sql`
+
+**증상:** seeding a test player's `Vec<u32>` column on a local database to photograph a screen:
+
+- `UPDATE collection SET counts = [3,0,1] WHERE …` → `Unsupported column/variable assignment expression: [3, 0]` (HTTP 400; the CLI prints only the 400)
+- `SET counts = 0x03000000` → ``The literal expression `03000000` cannot be parsed as type `Array<U32>` ``
+- `SET counts = '[3,0]'` → `Unexpected type: (expected) String != Array<U32> (inferred)`
+
+A scalar column in the same row updates fine (`SET chosen = 0` succeeds), and `SELECT` prints the array as one run of digits (`300000…`), which is not a form it accepts back. The CLI's error hides the reason — POST the SQL to `/v1/database/<db>/sql` with curl to read it.
+
+**해결:** there is no SQL route to an array column. Either reach the state through the module's own reducers, or — for a picture of a screen only — build a throwaway client whose view code overrides the value, install it, photograph, and reinstall the real build. Never commit that override.
