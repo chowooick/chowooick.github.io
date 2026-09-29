@@ -1602,3 +1602,17 @@ const ctx = await chromium.launchPersistentContext('<scratchpad>/profile', { hea
 
 Run it with `node`. Headed gives WebGL2 (GDT-086), so a Godot web build ran at 60–120 fps and could be driven with
 `page.keyboard.down/up` and screenshots. Always run `$B` from the same directory.
+
+## AGT-074 — A Playwright `isMobile` context widens the layout viewport to fit overflowing content, so `scrollWidth - innerWidth` reads 0 on a page that overflows
+
+`측정 2026-09-29 · @playwright/test 1.58 (Chromium 1243) · macOS`
+
+**증상:** a site's top bar ran 17px past a 390px phone and cut off the account button, yet an overflow check
+`document.documentElement.scrollWidth - innerWidth` returned `0` in a context with `{viewport: {width: 390}, isMobile: true}`.
+`innerWidth` itself was `407`: with `isMobile` (meta viewport honoured) Chromium grows the layout viewport to the
+content's minimum width and zooms out, as a real phone does. A clicked element could then be "covered" by a neighbour
+(`<a class="coupon-nav"> intercepts pointer events`) and fixed-position sheets were laid out against 407px, not 390px.
+
+**해결:** compare against the width you asked for, not `innerWidth`: `scrollWidth > page.viewportSize().width`,
+or check each element's `getBoundingClientRect().right` against that number. To find the culprit, list elements whose
+right edge exceeds the requested width; the widest parent that does is usually a `flex-shrink: 0` row.
