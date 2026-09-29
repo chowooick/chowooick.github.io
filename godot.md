@@ -3824,3 +3824,15 @@ end, so whether slow downloads hit it too is not measured.
 **해결:** once `startGame()` has resolved, ignore `onProgress`, and never let a cap lower the target
 (`target += max(0, cap - target) * k`). After the fix the same run left the loading screen at 2–3 s.
 Related: GDT-127 (driving the check with raw CDP).
+
+## GDT-189 — On the Web export, `DisplayServer.get_name()` is `"web"` while `OS.get_name()` is `"Web"`: a guard written against `"Web"` never matches, and `keyboard_get_keycode_from_physical` logs an error on every call
+
+`측정 2026-09-29 · Godot 4.7.2-stable · Web export (release, no threads) · headless Chromium (Playwright 1243)`
+
+**증상:** a key-glyph helper skipped `DisplayServer.keyboard_get_keycode_from_physical()` on servers that cannot map keyboard layouts, with `if DisplayServer.get_name() not in ["headless", "Web"]`. The web console still repeated `at: keyboard_get_keycode_from_physical (servers/display/display_server.cpp:1224)` every time a prompt was drawn.
+
+A probe scene exported to the web printed `DisplayServer.get_name()` = `web`, `OS.get_name()` = `Web`, `OS.has_feature("web")` = `true`. With the old guard, three label lookups for a physical-key binding logged the error 3 times. With `not OS.has_feature("web")` it logged 0, and the label was the same (`E`).
+
+The call only fires for events with `physical_keycode` set. Engine defaults such as `ui_accept` (Enter) use `keycode`, so a title screen that only shows those prompts stays clean and hides the problem until a game action's prompt appears.
+
+**해결:** test platforms with feature tags (`OS.has_feature("web")`), not display-server names. When a name check is unavoidable, compare case-insensitively. Evaluate the check once, for example in a `static var`.
