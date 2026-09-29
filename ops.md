@@ -4557,3 +4557,16 @@ Its log repeated `Error: listen EADDRINUSE: address already in use 127.0.0.1:922
 
 **해결:** run the previews one after another (stop the first before starting the second), or give each its own inspector
 port. Grep the preview log for `EADDRINUSE` before trusting a run where every page fails the same way.
+
+## OPS-208 — `rsync --exclude '[backup]'` is a character class: it silently drops every one-letter file or folder named b, a, c, k, u or p
+
+`측정 2026-09-29 · rsync (openrsync, macOS 26) · macOS`
+
+**증상:** a project copied to a test machine with `rsync -a --exclude '[backup]' ./ host:dir/` built without error, but
+every URL under `/c/s/...` returned the site's 404. The route file `src/pages/c/s/[token].astro` was missing on the
+copy: rsync exclude patterns are shell globs, so `[backup]` matched the one-character directory `c` (and would match
+`a`, `b`, `k`, `p`, `u`), not a folder literally named `[backup]`. The same trap exists in `.gitignore`.
+
+**해결:** escape the brackets, `--exclude '\[backup\]'`, or anchor the name you mean (`--exclude '/\[backup\]/'`).
+When a copied project behaves differently, compare file lists first: `rsync -an --itemize-changes` or
+`diff <(cd a && find . | sort) <(ssh host 'cd b && find . | sort')`.
