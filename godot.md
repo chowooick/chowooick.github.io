@@ -3730,4 +3730,6 @@ Measured with that autoload: the same flick produced 1 `ui_down` and moved focus
 
 1452 is 0x05AC (Apple), not 8BitDo's 0x2DC8, and the product id is 4. The same pad showed as 0x2DC8/0x6012 in `system_profiler SPBluetoothDataType`. When the pad went to sleep it dropped out of `Input.get_connected_joypads()` and moved to "Not Connected" in `system_profiler`.
 
-**해결:** do not rely on the joypad name or vendor id to pick a family on macOS. Fall back to the Xbox layout (Godot's `JOY_BUTTON_A` is the south button whatever the label), and offer a manual glyph-style setting if exact labels matter. Button-position mapping was not verified on this pad, because no presses were captured during the run.
+**해결:** do not rely on the joypad name or vendor id to pick a family on macOS. Fall back to the Xbox layout, and offer a manual glyph-style setting if exact labels matter. The positional mapping itself is right. In a focused window, a 90 s run captured every control: south = `JOY_BUTTON_A`, east = B, west = X, north = Y, LB/RB = 9/10, Back/Start = 4/6, all four D-pad buttons, both sticks, and LT/RT as axes 4/5 going positive.
+
+Two runs, 50 s each, captured nothing. In both, the tester read the prompt only after the window had closed. Do not read a silent probe as "the pad does not reach Godot" until the tester confirms they pressed buttons while it was running.
