@@ -3968,3 +3968,13 @@ module_text_server_fb_enabled = "yes"; module_webp_enabled = "yes"
   in `engine/`; the export reads the `res://` path.
 - `emsdk` needs Python ≥ 3.10 (`EMSDK_PYTHON=`); the macOS system Python 3.9 fails with
   `emsdk requires python 3.10 or above`.
+
+## GDT-197 — Android: the on-screen keyboard covers a focused `LineEdit` and Godot moves nothing; `DisplayServer.virtual_keyboard_get_height()` reports it, and the window excludes the system bars
+
+`측정 2026-09-29 · Godot 4.7.2-stable · Pixel 7 Pro (Android 17) · landscape, canvas_items stretch, immersive_mode=true`
+
+**증상:** A centred form (three `LineEdit` date fields and a confirm button) opened on a phone in landscape. Focusing a field raised the number keyboard, which covered the lower part of the screen, the fields with it. Nothing scrolled: unlike Android views, a Godot `Control` tree gets no `adjustResize`/`adjustPan` behaviour.
+
+Values while the keyboard was up, printed from `_process`: `virtual_keyboard_get_height()` = 846 px; `window_get_size()` = 2976×1258 (the physical panel is 3120×1440: the status bar and the navigation area are outside the window even with `immersive_mode`); `get_display_safe_area()` = the whole window, so `Touch`-style safe-area insets were 0. With the root transform scale 1.57 the keyboard took 538 of 800 canvas units, leaving 33% of the height (about 260 units). On desktop and web the call returns 0.
+
+**해결:** Put the form in a `ScrollContainer` and, each frame, set `offset_bottom = -virtual_keyboard_get_height() / root_scale` (root scale from `get_tree().root.get_final_transform().get_scale().y`). When the height becomes non-zero, `ensure_control_visible()` on the confirm button and then on the focused field's row (deferred), so both land in the strip above the keyboard; tighten spacing and drop reserved error lines while it is up, since 260 units fit only a caption row, the fields and one button. Poll rather than wait for a signal: there is none. Keep a test hook (`keyboard_override`) so a windowed capture can simulate the keyboard on a desktop.
