@@ -4075,3 +4075,14 @@ The file is the aligned but unsigned APK.
 With `aspect="expand"` the 3D camera keeps its horizontal field of view and gains or loses vertical, but the visible world scales with the **narrow** dimension, so a portrait viewport magnifies the scene by the ratio of the two widths (here 844/390 ≈ 2.2×) instead of showing more of it. Nothing errors, nothing logs, and a screenshot of the title screen looks perfect, because 2D UI stretches correctly.
 
 **해결:** decide "portrait / landscape / desktop" from a real playthrough — start a game, move, and look at the frame — not from a successful load or a title-screen screenshot. The 2D UI passing at 390×844 says nothing about the 3D camera. If portrait has to work, drive `Camera3D.keep_aspect = KEEP_HEIGHT` (or raise `fov`/lift the camera) when the viewport is taller than it is wide; otherwise publish the game as landscape-only and say so.
+
+
+## GDT-204 — A Godot `ScrollContainer` does not scroll when the touch drag starts on a `Button`, so an automated portrait check can wrongly conclude the screen is stuck
+
+`측정 2026-09-30 · Godot 4.7.2 Web (GL Compatibility) · input_devices/pointing/emulate_mouse_from_touch=true · Chrome (headed) on an M1 Air, Playwright + CDP Input.dispatchTouchEvent at 390×844`
+
+**증상:** a setup screen taller than a 390×844 viewport hid its primary button ("대전 시작") below the fold. Touch drags from the middle of the screen moved nothing — with `Input.dispatchTouchEvent` in 12, 24 or 40 steps, and with `Input.synthesizeScrollGesture({gestureSourceType:"touch"})` as well. The only visible effect was the card under the finger lighting up, exactly as a hover would. A mouse wheel over the same spot scrolled normally, which makes the screen look like desktop-only.
+
+The drags had all started on a `Button` (a map card filling the width). A `Button` grabs the touch and never passes it to the `ScrollContainer` above it, so nothing pans. The same gesture started on a gap or a `Label` — 20 px of margin at the right edge, or the "CPU 상대" heading — scrolled the container on the first try and revealed the button.
+
+**해결:** when deciding `mobile: yes|landscape|desktop` or QAing a phone layout, start the drag on empty space or a label, never on a control, before concluding a screen cannot be scrolled. On a real phone the same rule holds for the player, so a screen whose scrollable area is wall-to-wall buttons has no place left to drag: leave a gutter or give the container `follow_focus` plus a visible scrollbar.
