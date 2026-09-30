@@ -4850,3 +4850,20 @@ Playwright context with the phone's CSS viewport, `isMobile`, `hasTouch` and an 
 `--use-angle=metal` for WebGL2, and CDP `Input.dispatchTouchEvent` for multi-finger input (GDT-174). Check the physical
 phone early in a task, while it is still awake, and use `adb shell dumpsys window | grep isKeyguardShowing` before planning
 on it.
+
+## OPS-223 — Cross-subdomain SSO via a hub cookie signs a fresh popup login out again: the popup's close fires `focus`, and the reconcile runs before the hub has set the cookie
+
+`측정 2026-09-29 · Firebase JS SDK 12.17.1 · Chrome 14x on macOS · mnori.com /api/auth hub`
+
+**증상:** on a `*.mnori.com` game, `signInWithPopup` succeeds, and 1.7 s later the page is signed out; about 5 s after that it is
+signed in again. No error anywhere. If the hub POST fails or is slow, the player simply stays signed out.
+
+The hub pattern (every origin POSTs its ID token to the hub, which sets a readable `mnori_auth` cookie on the parent domain;
+each origin polls that cookie and calls `signOut()` when it is absent but a local user exists) has a race: `publishSignIn`
+is async, and the popup closing gives the opener window a `focus` event. A `reconcile` bound to `focus` runs immediately,
+sees *local user, no cookie yet*, and signs the brand-new user out. The next 4 s poll finds the cookie and restores the session
+with a custom token, which is why it looks like a flicker rather than a failure.
+
+**해결:** keep the in-flight publish as a promise and make `reconcile` await it first; and do not sign out a local user
+whose publish failed merely because the cookie is missing. Any origin that copied the hub's reference snippet
+(`startSsoSync` + `publishSignIn`) has the race; measure it by timestamping auth-state changes around a real popup login.
