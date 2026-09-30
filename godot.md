@@ -4170,3 +4170,29 @@ Measured on the phone with a finger held on the joystick: a second finger on the
 2. `var medium: Array[Font] = [A, B] if zh else [B, A]` parses, and fails only when the line runs: `Trying to assign an array of type "Array" to a variable of type "Array[Font]".` A lone literal is typed from the declaration; the result of a ternary is a plain `Array`. The function stops there, so in an exported game the fallbacks are silently never set and every character outside the base font is a box, with nothing in the browser console a player would notice.
 
 **해결:** for 1, go through a local: `var body: FontFile = FONT_BODY` then `body.fallbacks = chain` (a loop variable over `[FONT_BODY, FONT_BOLD]` works too, which is why `f.allow_system_fallback = false` in a `for` was fine). For 2, build the typed array in one order and change it in place (`medium.reverse()`), or start from `var chain: Array[Font] = []` and `append_array([...])`; `Array.slice()` also returns an untyped array, so assign it to `FontVariation.fallbacks` through `append_array` as well. A test that walks each language's chain with `FontFile.has_char()` over the real strings catches both before the export.
+
+## GDT-211 — `TextMesh` with a Noto Serif CJK cut: variable-font overlaps fail "Convex decomposing failed", and the error is on stderr with exit code 0
+
+`측정 2026-09-30 · Godot 4.7.2-stable · headless and Web export · Noto Serif SC/JP [wght] (Google Fonts) subset with fontTools 4.60.2`
+
+**증상:** In-world text built with `TextMesh` in Chinese and Japanese printed, in the browser console of the Web export,
+
+```
+ERROR: Convex decomposing failed. Make sure the font doesn't contain self-intersecting lines, as these are not supported in TextMesh.
+   at: _generate_glyph_mesh_data (scene/resources/3d/primitive_meshes.cpp:3191)
+```
+
+for 2 of 19 Chinese and 5 of 18 Japanese characters. The font was a static instance (`wght=500`) cut from the
+variable Noto Serif with `fontTools.varLib.instancer`. Variable fonts keep overlapping contours, and the instancer
+keeps them by default; `TextMesh` cannot triangulate them (same error as GDT-151, different cause).
+
+A headless per-character check (GDT-151) had passed before that: Godot writes this error to **stderr** and the script
+still exits 0, and the wrapper read only stdout (`execFileSync` returns stdout). The glyphs also return vertices, so a
+vertex-count check does not catch it.
+
+**해결:** Merge the overlaps when cutting the static instance:
+`instancer.instantiateVariableFont(font, {"wght": 500}, overlap=instancer.OverlapMode.REMOVE)` (needs
+`pip install skia-pathops`). That fixed every character except `ち` (U+3061) in Noto Serif JP, which still fails;
+the line was reworded to avoid it. In the check, read stdout and stderr together (`spawnSync`, join both) and fail on
+the text `Convex decomposing failed`, not on the exit code. In a browser test, fail on the same text in the console.
+MaruBuri (GDT-151) built every Korean and Latin character without this step.

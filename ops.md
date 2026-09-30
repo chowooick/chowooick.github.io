@@ -5269,3 +5269,27 @@ fatal: expected flush after ref listing
 The deploy before it (5 hours earlier) and the retry (4.5 minutes later) cloned the same repo with the same stored credentials and passed. Nothing was changed between the failure and the retry. The cause was not found: at that minute five other applications were deploying on the same host. The old container kept serving, so the site was not down, only stale.
 
 **해결:** read the Dokploy log before touching credentials: a 401 on a single clone is not proof that the token expired. Retry the failed job (`glab api -X POST projects/:id/jobs/<job id>/retry`); it redeploys the branch head. Note that a later push that changes no deployable path does not redeploy, so a failed deploy followed by a docs-only push leaves production on the old build with a green latest pipeline. Check the live site, not the newest pipeline.
+
+## OPS-245 — fontTools: limiting a variable font's weight range and then subsetting fails with `KeyError: 'uni3004'`; subset first
+
+`측정 2026-09-30 · fontTools 4.60.2 · Python 3.9 · Noto Serif SC [wght] and Noto Serif JP [wght] (Google Fonts, 25 MB and 14 MB)`
+
+**증상:** A script cut a web subset from a CJK variable font in this order: `instancer.instantiateVariableFont(font, {"wght": (400, 700)})`, then `subset.Subsetter(...).subset(font)`. The subsetter stopped with
+
+```
+  File ".../fontTools/subset/__init__.py", line 2455, in subset_glyphs
+    self.variations = _dict_subset(self.variations, s.glyphs)
+KeyError: 'uni3004'
+```
+
+The `gvar` table of the range-limited font no longer has an entry for every glyph the subsetter asks for.
+
+**해결:** Subset first, then limit the axis: `Subsetter.subset(TTFont(source))` and only then `instantiateVariableFont(font, {"wght": (400, 700)})`. It is also faster, since the instancer then touches a few hundred glyphs instead of 30,000. Measured result: 633 Chinese characters → 200 KB woff2, 520 Japanese characters → 195 KB woff2, weights 400–700. Leaving out `layout_features=["*"]` cut the Japanese file from 282 KB to 195 KB. For a static cut used by Godot `TextMesh`, see GDT-211.
+
+## OPS-246 — A Korean-first page translated to Chinese or Japanese: header labels in a flex row wrap to one character per line
+
+`측정 2026-09-30 · Chrome 154 · 390 px and 320 px viewports · page CSS written for Korean (`word-break:keep-all`)`
+
+**증상:** A page written for Korean used `word-break:keep-all` on its text. For `zh` and `ja` the rule was reset to `word-break:normal` so long lines wrap. At 390 px the header then showed each label as a vertical column, one character per line (`観 / 測 / 室 / に / …`), and the header grew to 250 px: Han and kana may break between any two characters, so a flex item that is allowed to shrink shrinks to the width of one character. Korean and Latin labels never did this because they only break at spaces.
+
+**해결:** Give short labels in flex rows (header controls, chips, buttons) `white-space:nowrap`, and keep `word-break:normal` only for running text. Check every translated page at 320 px and 390 px: the problem does not appear at desktop width, and a text search for leftover Korean does not see it.
