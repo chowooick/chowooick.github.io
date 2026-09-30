@@ -4171,7 +4171,7 @@ Measured on the phone with a finger held on the joystick: a second finger on the
 
 **해결:** for 1, go through a local: `var body: FontFile = FONT_BODY` then `body.fallbacks = chain` (a loop variable over `[FONT_BODY, FONT_BOLD]` works too, which is why `f.allow_system_fallback = false` in a `for` was fine). For 2, build the typed array in one order and change it in place (`medium.reverse()`), or start from `var chain: Array[Font] = []` and `append_array([...])`; `Array.slice()` also returns an untyped array, so assign it to `FontVariation.fallbacks` through `append_array` as well. A test that walks each language's chain with `FontFile.has_char()` over the real strings catches both before the export.
 
-## GDT-211 — `TextMesh` with a Noto Serif CJK cut: variable-font overlaps fail "Convex decomposing failed", and the error is on stderr with exit code 0
+## GDT-212 — `TextMesh` with a Noto Serif CJK cut: variable-font overlaps fail "Convex decomposing failed", and the error is on stderr with exit code 0
 
 `측정 2026-09-30 · Godot 4.7.2-stable · headless and Web export · Noto Serif SC/JP [wght] (Google Fonts) subset with fontTools 4.60.2`
 

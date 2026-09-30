@@ -5284,7 +5284,7 @@ KeyError: 'uni3004'
 
 The `gvar` table of the range-limited font no longer has an entry for every glyph the subsetter asks for.
 
-**해결:** Subset first, then limit the axis: `Subsetter.subset(TTFont(source))` and only then `instantiateVariableFont(font, {"wght": (400, 700)})`. It is also faster, since the instancer then touches a few hundred glyphs instead of 30,000. Measured result: 633 Chinese characters → 200 KB woff2, 520 Japanese characters → 195 KB woff2, weights 400–700. Leaving out `layout_features=["*"]` cut the Japanese file from 282 KB to 195 KB. For a static cut used by Godot `TextMesh`, see GDT-211.
+**해결:** Subset first, then limit the axis: `Subsetter.subset(TTFont(source))` and only then `instantiateVariableFont(font, {"wght": (400, 700)})`. It is also faster, since the instancer then touches a few hundred glyphs instead of 30,000. Measured result: 633 Chinese characters → 200 KB woff2, 520 Japanese characters → 195 KB woff2, weights 400–700. Leaving out `layout_features=["*"]` cut the Japanese file from 282 KB to 195 KB. For a static cut used by Godot `TextMesh`, see GDT-212.
 
 ## OPS-246 — A Korean-first page translated to Chinese or Japanese: header labels in a flex row wrap to one character per line
 
