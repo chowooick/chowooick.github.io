@@ -4227,3 +4227,63 @@ load. Nothing after the export step complained.
 headless script that `load()`s every `.gd` and counts failures. For the assignment itself, go through a local
 variable (`var font: FontFile = FONT; font.fallbacks = [...]`): the constant forbids rebinding through its own name,
 not changing the resource it points to.
+
+## GDT-215 — A Callable kept in a `static var` until shutdown crashes Godot 4.7 at exit: `recursive_mutex lock failed: Invalid argument`, or signal 11 in `recursive_mutex::lock()`
+
+`측정 2026-09-30 · Godot 4.7.2-stable · macOS arm64, --headless --script test runners`
+
+**증상:** A script with `static var _listeners: Array[Callable]` had a callback registry
+(`static func on_change(cb): _listeners.append(cb)`). Two other scripts registered once from static
+code: a lambda (`L.on_change(func(): _cache.clear())`) and a static method (`L.on_change(_apply_faces)`).
+Every test that reached the registration printed its normal result (`SAVE OK …`, `TABLES_OK …`) and
+then died while quitting, one of:
+
+```
+libc++abi: terminating due to uncaught exception of type std::__1::system_error: recursive_mutex lock failed: Invalid argument
+handle_crash: Program crashed with signal 11
+[2] libc++.1.dylib - std::__1::recursive_mutex::lock()
+```
+
+The process exit code is then non-zero although the test passed, so a runner that checks exit
+codes reports a failure with a passing last line. Tests that loaded the script but never
+registered a callback exited cleanly. Callbacks bound to a node and unregistered in `_exit_tree`
+do not crash.
+
+**해결:** do not keep Callables in static storage for the life of the process. For static
+listeners use a counter instead: `static var epoch := 0`, incremented on every change; each static
+consumer keeps the last value it saw and compares (`if _epoch != L.epoch: _epoch = L.epoch; _cache.clear()`).
+Keep the callback list for nodes only, and remove the callback in `_exit_tree`.
+
+## GDT-216 — Text that lives in `const` tables can be localised without touching the tables' shape: `"@{key}"` tokens, resolved on read, plus a plain `Translation` for whole-token text
+
+`측정 2026-09-30 · Godot 4.7.2-stable · 5,193 keys × 5 languages, Web export`
+
+**증상:** A game keeps its text in `const` dictionaries (items, dialogue, events: 4,000 strings).
+A `const` cannot call a function, so `tr()` / a lookup cannot be written into the table, and the
+tables are read in 40 places.
+
+Measured approach that kept every table and every reader:
+- A one-time script replaced each Hangul literal inside a `const` with a token string,
+  `"@{items.hoe.name}"` (key = file + path inside the literal), and each literal in code with
+  `L.t("key")`, or `L.f("key", [args])` when it was followed by `%`.
+- The table accessor returns `deep(constants[name])`, a copy with tokens replaced, cached and
+  dropped when the language changes. Code that reads a const directly calls `x(text)` before any
+  string operation: `.replace("{name}", …)`, `.split("|")` and `%` silently do nothing useful on a
+  token.
+- A `Label`, `Button` or `Label3D` whose whole text is one token is translated by the engine
+  itself if a plain `Translation` with `add_message("@{key}", text)` for every key is registered
+  for the locale (`TranslationServer.add_translation`, `set_locale`). 5,193 `add_message` calls
+  cost nothing noticeable, and such text follows a language switch with no code (signs in the 3D
+  world).
+- `res://locale/strings.json` is not a resource: the Web export leaves it out until
+  `include_filter="locale/*.json"` is set in the export preset. The symptom is every string
+  showing as its key, only in the exported build.
+- Same text under different keys is no longer equal: a table that grouped rows by a Korean label
+  (`"농작물"` used as a dictionary key for four categories) split into four groups after the
+  migration. Give such labels one shared key.
+
+**해결:** tokens in consts, resolve at the accessor, `x()` before string work, one `Translation`
+for whole-token text. Test it: every key in five languages, every key used by the code present,
+no Hangul literal left in scripts, placeholders equal across languages. A regex for format specs
+must not allow the space flag: `%[-+0 ]*…[sdf]` reads "10% faster" and "25% de" as `% f` / `% d`
+and makes translators rewrite correct sentences; use `%(?:%|[-+0]*\d*(?:\.\d+)?[sdfcx])`.
