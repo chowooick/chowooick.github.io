@@ -5463,3 +5463,33 @@ the errored deployment leaves no trace in the UI, the DB or on disk.
 a minute or more and is reported at once. Print the row's `errorMessage` and `logPath` in the CI
 log when it fails, since the CI log outlives the row. Token expiry for triage:
 `select to_timestamp(expires_at) from gitlab;` in `dokploy-postgres`.
+
+## OPS-254 — A Dokploy schedule runs `docker exec <container> sh -c "<command>"`, so moving the app to a `-slim` image breaks a `curl` schedule with nothing red but the schedule's own log
+
+`측정 2026-09-30 · Dokploy schedules (scheduleType application), app image moved from Nixpacks to node:22.11-slim`
+
+**증상:** a Grafana "sync stalled" alert fired about an hour after an app switched from Nixpacks to a Dockerfile on `node:22-slim`. The deploy succeeded and the site served normally. Dokploy kept firing both schedules on time; each `deployment` row (the schedule run) had `status = error` and an empty `errorMessage`. The reason was only in the run's log file (`deployment.logPath`, under `/etc/dokploy/schedules/<appName>/`): `docker exec <id> sh -c curl -sS ... ` then `sh: 1: curl: not found`. The Nixpacks image had curl; `node:*-slim` and `debian:*-slim` have neither curl nor wget. It went unnoticed for ten hours.
+
+An application schedule runs inside the app container, so the app image is the schedule's runtime. Changing the base image changes what every schedule can call, and neither the build nor the deploy knows.
+
+**해결:** keep the command a schedule runs in the app repository and ship it in the image (e.g. `node scripts/ops/sync.mjs fast`, using Node's built-in `fetch`), so the image and the command change in the same commit. Read secrets from the container's environment instead of writing them into the schedule command. A test that fails when a host-run script is not copied into the runtime stage closes the gap. To change a schedule through the API, `schedule.update` rejects a partial body (zod: `name`, `cronExpression` ... "expected string, received undefined"): fetch `schedule.one?scheduleId=...`, change `command`, and send the whole object back. The change takes effect at the next tick with no restart. To read why a schedule failed: `SELECT "logPath" FROM deployment WHERE "scheduleId" IS NOT NULL ORDER BY "createdAt" DESC LIMIT 1` in `dokploy-postgres`, then `cat` that path on the host. Related: OPS-240.
+
+## OPS-255 — A "last success" alert over `max(finished_at) WHERE ok` across all sources stays quiet while one source fails for days
+
+`측정 2026-09-30 · Grafana alerting with a PostgreSQL datasource, table format`
+
+**증상:** a `sync_run(source, finished_at, ok, error)` table logged two sync jobs. The alert asked `SELECT EXTRACT(EPOCH FROM now() - max(finished_at)) / 60 FROM sync_run WHERE ok` and fired past 45 minutes. One source failed on every run for nine days (5,252 rows with the same error) while the other succeeded every 15 minutes, so the alert never fired. It fired only when a separate fault stopped both.
+
+**해결:** group by source and return the source as a string column. Grafana turns each row into its own alert instance labelled by that column, and `{{ $labels.source }}` names it in the summary (inside a compose `configs:` block, write `$$labels`, or compose interpolates it away):
+
+```sql
+SELECT source,
+  COALESCE(EXTRACT(EPOCH FROM (now() - max(finished_at) FILTER (WHERE ok))) / 60, 999)
+  AS minutes_since_success
+FROM sync_run
+WHERE started_at > now() - interval '30 days'
+GROUP BY source
+HAVING max(started_at) > now() - interval '1 day'
+```
+
+`FILTER (WHERE ok)` with the `COALESCE` gives a source that ran but never succeeded 999, where `WHERE ok` would have dropped the source entirely. The `HAVING` lets a retired source drop out after a day. When every source stops, the query returns no rows, so the rule needs `noDataState: Alerting`. After changing inline `configs:` content, Grafana needs `up -d --force-recreate grafana` (the container hash does not cover config content).
