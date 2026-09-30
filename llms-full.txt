@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T19:03:31Z · 소스 커밋 `dca9c42` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T20:04:30Z · 소스 커밋 `c67b5ed` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5478,6 +5478,32 @@ catches Godot's own emulation.
 - Related, same session: a menu that sets `get_tree().paused = true` also pauses the node whose
   `_process` flushes events to JavaScript, so the page heard `menu_open` only after the menu
   closed. Send UI events to the page immediately while the tree is paused.
+
+## GDT-229 — Android prebuilt export: the template's `es-rES`, `zh-rHK` and `zh-rTW` folders get the default label unless `config/name_localized` names them; `"es"` alone leaves a Spain phone on the default name
+
+`측정 2026-09-30 · Godot 4.7.2-stable headless, `--export-release`, `gradle_build/use_gradle_build=false` · aapt2 dump resources · Android 35 emulator launcher`
+
+**증상:** With `config/name_localized={"en": "Button", "es": "Botón", "ja": "ボタン", "zh": "按钮"}` and
+`config/name="버튼"`, a phone set to Spanish (Spain) showed the Korean default `버튼` in the app
+drawer, while English, Japanese and Chinese (China) phones showed their names. The template APK
+carries region folders for this string, and the exporter writes every folder it has:
+
+```
+$ aapt2 dump resources app.apk | grep -A200 godot_project_name_string
+  (es)     "Botón"
+  (es-rES) "버튼"     <- default, not the "es" entry
+  (zh)     "按钮"
+  (zh-rHK) "버튼"
+  (zh-rTW) "버튼"
+```
+
+Android picks the exact `es-rES` folder before falling back to `es`, so the default wins. `es-MX`,
+`es-US` and plain `es` are fine (no such folder). This extends GDT-225, which covers `zh_HK`/`zh_TW`
+but not `es_ES`. A project whose default name equals its Spanish name hides the problem.
+
+**해결:** Add `"es_ES"`, `"zh_HK"` and `"zh_TW"` keys next to `"es"` and `"zh"`, then check every
+region row of `godot_project_name_string` with `aapt2 dump resources` (the badging output does not
+list `es-ES`).
 
 ---
 
@@ -12688,4 +12714,39 @@ experimental: { globalNotFound: true },
 ```
 
 The build log then lists `✓ globalNotFound`, and all unmatched URLs return 404 with that page (verified with curl on `/nope`, `/a/b/c`, `/fr`, `/ko`, `/zh/nope`, `/en/games/nope`). The page is prerendered once, so it cannot know the URL's language on the server. To localise it without a hydration mismatch, read the path with `useSyncExternalStore(() => () => {}, () => localeFromPath(location.pathname), () => DEFAULT_LOCALE)` in a client provider: the server snapshot is used during hydration and the client value re-renders right after (set `document.documentElement.lang` in an effect). (Verified in Chrome: `/zh/nope` redraws in Chinese with no console error besides the 404 itself.)
+
+## OPS-257 — Android emulator exits with `No initial system image for this configuration!` when the SDK system-image folder lost its `.img` files; sdkmanager still reports it installed
+
+`측정 2026-09-30 · Android emulator 36.3.10 · system-images;android-35;google_apis;arm64-v8a r9 · macOS (Apple M1 Max)`
+
+**증상:** `emulator -avd <name>` printed `Found systemPath …/system-images/android-35/google_apis/arm64-v8a/`
+then `ERROR | No initial system image for this configuration!` and quit; `adb devices` stayed empty.
+The folder still had `package.xml`, `source.properties`, `kernel-ranchu` and `data/`, but
+`system.img`, `vendor.img` and `ramdisk.img` were gone (a disk cleanup had removed the large files).
+`sdkmanager --list` still listed the package as installed, so `--install` alone does nothing.
+Every AVD built on that image is broken the same way.
+
+**해결:** `sdkmanager --uninstall "system-images;android-35;google_apis;arm64-v8a"` then
+`sdkmanager --install` the same package (same revision, ~1.5 GB). The AVD folders are untouched; the
+AVD booted in 15 s afterwards with its old userdata.
+
+## OPS-258 — Android 35 emulator: `cmd locale set-system-locales` does not exist; switch the system language with `adb root` + `setprop persist.sys.locale` + `stop; start`
+
+`측정 2026-09-30 · Android 35 google_apis arm64 emulator (sdk_gphone64_arm64) · adb 36`
+
+**증상:** `adb shell cmd locale set-system-locales ko-KR` answers `Unknown command: set-system-locales`
+(API 35's `cmd locale` only has `set-app-locales`). `settings put system system_locales` does not
+change the running configuration, and the google_apis image has no `com.android.customlocale2` to
+broadcast `SET_LOCALE` to.
+
+**해결:** google_apis images allow root:
+
+```
+adb root
+adb shell "setprop persist.sys.locale ja-JP; stop; sleep 1; start"
+# wait ~20 s, then: adb shell am get-config  ->  config: …-ja-rJP-…
+```
+
+The framework restarts (not the VM), the launcher relabels apps in the new language, and apps
+launched afterwards see the new locale. Per-app locale needs no root: `cmd locale set-app-locales <pkg> --locales ja-JP`.
 
