@@ -5432,3 +5432,27 @@ and header. Check the config before it replaces a live container:
 `docker run --rm --add-host <upstream>:127.0.0.1 -v $PWD/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.30-alpine nginx -t`
 (`proxy_pass` to a hostname fails `nginx -t` with "host not found in upstream" unless the name
 resolves, hence `--add-host`).
+
+## OPS-253 — Dokploy GitLab-provider deploy can error in ~2 s with `git clone` exit 128 on the deploy that refreshes the OAuth token; the errored row and its log are pruned within hours
+
+`측정 2026-09-30 · Dokploy v0.30.7 · GitLab.com OAuth provider · application sourceType gitlab`
+
+**증상:** A CI job that calls `application.deploy` and polls the deployment row saw it go
+`error` 1.9 s after `createdAt`. The Dokploy container log (`docker logs -t dokploy.1.<id>`) held
+only `Error getting git commit info … fatal: not a git repository` and the clone command with
+`exitCode: 128`, `stdout: ''`, `stderr: ''` — git's own message went to the per-deployment log
+file. It was the first deploy of any GitLab-sourced app on that host in eight hours, i.e. the one
+that ran `refreshGitlabToken` (Dokploy refreshes only when a deploy starts within 60 s of
+`gitlab.expires_at`; GitLab.com access tokens last 2 h). Re-requesting the deploy 5 min later
+succeeded with nothing changed. Cause not proven beyond that correlation: the log file was
+already deleted.
+
+Dokploy keeps a bounded number of deployment rows per app (11 observed) and deletes the log file
+(`/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log`) with the row, so after a few more deploys
+the errored deployment leaves no trace in the UI, the DB or on disk.
+
+**해결:** In the CI poller, treat an `error` row whose `finishedAt - createdAt` is under ~30 s as
+"never started" and request the deploy again (3 attempts, 20 s apart); a real build failure takes
+a minute or more and is reported at once. Print the row's `errorMessage` and `logPath` in the CI
+log when it fails, since the CI log outlives the row. Token expiry for triage:
+`select to_timestamp(expires_at) from gitlab;` in `dokploy-postgres`.
