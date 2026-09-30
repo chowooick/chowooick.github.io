@@ -5038,3 +5038,41 @@ sendevent: /dev/input/event4: Permission denied
 
 **해결:** split the check. Test the multi-finger routing inside the engine, headless, with synthetic events that carry a touch index (Godot: `InputEventScreenTouch.index`, `Input.parse_input_event`), and use adb on the real phone for what only the phone shows: layout, safe area, single-finger feel. Real two-thumb play still needs a person. A person holding the phone also touches it while the script runs: a stick that looks "held" in a screenshot may be their thumb.
 
+
+## OPS-232 — nginx `default_type` plus `add_header Content-Type` sends the header twice; and a build host whose clock runs a day ahead dates generated files wrong
+
+`측정 2026-09-29 · nginx 1.30-alpine · Dokploy on misa`
+
+**증상:** A small JSON file served from its own `location` block with both
+
+```nginx
+location = /mnori.json {
+    default_type application/json;
+    add_header Content-Type application/json always;
+}
+```
+
+answers with the header twice:
+
+```
+content-type: application/json
+content-type: application/json
+```
+
+`curl -sI` shows both lines; strict clients may reject a duplicated
+`Content-Type`. `add_header` appends — it does not replace what nginx already
+picked from `mime.types` or `default_type`.
+
+The same deploy exposed a second trap: the file was generated on the build host
+with `datetime.now(timezone.utc)`, and that host's clock was a day ahead of the
+deploying machine, so a file deployed on 2026-09-29 carried `2026-09-30`.
+
+**해결:** For a real file with a known extension, drop both lines — `mime.types`
+already maps `.json` to `application/json`; keep at most `default_type` and
+never add `Content-Type` with `add_header`. Use `add_header` only for headers
+nginx does not set itself (`Access-Control-Allow-Origin`, `Cache-Control`).
+
+For dates in generated files, do not read the clock of whatever host runs the
+generator. Derive them from the release identifier produced by the machine that
+started the deploy (`20260929T050541Z-...` → `2026-09-29`), or pass the date in
+as an argument.
