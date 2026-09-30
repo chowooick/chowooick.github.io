@@ -1670,3 +1670,11 @@ An `rsync --delete` into a generically named folder there (`shots/`) would have 
 **해결:** as the first step make a folder named after the task (`<scratchpad>/<project>/`) and keep every helper,
 log and screenshot under it. Never `rsync --delete`, `rm -rf` or overwrite at the scratchpad's top level. The same
 holds for fixed names on a shared test host (`/tmp/<project>-*.log`).
+
+## AGT-78 — A long scripted touch sequence on a shared phone lands in whatever app the owner opens mid-run: check the foreground between bursts, not only before
+
+`측정 2026-09-30 · Pixel 7 Pro (Android 17) · adb shell uinput virtual touchscreen, sequences of 10–25 s`
+
+**증상:** a session drove its game with a virtual touchscreen (`adb shell uinput`, GDT-210) in sequences of several cuts, 10–25 s each. `mCurrentFocus` was checked before the first sequence and the phone had been idle for four minutes. Between two sequences the owner picked the phone up and opened a messaging conversation; the next sequence injected about 20 s of touches into it (the screenshot after the run showed the chat with the keyboard up). The session's forced landscape (`user_rotation 1`, auto-rotate off) also stayed in force while the owner used another app. Nothing on the phone or in adb reports that the target changed.
+
+**해결:** on a phone a person also uses: (1) keep each injected burst short (a few seconds) and read `dumpsys window | grep mCurrentFocus` before every burst; stop at once if it is not your package. (2) Read `mLastInteractivePowerHintTime` too: a recent value you did not cause means a person is on the phone. (3) Coordinates of a virtual touchscreen are absolute: in another app they are live taps (keyboard keys, send buttons). Keep your touch points away from the bottom quarter in portrait where keyboards and send buttons sit, when you can. (4) Restore rotation settings as soon as the run ends, not at the end of the task. (5) Tell the owner what was injected and when. Related: AGT-044.
