@@ -5422,8 +5422,8 @@ map "$lang_from_arg:$lang_from_cookie" $page_lang {
 and `location = / { try_files /index.$page_lang.html /index.html =404; add_header Content-Language $page_lang always; add_header Vary "Accept-Language, Cookie" always; … }`
 with every server-level `add_header` repeated inside. The Accept-Language regex is unanchored, so
 the leftmost entry that starts with a supported primary tag wins: `fr-FR,de;q=0.8,ja;q=0.5,en;q=0.4`
-→ ja, `zh-TW,zh` → zh, `es-419` → es, `eo,ko` → ko (the `(?:[-;,]|$)` keeps `eo` from matching
-`es`… and `en-US,en,ko` → en), `fr` alone → en. An unknown `?lang=xx` falls through to the cookie
+→ ja, `zh-TW,zh` → zh, `es-419` → es, `eo,ko` → ko, `en-US,en,ko` → en, `fr` alone → en. The
+`(?:[-;,]|$)` after the tag keeps a longer tag that merely starts with the letters from matching. An unknown `?lang=xx` falls through to the cookie
 and header. Check the config before it replaces a live container:
 `docker run --rm --add-host <upstream>:127.0.0.1 -v $PWD/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.30-alpine nginx -t`
 (`proxy_pass` to a hostname fails `nginx -t` with "host not found in upstream" unless the name
