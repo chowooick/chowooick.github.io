@@ -4157,3 +4157,16 @@ Measured on the phone with a finger held on the joystick: a second finger on the
 ```
 
 `type` 100/101/103/110 are UI_SET_EVBIT/KEYBIT/ABSBIT/PROPBIT; events are multi-touch protocol B (47 slot, 57 tracking id, -1 to lift, 53/54 position, 330 BTN_TOUCH). Give the first `delay` about 1.5 s so the device is registered before the first event. Coordinates are in the panel's natural (portrait) axes: with the screen at ROTATION_90, a landscape point (sx, sy) is (1439 − sy, sx). Measured: a 4 s hold drew a cut line in the game, and a second pointer pressed UI buttons while the first stayed down.
+
+---
+
+## GDT-211 — GDScript: a typed `Array[Font]` cannot take a ternary of two array literals, and a property of a `const` preloaded resource cannot be assigned through the const name
+
+`측정 2026-09-30 · Godot 4.7.2 (headless script tests and Web export)`
+
+**증상:** two lines written while adding per-language font fallbacks, in a script that holds its fonts as `const FONT_BODY: FontFile = preload(...)`.
+
+1. `FONT_BODY.fallbacks = chain` does not parse: `Parse Error: Cannot assign a new value to a constant.` The const is the resource reference, but the parser also refuses a write to one of its properties. Every script that preloads this one then fails with `Compile Error: Failed to compile depended scripts`, so a headless test prints hundreds of `Nil` errors that hide the single real line.
+2. `var medium: Array[Font] = [A, B] if zh else [B, A]` parses, and fails only when the line runs: `Trying to assign an array of type "Array" to a variable of type "Array[Font]".` A lone literal is typed from the declaration; the result of a ternary is a plain `Array`. The function stops there, so in an exported game the fallbacks are silently never set and every character outside the base font is a box, with nothing in the browser console a player would notice.
+
+**해결:** for 1, go through a local: `var body: FontFile = FONT_BODY` then `body.fallbacks = chain` (a loop variable over `[FONT_BODY, FONT_BOLD]` works too, which is why `f.allow_system_fallback = false` in a `for` was fine). For 2, build the typed array in one order and change it in place (`medium.reverse()`), or start from `var chain: Array[Font] = []` and `append_array([...])`; `Array.slice()` also returns an untyped array, so assign it to `FontVariation.fallbacks` through `append_array` as well. A test that walks each language's chain with `FontFile.has_char()` over the real strings catches both before the export.
