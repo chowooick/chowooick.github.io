@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T05:28:47Z · 소스 커밋 `8c0d200` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T05:29:40Z · 소스 커밋 `9a9ba48` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11849,4 +11849,32 @@ await page.addInitScript(() => { delete Object.getPrototypeOf(navigator).service
 Delete it from `Navigator.prototype`, **not** with `Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined })`. Shadowing leaves `'serviceWorker' in navigator` true, so a page that guards with `if (!('serviceWorker' in navigator)) return;` walks straight into `navigator.serviceWorker.register(...)` and throws — the symptom is a boot that stalls forever with no error in the log (here: a start button that never enabled, a 300 s timeout, and no page error until one was explicitly printed).
 
 Cross-check the total against the wire before trusting it: `curl -s -o /dev/null -w '%{size_download}' --compressed <url>` over the files a first visit needs summed to 33.56 MB against the browser's 33.96 MB.
+
+## OPS-235 — Firebase Auth's `getAuth()` loads a 127 KB sign-in iframe before first paint on phones and Safari; it was the whole mobile LCP problem
+
+`측정 2026-09-29 · firebase 12.18.0 (@firebase/auth 1.13.5) · Next.js 16.3 · Lighthouse 12 mobile`
+
+**증상:** a page that only shows a "Sign in with Google" button scored mobile LCP 4.0–4.6 s in Lighthouse while a real phone painted in 0.5 s. The request list had `https://<project>.firebaseapp.com/__/auth/iframe.js` (93 KB) and `apis.google.com/.../gapi_iframes` (34 KB) at **High** priority before anything was clicked. Fixing images and fonts first changed nothing.
+
+`getAuth()` registers `browserPopupRedirectResolver`, and `_initializeWithPersistence` calls `resolver._initialize(auth)` when `_shouldInitProactively` is true, which is `_isMobileBrowser() || _isSafari() || _isIOS()`. It is also **awaited before `initializeCurrentUser`**, so on those browsers the signed-in state itself waits for the iframe. Desktop Chrome does not do this, which is why it is invisible from a laptop.
+
+Which resource matters is cheap to prove before changing code: `lighthouse <url> --blocked-url-patterns='*firebaseapp.com*' --blocked-url-patterns='*apis.google.com*'`. Three runs each on production: as shipped 4.0–4.6 s, Korean web font (272 KB) blocked 2.3–2.4 s, the two auth origins blocked 1.5–1.6 s (one outlier 2.6).
+
+**해결:** start Auth without the resolver and pass it at the call sites:
+
+```ts
+const auth = initializeAuth(app, { persistence: [browserLocalPersistence, indexedDBLocalPersistence] });
+await signInWithPopup(auth, provider, browserPopupRedirectResolver); // and linkWithPopup
+```
+
+Then warm the iframe up yourself, because the SDK loads it eagerly for a reason: Safari and phone browsers only allow a popup opened in the same turn as the tap, and the SDK opens it *after* the iframe has loaded. There is no public call for it; the SDK's own is reachable as
+
+```ts
+import { _getInstance } from "@firebase/auth/internal";
+void (_getInstance(browserPopupRedirectResolver) as any)._initialize(auth);
+```
+
+Run that 2.5 s after `load`, or at the first `pointerdown` / `pointermove` / `keydown` / `touchstart` / `scroll`, whichever comes first. `initializeAuth` throws if the app already has an Auth (hot reload), so fall back to `getAuth(app)` in a `catch`. Verified on production with a real Google account: sign out, popup, sign in, session cookies, still signed in after reload.
+
+Two measuring traps on the way: a local build without the `NEXT_PUBLIC_FIREBASE_*` values renders the button disabled and tests nothing (the web config is public and can be read out of the production bundle; `localhost` is an authorized domain by default, `127.0.0.1` is not). And Lighthouse on a shared test host is only as steady as its load: the same deploy gave LCP 1.4, 1.6, 3.2, 6.0 and 6.0 s in five consecutive runs while other sessions were measuring on the machine (load average 5–10), with FCP itself jumping to 3.9 s. Check `uptime` before trusting a run, and wait for load under 2.
 
