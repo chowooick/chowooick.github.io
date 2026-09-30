@@ -4065,3 +4065,13 @@ The file is the aligned but unsigned APK.
 
 **해결:** for device testing export with `--export-debug Android`, which signs with the debug keystore from the editor settings (`export/android/debug_keystore`); it installs over an earlier debug build with `adb install -r` and keeps the app data. Export plus install of an 87 MB APK took 15 s, so a phone is a practical edit-and-look loop. For a release build, check the exit code of the export, not the file.
 
+
+## GDT-203 — A Godot 3D web game that fills the screen at 844×390 can be unplayable at 390×844: the camera frames to width, so portrait zooms in and leaves the player off-screen
+
+`측정 2026-09-29 · Godot 4.7.2 Web (GL Compatibility) · window/stretch/mode="canvas_items", aspect="expand" · Chrome (headed) on an M1 Air, Playwright touch emulation`
+
+**증상:** a top-down 3D game loaded, drew its HUD and its on-screen stick, and took touch input at a 390×844 phone viewport — every sign a "plays in portrait" check looks for. The room itself was a blurred close-up of one wall: the player character and the NPC were outside the frame, and holding the stick for 7 s changed nothing visible. The same build at 844×390 showed the whole room, the player and every control, and the player walked.
+
+With `aspect="expand"` the 3D camera keeps its horizontal field of view and gains or loses vertical, but the visible world scales with the **narrow** dimension, so a portrait viewport magnifies the scene by the ratio of the two widths (here 844/390 ≈ 2.2×) instead of showing more of it. Nothing errors, nothing logs, and a screenshot of the title screen looks perfect, because 2D UI stretches correctly.
+
+**해결:** decide "portrait / landscape / desktop" from a real playthrough — start a game, move, and look at the frame — not from a successful load or a title-screen screenshot. The 2D UI passing at 390×844 says nothing about the 3D camera. If portrait has to work, drive `Camera3D.keep_aspect = KEEP_HEIGHT` (or raise `fov`/lift the camera) when the viewport is taller than it is wide; otherwise publish the game as landscape-only and say so.

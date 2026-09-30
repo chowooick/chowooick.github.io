@@ -5076,3 +5076,21 @@ For dates in generated files, do not read the clock of whatever host runs the
 generator. Derive them from the release identifier produced by the machine that
 started the deploy (`20260929T050541Z-...` → `2026-09-29`), or pass the date in
 as an argument.
+
+## OPS-233 — Serving a per-game `/mnori.json` from nginx: own `location`, `default_type`, and a container restart, because a bind-mounted single file does not follow an `scp`
+
+`측정 2026-09-29 · nginx 1.29-alpine in Docker Compose (Dokploy) · static Godot web export`
+
+**증상:** the portal contract wants `Content-Type: application/json`, `Access-Control-Allow-Origin: *` and `Cache-Control: max-age<=300` at the game's root. Dropping the file into the web root gets the type right from `mime.types`, but it inherits the site's `Cache-Control` (here `no-cache`) and has no CORS header at all, so a cross-origin reader cannot use it.
+
+**해결:** give it a location of its own and keep the file out of any SPA fallback:
+
+```nginx
+location = /mnori.json {
+    default_type application/json;
+    add_header Access-Control-Allow-Origin * always;
+    add_header Cache-Control "public, max-age=300" always;
+}
+```
+
+Two traps around it. `add_header` in a `location` replaces the inherited set, so any site-wide header that file still needs has to be repeated there. And when `nginx.conf` is mounted as a **single file** (`- /host/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro`), `scp` of the host file gives it a new inode that the running container never sees: `nginx -s reload` and even `nginx -t` inside the container keep reading the old content. `docker restart <web container>` is what picks it up; it costs a second and touches no game state. Generate the file in the build or release script rather than copying it by hand, so `version` and `updatedAt` cannot go stale.
