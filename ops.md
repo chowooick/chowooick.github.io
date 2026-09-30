@@ -5293,3 +5293,17 @@ The `gvar` table of the range-limited font no longer has an entry for every glyp
 **증상:** A page written for Korean used `word-break:keep-all` on its text. For `zh` and `ja` the rule was reset to `word-break:normal` so long lines wrap. At 390 px the header then showed each label as a vertical column, one character per line (`観 / 測 / 室 / に / …`), and the header grew to 250 px: Han and kana may break between any two characters, so a flex item that is allowed to shrink shrinks to the width of one character. Korean and Latin labels never did this because they only break at spaces.
 
 **해결:** Give short labels in flex rows (header controls, chips, buttons) `white-space:nowrap`, and keep `word-break:normal` only for running text. Check every translated page at 320 px and 390 px: the problem does not appear at desktop width, and a text search for leftover Korean does not see it.
+
+## OPS-247 — `rsync --delete` from the dev machine to a test host deletes the files Godot generated there: every new asset fails with `has no resource loaders (unrecognized file extension)`
+
+`측정 2026-09-30 · rsync 2.6.9 (macOS) · Godot 4.7.2 --headless --import on the test host`
+
+**증상:** the working tree is synced to a test Mac with `rsync -az --delete --exclude godot/.godot ...` before each test. New fonts were added on the dev machine; `godot --headless --import` on the test host imported them and the next test passed. After the next sync every preload of a new font failed:
+
+```
+SCRIPT ERROR: Parse Error: Preload file "res://assets/fonts/ZCOOLKuaiLe.subset.woff2" has no resource loaders (unrecognized file extension).
+```
+
+Godot writes `<asset>.import` (and `<script>.gd.uid`) next to the source files, not inside `.godot/`. They existed only on the test host, so `--delete` removed them, and without its `.import` file a `.woff2` is an unknown file to the loader. The message says nothing about a missing import.
+
+**해결:** after the first import on the test host, copy the generated files back and commit them: `rsync -az --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:project/godot/ godot/`. Or re-run `--import` after every sync. The same applies to any generator that writes beside its sources.

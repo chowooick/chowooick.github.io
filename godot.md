@@ -4287,3 +4287,54 @@ for whole-token text. Test it: every key in five languages, every key used by th
 no Hangul literal left in scripts, placeholders equal across languages. A regex for format specs
 must not allow the space flag: `%[-+0 ]*…[sdf]` reads "10% faster" and "25% de" as `% f` / `% d`
 and makes translators rewrite correct sentences; use `%(?:%|[-+0]*\d*(?:\.\d+)?[sdfcx])`.
+
+## GDT-217 — A `--script` SceneTree test is compiled before the autoloads exist: naming a class that uses one fails with `Identifier not found`, and the run never exits
+
+`측정 2026-09-30 · Godot 4.7.2-stable · macOS · --headless --script res://tests/x.gd`
+
+**증상:** a test script (`extends SceneTree`) called a static function of a `class_name` script (`Look.display_for("zh")`). That script mentions an autoload (`Sfx.play(...)`). The run printed:
+
+```
+SCRIPT ERROR: Compile Error: Identifier not found: Sfx
+          at: GDScript::reload (res://ui/look.gd:314)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+ERROR: Failed to load script "res://tests/strings_test.gd" with error "Compilation failed".
+```
+
+and then did not exit: `_initialize()` never reached its `quit()`, and the process sat at 0% CPU until it was killed (one run also crashed with signal 11 in the backtrace after the same errors). The same class compiles without error when the game runs, because by then every autoload is registered. Tests that only do `load("res://main.tscn")` inside `_initialize()` never see this.
+
+**해결:** do not name such a class at the top level of a `--script` test. Load it inside `_initialize()` and type the results by hand: `var Look: GDScript = load("res://ui/look.gd")`, `var f: Font = Look.display_for("zh")` (`:=` cannot infer through an untyped script). Reach autoloads with `root.get_node("Name")`. Run every `--script` test under a time limit (`perl -e 'alarm 90; exec @ARGV' -- godot ...` on macOS), because a compile error is a hang and not an exit code.
+
+## GDT-218 — A `Label` with autowrap inside a panel that is `reset_size()`d reports the height of one word per line: the panel comes out taller than the screen
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Web export and macOS · PanelContainer > VBoxContainer > Label`
+
+**증상:** a banner (`PanelContainer` pinned by its centre) sets its subtitle, switches the subtitle to `AUTOWRAP_WORD_SMART` with `custom_minimum_size.x = 450` when the text is wider than the window, and calls `reset_size()`. With a short Korean subtitle the branch was never taken. With the English one ("You are the Animals · Bear·Fox · you move first", wider than 450) the panel was drawn about 450 wide and taller than an 844-unit screen, with both labels outside the visible area: the screenshot showed only a large empty glass rectangle. The label was asked for its minimum height while its own width was still the old one, so the height was that of a column of single words.
+
+**해결:** for one-line captions that may be too long in another language, shrink the type instead of wrapping: loop `font.get_string_size(text, ALIGN_LEFT, -1, size).x > max_w` down to a floor and set `font_size`. The same banner then measured one line at 19 px in Spanish. Keep autowrap for labels whose container already has its width (a child of a `VBoxContainer` with a fixed minimum width wrapped correctly in the same build).
+
+## GDT-219 — Web export: a `.woff2` fetched at run time with `HTTPRequest` becomes a usable font with `FontFile.data = bytes`, and labels already on screen pick it up when it is added to a fallback chain
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Web export (single-threaded) · Chrome on an M1 Air · Noto Sans SC/JP static 600, 570 KB each`
+
+**증상:** a game in five languages needs glyphs for names players type. The strings of the game need 340 Chinese and 240 Japanese characters (36 to 116 KB per face as `.woff2`), but a set for typed names (GB 2312 level 1, 3,755 characters; JIS X 0208 level 1 plus kana) is 573 KB and 569 KB. Packing both costs every visitor 1.1 MB.
+
+**해결:** keep the small subsets in the pack and serve the large ones as plain files beside `index.html`. At run time: `HTTPRequest.request(new URL('fonts/', location.href).href + file)`, and in `request_completed` with status 200: `var f := FontFile.new(); f.data = body`, then append `f` to the `fallbacks` of the `FontVariation` the UI uses. Measured: the fetch finished within the first seconds of the title screen (`Look._names.keys()` reported `["zh"]` and `["ja"]` in the browser check), no error was logged, and no label had to be rebuilt. Put a `.gdignore` in the folder that holds those files so the editor does not import them into the pack, and copy the folder next to the export yourself (the export does not).
+
+## GDT-220 — Font coverage measured for a five-language UI: Jua has no accented Latin, ZCOOL KuaiLe has no kana, and Noto Sans SC/JP default to Thin unless instanced
+
+`측정 2026-09-30 · fontTools 4.60.2 cmap check · google/fonts main · Godot 4.7.2 FontFile.has_char()`
+
+**증상:** a Korean game set in Jua was translated to Spanish. Jua-Regular.ttf (2,519 code points) has none of `á é í ó ú ñ ü ¿ ¡`, so every accented letter would come from the fallback face inside a word. The Google Fonts "latin" subset of Jua has 97 glyphs (ASCII only).
+
+| Face | code points | Spanish accents | kana | Han |
+|---|---|---|---|---|
+| Jua | 2,519 | no | 0 | 0 |
+| Fredoka (variable wght, wdth) | 320 | yes | 0 | 0 |
+| ZCOOL KuaiLe | 7,053 | no | 0 | 6,766 |
+| M PLUS Rounded 1c ExtraBold | 8,201 | yes | 189 | 4,954 |
+| Mochiy Pop One | 14,293 | yes | 184 | 12,745 |
+| Noto Sans JP (variable) | 16,732 | yes | 189 | 12,747 |
+| Noto Sans SC (variable) | 30,890 | yes | 189 | 20,976 |
+
+**해결:** use a rounded Latin face with Latin-1 (Fredoka) as the display face for English and Spanish, and put each reader's own script first in the fallback chain (GDT-106). Instance the variable Noto faces to a static weight with `fontTools.varLib.instancer` after subsetting (the default instance is Thin, GDT-105; subset first, OPS-245). A test that loops over every character of every string and asserts `FontVariation.has_char()` on the chain found a real gap on its first run (日 of 日本語 was in the display subset but not in the body subset).
