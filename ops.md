@@ -4935,9 +4935,13 @@ registry at once and a three-stage Dockerfile built.
   `plutil -convert xml1 -o - /Library/Objective-See/LuLu/rules.plist | grep limactl`. No line means someone has
   to click Allow for `limactl` and `colima` on the console; it cannot be done over ssh without sudo. The same
   applies to any freshly installed unsigned binary that needs the network.
-- The first builds right after the rule was added still failed with
-  `failed to fetch anonymous token: … lookup auth.docker.io: i/o timeout` while `docker pull` of the same base image
-  worked; after pulling the base images once, the build passed. The cause of that was not found.
+- `docker build` of a Dockerfile whose `FROM` image is not in the local store still fails after that, in 30 s, with
+  `failed to fetch anonymous token: Get "https://auth.docker.io/token?…": dial tcp: lookup auth.docker.io: i/o timeout`
+  (3 of 3), while `docker pull` of the same image works. The registry token is fetched by the **`docker-buildx`
+  client on the host**, not by the daemon in the VM, and that binary is a third one with no LuLu rule:
+  `docker buildx imagetools inspect debian:bookworm-slim` times out the same way in 31 s while host `curl` to the
+  same token URL answers 200 in 0.14 s. Either allow `~/.docker/cli-plugins/docker-buildx` on the console too, or
+  `docker pull` every `FROM` image first: with the image local the same build passed in 1 s, no token needed.
 - The VM holds its memory (6GB here) while running: `colima stop` after use on a shared 16GB host.
 
 ## OPS-228 — Empty-cache "first load MB" of a web game: count CDP `Network.loadingFinished.encodedDataLength`, not resource sizes; `~/kc-test` has no `playwright` package
