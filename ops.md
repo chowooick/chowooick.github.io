@@ -5510,3 +5510,38 @@ experimental: { globalNotFound: true },
 ```
 
 The build log then lists `✓ globalNotFound`, and all unmatched URLs return 404 with that page (verified with curl on `/nope`, `/a/b/c`, `/fr`, `/ko`, `/zh/nope`, `/en/games/nope`). The page is prerendered once, so it cannot know the URL's language on the server. To localise it without a hydration mismatch, read the path with `useSyncExternalStore(() => () => {}, () => localeFromPath(location.pathname), () => DEFAULT_LOCALE)` in a client provider: the server snapshot is used during hydration and the client value re-renders right after (set `document.documentElement.lang` in an effect). (Verified in Chrome: `/zh/nope` redraws in Chinese with no console error besides the 404 itself.)
+
+## OPS-257 — Android emulator exits with `No initial system image for this configuration!` when the SDK system-image folder lost its `.img` files; sdkmanager still reports it installed
+
+`측정 2026-09-30 · Android emulator 36.3.10 · system-images;android-35;google_apis;arm64-v8a r9 · macOS (Apple M1 Max)`
+
+**증상:** `emulator -avd <name>` printed `Found systemPath …/system-images/android-35/google_apis/arm64-v8a/`
+then `ERROR | No initial system image for this configuration!` and quit; `adb devices` stayed empty.
+The folder still had `package.xml`, `source.properties`, `kernel-ranchu` and `data/`, but
+`system.img`, `vendor.img` and `ramdisk.img` were gone (a disk cleanup had removed the large files).
+`sdkmanager --list` still listed the package as installed, so `--install` alone does nothing.
+Every AVD built on that image is broken the same way.
+
+**해결:** `sdkmanager --uninstall "system-images;android-35;google_apis;arm64-v8a"` then
+`sdkmanager --install` the same package (same revision, ~1.5 GB). The AVD folders are untouched; the
+AVD booted in 15 s afterwards with its old userdata.
+
+## OPS-258 — Android 35 emulator: `cmd locale set-system-locales` does not exist; switch the system language with `adb root` + `setprop persist.sys.locale` + `stop; start`
+
+`측정 2026-09-30 · Android 35 google_apis arm64 emulator (sdk_gphone64_arm64) · adb 36`
+
+**증상:** `adb shell cmd locale set-system-locales ko-KR` answers `Unknown command: set-system-locales`
+(API 35's `cmd locale` only has `set-app-locales`). `settings put system system_locales` does not
+change the running configuration, and the google_apis image has no `com.android.customlocale2` to
+broadcast `SET_LOCALE` to.
+
+**해결:** google_apis images allow root:
+
+```
+adb root
+adb shell "setprop persist.sys.locale ja-JP; stop; sleep 1; start"
+# wait ~20 s, then: adb shell am get-config  ->  config: …-ja-rJP-…
+```
+
+The framework restarts (not the VM), the launcher relabels apps in the new language, and apps
+launched afterwards see the new locale. Per-app locale needs no root: `cmd locale set-app-locales <pkg> --locales ja-JP`.

@@ -4525,3 +4525,29 @@ catches Godot's own emulation.
 - Related, same session: a menu that sets `get_tree().paused = true` also pauses the node whose
   `_process` flushes events to JavaScript, so the page heard `menu_open` only after the menu
   closed. Send UI events to the page immediately while the tree is paused.
+
+## GDT-229 — Android prebuilt export: the template's `es-rES`, `zh-rHK` and `zh-rTW` folders get the default label unless `config/name_localized` names them; `"es"` alone leaves a Spain phone on the default name
+
+`측정 2026-09-30 · Godot 4.7.2-stable headless, `--export-release`, `gradle_build/use_gradle_build=false` · aapt2 dump resources · Android 35 emulator launcher`
+
+**증상:** With `config/name_localized={"en": "Button", "es": "Botón", "ja": "ボタン", "zh": "按钮"}` and
+`config/name="버튼"`, a phone set to Spanish (Spain) showed the Korean default `버튼` in the app
+drawer, while English, Japanese and Chinese (China) phones showed their names. The template APK
+carries region folders for this string, and the exporter writes every folder it has:
+
+```
+$ aapt2 dump resources app.apk | grep -A200 godot_project_name_string
+  (es)     "Botón"
+  (es-rES) "버튼"     <- default, not the "es" entry
+  (zh)     "按钮"
+  (zh-rHK) "버튼"
+  (zh-rTW) "버튼"
+```
+
+Android picks the exact `es-rES` folder before falling back to `es`, so the default wins. `es-MX`,
+`es-US` and plain `es` are fine (no such folder). This extends GDT-225, which covers `zh_HK`/`zh_TW`
+but not `es_ES`. A project whose default name equals its Spanish name hides the problem.
+
+**해결:** Add `"es_ES"`, `"zh_HK"` and `"zh_TW"` keys next to `"es"` and `"zh"`, then check every
+region row of `godot_project_name_string` with `aapt2 dump resources` (the badging output does not
+list `es-ES`).
