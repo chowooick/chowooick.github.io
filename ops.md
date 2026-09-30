@@ -5179,3 +5179,12 @@ later, with 4.4G free, passed.
 exit status). Before an upload check `ssh <host> 'df -h /'`; under ~5G free on a shared build host, other apps'
 image builds can take the rest mid-upload. After a failed upload delete the half-written release folder before
 retrying, and always compare a served file's hash with the local build.
+
+## OPS-238 — A deploy to a shared Docker host fails at its first `mkdir` with "No space left on device": the build cache of every project's deploys had filled the disk
+
+`측정 2026-09-30 · Ubuntu host with Docker and Dokploy, 98 GB root volume shared by about 20 projects`
+
+**증상:** `ssh host "mkdir -p ~/project/releases/<release>"` failed with
+`mkdir: cannot create directory '...': No space left on device`. `df -h /` showed 98G size, 94G used, **0 available**, 100 %. Inodes were at 35 %. `docker system df`: Images 52.96 GB (35.75 GB reclaimable), Local Volumes 16.58 GB, **Build Cache 671 entries, 4.636 GB, 0 active**. Every project deploys by building an image on the host, and nobody prunes. The running sites still answered, so nothing alerted; the next thing to fail would have been a database write.
+
+**해결:** `docker builder prune -af` removes only the build cache: no image, container or volume is touched, and the next build is just slower. After it `df` showed 4.6 G available and the same deploy passed. Do not run `docker image prune -a` or `docker system prune` on a shared host: the unused images are other projects' rollback releases. Before a deploy run `df -h /` on the host; when it is above 90 %, report it to the owner, because the rest (old release images and release directories per project) is each project's own to clean. Related: OPS-005, OPS-237 (the same full host seen mid-upload).
