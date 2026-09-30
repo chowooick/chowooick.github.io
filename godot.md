@@ -4275,9 +4275,9 @@ Measured approach that kept every table and every reader:
   for the locale (`TranslationServer.add_translation`, `set_locale`). 5,193 `add_message` calls
   cost nothing noticeable, and such text follows a language switch with no code (signs in the 3D
   world).
-- `res://locale/strings.json` is not a resource: the Web export leaves it out until
-  `include_filter="locale/*.json"` is set in the export preset. The symptom is every string
-  showing as its key, only in the exported build.
+- `res://locale/strings.json` is not a resource, and an export preset with
+  `export_filter="all_resources"` packs resources only: set `include_filter="locale/*.json"`
+  (done before the first export here; the build without it was not run).
 - Same text under different keys is no longer equal: a table that grouped rows by a Korean label
   (`"농작물"` used as a dictionary key for four categories) split into four groups after the
   migration. Give such labels one shared key.
