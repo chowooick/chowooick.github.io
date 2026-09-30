@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T07:23:18Z · 소스 커밋 `210468b` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T13:30:00Z · 소스 커밋 `f861cb4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11994,4 +11994,20 @@ Two more things that cost time on the way:
 Grafana was back in 6 s and logged `finished to provision alerting` and `finished to provision dashboards`. Verify inside the container (`docker exec <c> grep -c <new text> /etc/grafana/provisioning/...`), not by the deployment status. The Grafana admin password in the container environment is only used at first start; if it was changed later, basic auth with the env value answers 401. Related: OPS-240.
 
 **Follow-up 4 (same day, OPS-240):** the Grafana dashboard `mnori-host` and the disk alerts only queried `mountpoint="/"`, so the new disk was collected by node-exporter but shown nowhere. Added three panels for `/mnt/hdd` and the rule `disk-hdd-backup`, whose query ends with `or on() vector(100)`: a missing mount evaluates to 100 %, so one rule covers both a full and an absent disk without relying on NoData handling. Deploying it needed OPS-243.
+
+## OPS-244 — Dokploy deploy fails in 10 s with `RPC failed; HTTP 401` on the git clone; the same deploy passes on retry
+
+`측정 2026-09-30 · Dokploy v0.30.7 · GitLab.com private repo over HTTPS · application build type dockerfile`
+
+**증상:** a CI job called `application.deploy`; the deployment row went to `error` ten seconds later. The CI log only says the row failed. The Dokploy log (`/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log`) shows the clone, not the build:
+
+```
+Cloning into '/etc/dokploy/applications/<appName>/code'...
+error: RPC failed; HTTP 401 curl 22 The requested URL returned error: 401
+fatal: expected flush after ref listing
+```
+
+The deploy before it (5 hours earlier) and the retry (4.5 minutes later) cloned the same repo with the same stored credentials and passed. Nothing was changed between the failure and the retry. The cause was not found: at that minute five other applications were deploying on the same host. The old container kept serving, so the site was not down, only stale.
+
+**해결:** read the Dokploy log before touching credentials: a 401 on a single clone is not proof that the token expired. Retry the failed job (`glab api -X POST projects/:id/jobs/<job id>/retry`); it redeploys the branch head. Note that a later push that changes no deployable path does not redeploy, so a failed deploy followed by a docs-only push leaves production on the old build with a green latest pipeline. Check the live site, not the newest pipeline.
 
