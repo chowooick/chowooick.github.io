@@ -1655,3 +1655,18 @@ connected app. It is not a Google OAuth client, even though it looks like one.
 **해결:** delete the Site from the ChatGPT/Codex app UI signed in as the Site owner (`get_site` returns the owner's
 email). Find the Site with `list_sites`; the project id is also in the repo's `.openai/hosting.json`. Remove the
 connected-app consent from that ChatGPT account's settings separately.
+
+## AGT-077 — Sub-agents started by one Claude Code session share that session's scratchpad directory: same-named helper files overwrite each other
+
+`측정 2026-09-30 · Claude Code (Agent SDK sub-agents) · macOS`
+
+**증상:** A sub-agent wrote `<scratchpad>/sheet.py`, used it twice, and on the third call the script failed with
+arguments it had never taken: the file now held another sub-agent's script of the same name. The scratchpad path
+(`/private/tmp/claude-<uid>/<project>/<session>/scratchpad`) is per parent session, not per sub-agent, and held the
+working files of every sibling (`BRIEF.md`, other games' logs and screenshots). The system prompt calls the
+directory "session-specific, isolated from the project", which reads as private to the agent; it is not.
+An `rsync --delete` into a generically named folder there (`shots/`) would have removed a sibling's files.
+
+**해결:** as the first step make a folder named after the task (`<scratchpad>/<project>/`) and keep every helper,
+log and screenshot under it. Never `rsync --delete`, `rm -rf` or overwrite at the scratchpad's top level. The same
+holds for fixed names on a shared test host (`/tmp/<project>-*.log`).

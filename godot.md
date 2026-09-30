@@ -4204,3 +4204,26 @@ MaruBuri (GDT-151) built every Korean and Latin character without this step.
 **증상:** Chinese and Japanese share code points with different shapes (直, 骨, 角). With one fallback order, one of the two languages is drawn with the other's glyphs; nothing logs. Separately, a string-table test (all keys present, no Hangul in other languages) passes while the screen shows boxes for characters the subset fonts lack.
 
 **해결:** build the body font per language: a `FontVariation` on the base with `fallbacks = [JP, SC]` for Japanese and `[SC, JP]` otherwise, cached under a key that includes the language; drop the cache and rebuild the `Theme` when the player switches language. In the test, for each language walk every character of every string and assert `font.has_char(code)` on the font the game really uses (it follows fallbacks). Subset the CJK fonts from the same table in the same script, so a new string cannot ship without its glyphs (fontTools order: OPS-245; typed arrays: GDT-211). Fixed widths sized for Korean clip "Back", "Close", "Cerrar": size buttons from `font.get_string_size()` and shrink one-line drawn text to fit instead of letting `draw_string` cut it; check Spanish at phone width first.
+
+## GDT-214 — `godot --headless --export-release` exits 0 and writes the pack when a script does not parse: the build ships and boots to nothing
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Web export, macOS host`
+
+**증상:** A GDScript edit assigned to a property through a `const` (`const FONT = preload(...)` then
+`FONT.fallbacks = [...]`). The export printed
+
+```
+SCRIPT ERROR: Parse Error: Cannot assign a new value to a constant.
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+ERROR: Failed to load script "res://scripts/main.gd" with error "Parse error".
+```
+
+in the middle of its progress output, finished with `[ DONE ] savepack`, wrote `index.pck` and exited 0. A build
+script using `subprocess.run(..., check=True)` carried on and produced a deployable bundle whose main script cannot
+load. Nothing after the export step complained.
+
+**해결:** capture the export's stdout and stderr and stop the build when either contains `SCRIPT ERROR`
+(`capture_output=True, text=True`, then re-print both so the log is not lost). A faster check before exporting is a
+headless script that `load()`s every `.gd` and counts failures. For the assignment itself, go through a local
+variable (`var font: FontFile = FONT; font.fallbacks = [...]`): the constant forbids rebinding through its own name,
+not changing the resource it points to.
