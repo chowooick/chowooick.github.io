@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T04:58:24Z · 소스 커밋 `228d298` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T05:04:46Z · 소스 커밋 `a127262` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11562,4 +11562,25 @@ registry at once and a three-stage Dockerfile built.
   `failed to fetch anonymous token: … lookup auth.docker.io: i/o timeout` while `docker pull` of the same base image
   worked; after pulling the base images once, the build passed. The cause of that was not found.
 - The VM holds its memory (6GB here) while running: `colima stop` after use on a shared 16GB host.
+
+## OPS-228 — Empty-cache "first load MB" of a web game: count CDP `Network.loadingFinished.encodedDataLength`, not resource sizes; `~/kc-test` has no `playwright` package
+
+`측정 2026-09-29 · MacBook Air M1 · Playwright 1.62 + installed Chrome · Chrome DevTools Protocol`
+
+**증상:** The MNORI game manifest asks each game for `firstLoadMB`, the bytes a first visit downloads before it
+can be played. `performance.getEntriesByType("resource")` under-reports (`transferSize` is 0 for cross-origin
+responses without Timing-Allow-Origin, e.g. Google Fonts and jsDelivr), and Playwright's `response.body()` gives
+decoded, not transferred, size. Running the measuring script from `~/kc-test` on the Air fails with
+`Cannot find package 'playwright'` — that directory only has `playwright-core`.
+
+**해결:**
+- Attach a CDP session, `Network.enable`, `Network.clearBrowserCache`, and sum `encodedDataLength` from
+  `Network.loadingFinished`. It counts every request including cross-origin and websocket-upgrade ones, in
+  wire bytes, so gzip/brotli is reflected.
+- Take the total at two points: when the playable screen is interactive, and again after the first action that
+  starts play. For a WebGL/WASM game the second point can be a few hundred KB higher (a second physics build,
+  textures) — report that one.
+- For a package the script needs, make your own directory and symlink another project's modules:
+  `mkdir -p ~/work/<mine> && ln -sfn ~/work/button/node_modules ~/work/<mine>/node_modules`. Do not install
+  into another session's project.
 
