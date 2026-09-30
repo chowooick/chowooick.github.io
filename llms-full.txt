@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T05:21:52Z · 소스 커밋 `a537a7e` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T05:28:47Z · 소스 커밋 `8c0d200` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5039,6 +5039,23 @@ With `aspect="expand"` the 3D camera keeps its horizontal field of view and gain
 The drags had all started on a `Button` (a map card filling the width). A `Button` grabs the touch and never passes it to the `ScrollContainer` above it, so nothing pans. The same gesture started on a gap or a `Label` — 20 px of margin at the right edge, or the "CPU 상대" heading — scrolled the container on the first try and revealed the button.
 
 **해결:** when deciding `mobile: yes|landscape|desktop` or QAing a phone layout, start the drag on empty space or a label, never on a control, before concluding a screen cannot be scrolled. On a real phone the same rule holds for the player, so a screen whose scrollable area is wall-to-wall buttons has no place left to drag: leave a gutter or give the container `follow_focus` plus a visible scrollbar.
+
+
+## GDT-205 — Web export, custom shell: an image the boot screen loads with `new Image()` queues behind the engine's wasm/pck download; set `fetchPriority = 'high'`
+
+`측정 2026-09-29 · Godot 4.7.2 Web export (single-threaded) · headed Chrome on an M1 Air, CDP throttle 40 Mbit/s, 58.6 MB wasm+pck`
+
+**증상:** a custom HTML shell created its boot-screen picture (258 KB WebP) with `new Image()` before calling `engine.startGame()`. A 10 KB mask requested the same way showed at once, but the picture was still missing at 41 % of the download (6.5 s) and only appeared somewhere before 78 %. An off-DOM image is a low-priority request; the engine's `fetch()` calls for the wasm and pck are high priority and take the bandwidth first.
+
+**해결:** set `image.fetchPriority = 'high'` before `image.src` (or use `<link rel="preload" as="image" fetchpriority="high">`). Same run after the change: `performance.getEntriesByType('resource')` reports the picture's `responseEnd` at 0.35–0.42 s from a local server and 1.8 s from the live site. Check it with a throttled run; an unthrottled local server hides the problem.
+
+## GDT-206 — Web export: a "ready" call sent from the game after `frame_post_draw` can reach the page before `engine.startGame()` resolves
+
+`측정 2026-09-29 · Godot 4.7.2 Web export (single-threaded) · headed Chrome on an M1 Air`
+
+**증상:** the game called `JavaScriptBridge.eval("window.gameReady()")` after `await RenderingServer.frame_post_draw` (GDT-190), and the shell's `startGame().then(...)` set a "STARTING" label and a 94 % cap. The boot screen showed `100 %` with the label `STARTING`: the ready call had already run, and the `.then` callback ran after it and overwrote the state. Order between the two is not guaranteed.
+
+**해결:** make both handlers idempotent and order-free: keep a `finished` flag set by the ready call, return early from `.then` when it is set, and only ever raise the progress target (`target = Math.max(target, x)`). Related: GDT-188 (late `onProgress`), GDT-190 (when to send ready).
 
 ---
 
