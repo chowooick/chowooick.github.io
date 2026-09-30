@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T05:04:46Z · 소스 커밋 `a127262` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T05:04:57Z · 소스 커밋 `08404da` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11583,4 +11583,38 @@ decoded, not transferred, size. Running the measuring script from `~/kc-test` on
 - For a package the script needs, make your own directory and symlink another project's modules:
   `mkdir -p ~/work/<mine> && ln -sfn ~/work/button/node_modules ~/work/<mine>/node_modules`. Do not install
   into another session's project.
+
+## OPS-229 — Dokploy raw-compose redeploy returns Traefik 404 for seconds; roll a second container with the same config hash and drain the old one by health check
+
+`측정 2026-09-30 · Dokploy v0.30.7 (misa), docker compose v5.0.2 host / v5.5.1 in Dokploy, Traefik v3.6.7, nginx 1.30`
+
+**증상:** Every `compose.deploy` of a one-container web service answered `404 text/plain` on the whole host for
+some seconds: compose stops the old container before the new one is healthy, and Traefik has no server for the
+router. A daily checker that happened to fetch in that window reported the file as missing.
+
+Facts that make a gapless swap possible without Swarm:
+- Traefik's Docker provider skips a container whose health status is `starting` or `unhealthy`, and re-reads on
+  `health_status` events. A health check is therefore a routing switch.
+- Dokploy writes the compose file it runs (Traefik labels and networks injected) to
+  `/etc/dokploy/compose/<appName>/code/docker-compose.yml` and `.env`, world-readable, regenerated each deploy.
+- `docker compose config --hash web` on that file with the host's compose gave the same hash as the
+  `com.docker.compose.config-hash` label Dokploy's newer compose had set, so a container started by hand from that
+  file counts as up to date for Dokploy's own `up`.
+- When `up` scales a service down, compose removes obsolete (hash-diverged) containers first.
+
+**해결:** Before calling `compose.deploy` (after `compose.saveEnvironment`):
+1. Copy the generated `.env` with only the image tag variable changed and run
+   `docker compose -p <appName> -f <code>/docker-compose.yml --env-file <copy> up -d --no-deps --no-recreate --scale web=2 web`.
+   The old container stays; a second one starts on the new image with the same labels.
+2. Wait until the new container is `healthy`, then a few seconds for Traefik.
+3. Make the old one fail its check and wait for `unhealthy`: health check
+   `test ! -e /tmp/drain && wget -q -O /dev/null http://127.0.0.1:8080/healthz` (interval 5s, retries 3,
+   `start_interval: 1s`), then `docker exec <old> touch /tmp/drain` (works with `read_only: true` when `/tmp` is tmpfs).
+4. Call `compose.deploy`. Dokploy's `up` keeps the new container and removes the drained one.
+Measured: 1164 requests at about 7 a second across a deploy, 0 failed; before, the gap was visible to a checker.
+Limits: the container number grows each release (`-web-3`), so find it by the `com.docker.compose.service` label,
+not by the name `-web-1`. A release that edits the compose file changes the hash and Dokploy recreates the
+container, gap included. Wait for the deployment record with your title to be `done`; the rolled container already
+runs the new image, so an image check alone passes before Dokploy has started. Do not roll a service whose
+upstream restarts in the same deploy (nginx resolves upstream names at startup).
 
