@@ -4909,3 +4909,33 @@ with a sarong) pass the input stage.
 **해결:** treat the tool's ceiling as fashion glamour and swimwear. Lingerie, bedroom scenes and arousal wording
 (lip biting, "sensual", "teasing", "inviting gaze") are refused on the words alone, so the refusal is fast and costs
 no generation. Do not plan adult-rated pin-up art on this tool; choose the content level first, then the tool.
+
+## OPS-227 — Docker on a Mac with no brew and no sudo: colima + lima + docker CLI under `~/.local`; LuLu silently blocks the new binaries, so the VM boots with no network
+
+`측정 2026-09-29 · MacBook Air M1, macOS 27.0.1 · colima 0.10.3, lima 2.2.0, docker CLI 29.8.1, buildx 0.37.1 · LuLu (alert mode) · ssh key auth, no sudo`
+
+**증상:** `colima start` over ssh failed twice with `error resolving download URL '…colima-core/releases/download/v0.10.4/ubuntu-24.04-minimal-cloudimg-arm64-docker.raw.gz': … DNS lookup failed for host 'github.com'`
+and then `connection timed out`, while `curl` to the same URL on the same host worked. Once the VM was up (image
+fetched by hand), every pull failed with `lookup registry-1.docker.io on 192.168.5.1:53: read udp …: i/o timeout`
+and `curl https://1.1.1.1` inside the VM timed out; `--dns 1.1.1.1` changed nothing. The host has LuLu in alert
+mode: a binary with no rule raises a prompt on the console screen, nobody on ssh sees it, and the connection just
+hangs. `/Library/Objective-See/LuLu/rules.plist` (root-owned, world-readable) had no entry for `colima` or
+`limactl`; `curl` is Apple-signed and allowed. All VM traffic leaves through the `limactl` host agent, so one
+missing rule takes the whole VM offline. After the owner allowed both binaries on the console, the VM reached the
+registry at once and a three-stage Dockerfile built.
+
+**해결:**
+- Install without brew: `colima-Darwin-arm64` → `~/.local/bin/colima`; `lima-<v>-Darwin-arm64.tar.gz` unpacked to
+  `~/.local/opt/lima` with `bin/*` symlinked into `~/.local/bin` (it needs its `share/lima` beside it);
+  `docker` from `download.docker.com/mac/static/stable/aarch64/docker-<v>.tgz`; `buildx-v<v>.darwin-arm64` →
+  `~/.docker/cli-plugins/docker-buildx`. `colima start --vm-type vz` needs no qemu and no sudo.
+- If colima cannot download its disk image, fetch the `.raw.gz` with `curl` and pass `--disk-image <file>.raw.gz`.
+  Pass the **compressed** file: a gunzipped `.raw` is refused with `SHA512 checksum mismatch`.
+- On a host with LuLu, check the rules before debugging DNS:
+  `plutil -convert xml1 -o - /Library/Objective-See/LuLu/rules.plist | grep limactl`. No line means someone has
+  to click Allow for `limactl` and `colima` on the console; it cannot be done over ssh without sudo. The same
+  applies to any freshly installed unsigned binary that needs the network.
+- The first builds right after the rule was added still failed with
+  `failed to fetch anonymous token: … lookup auth.docker.io: i/o timeout` while `docker pull` of the same base image
+  worked; after pulling the base images once, the build passed. The cause of that was not found.
+- The VM holds its memory (6GB here) while running: `colima stop` after use on a shared 16GB host.
