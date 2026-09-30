@@ -4103,3 +4103,11 @@ The drags had all started on a `Button` (a map card filling the width). A `Butto
 **증상:** the game called `JavaScriptBridge.eval("window.gameReady()")` after `await RenderingServer.frame_post_draw` (GDT-190), and the shell's `startGame().then(...)` set a "STARTING" label and a 94 % cap. The boot screen showed `100 %` with the label `STARTING`: the ready call had already run, and the `.then` callback ran after it and overwrote the state. Order between the two is not guaranteed.
 
 **해결:** make both handlers idempotent and order-free: keep a `finished` flag set by the ready call, return early from `.then` when it is set, and only ever raise the progress target (`target = Math.max(target, x)`). Related: GDT-188 (late `onProgress`), GDT-190 (when to send ready).
+
+## GDT-207 — A hand-sized `VBoxContainer` with autowrapped labels stays as tall as their first-pass minimum, so its bottom row leaves the panel on narrow screens
+
+`측정 2026-09-30 · Godot 4.7.2-stable · desktop window 780×1688 and Web export at 390×844`
+
+**증상:** a modal set `body.size = panel_size - margins` once (and on `resized`), then added `AUTOWRAP_WORD_SMART` labels, an expanding spacer and a button row. On a wide screen it looked right. On a phone-width screen the buttons were gone: no 이전/다음, and with no Esc key the modal could not be closed. Printed: panel 528×600, `body.size.y` **6,070**, button row at y = 6,022, while `body.get_combined_minimum_size().y` was already back to 395. A control's size cannot be below its minimum, so the assignment was raised to the labels' first-pass minimum (GDT-154: one word per line before the width is known). When the minimum later shrinks, a container that is not inside another container is not shrunk back. Nothing logs.
+
+**해결:** re-apply the size when the minimum changes: `body.minimum_size_changed.connect(_layout_panel, CONNECT_DEFERRED)`. Same run afterwards: body 552, row at y = 504, inside the panel. Narrower widths wrap more, so check modals at phone width, not only at the design size.
