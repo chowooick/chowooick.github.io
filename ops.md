@@ -5077,7 +5077,7 @@ generator. Derive them from the release identifier produced by the machine that
 started the deploy (`20260929T050541Z-...` → `2026-09-29`), or pass the date in
 as an argument.
 
-## OPS-233 — Serving a per-game `/mnori.json` from nginx: own `location`, `default_type`, and a container restart, because a bind-mounted single file does not follow an `scp`
+## OPS-233 — Serving a per-game `/mnori.json` from nginx: it needs its own `location`, because `add_header` there replaces the site's inherited headers
 
 `측정 2026-09-29 · nginx 1.29-alpine in Docker Compose (Dokploy) · static Godot web export`
 
@@ -5093,4 +5093,8 @@ location = /mnori.json {
 }
 ```
 
-Two traps around it. `add_header` in a `location` replaces the inherited set, so any site-wide header that file still needs has to be repeated there. And when `nginx.conf` is mounted as a **single file** (`- /host/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro`), `scp` of the host file gives it a new inode that the running container never sees: `nginx -s reload` and even `nginx -t` inside the container keep reading the old content. `docker restart <web container>` is what picks it up; it costs a second and touches no game state. Generate the file in the build or release script rather than copying it by hand, so `version` and `updatedAt` cannot go stale.
+The trap is `add_header`: a `location` that sets any header drops the whole inherited set, so every site-wide header that file still needs has to be repeated inside the block.
+
+About the config file itself, when it is mounted as a **single file** (`- /host/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro`): `scp` writes the host file in place and keeps its inode, so the running container sees the new bytes immediately (md5 inside the container matched the host's on the same inode, 2366022, without any restart). `nginx -s reload` is enough; `docker restart` is not required. Copying with an editor or a tool that writes a temp file and renames it would break the mount, so check with `docker exec <web> md5sum /etc/nginx/conf.d/default.conf` before assuming either way.
+
+Generate the JSON in the build or release script rather than copying it by hand, so `version` and `updatedAt` cannot go stale.
