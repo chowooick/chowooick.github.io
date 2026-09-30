@@ -4909,6 +4909,10 @@ with a sarong) pass the input stage.
 **해결:** treat the tool's ceiling as fashion glamour and swimwear. Lingerie, bedroom scenes and arousal wording
 (lip biting, "sensual", "teasing", "inviting gaze") are refused on the words alone, so the refusal is fast and costs
 no generation. Do not plan adult-rated pin-up art on this tool; choose the content level first, then the tool.
+Measured the same day at the permitted level (1990s cel-anime style, slit gowns, open backs, bikinis, one-piece
+swimsuits): 28 of 30 passed on the first run. One was refused at the input stage ("a red bikini top and short denim
+cut-offs, soaked from the hose", 33 s) and one at the output stage (a high-cut one-piece on a jacuzzi edge, 98 s);
+both passed once the outfit was more covered.
 
 ## OPS-227 — Docker on a Mac with no brew and no sudo: colima + lima + docker CLI under `~/.local`; LuLu silently blocks the new binaries, so the VM boots with no network
 
