@@ -5320,3 +5320,11 @@ bash would have passed the unmatched pattern through and carried on.
 **해결:** mark the glob as allowed to match nothing: `rm -f /tmp/f-*.log(N)`, or name the files. After starting a
 detached job over ssh, confirm it with `pgrep -f job.sh`. Do not count with `ps | grep` inside the same ssh
 command: the remote shell's own command line contains the pattern and adds one to the count.
+
+## OPS-249 — Dokploy `compose.deploy` is accepted at once but can start minutes later when other projects are deploying; a 300 s wait gave up on a good deploy
+
+`측정 2026-09-30 · Dokploy v0.30.7 · one host, several projects deploying in the same hour`
+
+**증상:** a deploy script called `compose.deploy`, then polled `compose.one` and `docker ps` for up to 300 s and stopped with "containers did not become healthy". Nothing was wrong with the containers. The Dokploy log for that deployment (`/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log`) did not exist yet: the file appeared 5.5 minutes after the API call, and the compose `up` then finished in seconds. Earlier the same day the same call started within seconds. Deployments are queued host-wide, so the delay depends on what other projects are doing.
+
+**해결:** tell "queued" from "failed" by the log file: no new file under `/etc/dokploy/logs/<appName>/` means Dokploy has not started. Wait at least 15 minutes before giving up, and do not retry the API call meanwhile (a second call queues a second deployment). If the script records release state only after the wait, a timeout leaves the state file one release behind even though production is on the new one; check the state file after any timeout. Related: OPS-244.
