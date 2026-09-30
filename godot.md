@@ -4001,3 +4001,33 @@ Values while the keyboard was up, printed from `_process`: `virtual_keyboard_get
 주소가 있는지 `grep -q`로 확인하고 없으면 빌드를 실패시킨다. 빌드가 실패하면 Dokploy는 이전
 컨테이너를 계속 띄우므로 태그 빠진 버전이 운영에 나가지 않는다. 배포 후 점검의 실패 문구에는
 고칠 저장소와 파일을 적는다.
+
+## GDT-199 — A Godot 4.7.2 web export has no partial start: the whole `index.wasm` + `index.pck` lands before the shell can report `ready`, so "MB to playable" equals total transfer
+
+`측정 2026-09-29 · Godot 4.7.2 · Chrome 141 · nginx 1.29 (gzip_static)`
+
+**증상:** measuring what a first visit downloads before a Godot web game can be played, the figure at the
+shell's `ready` event, at the title screen and after a course was running were all the same number. There is
+no point at which some of the payload is still arriving while the player can already do something.
+
+The game (KIDS, `https://kids.mnori.com/`, 390x844 portrait, CDP cache disabled, bytes counted with
+`Network.loadingFinished.encodedDataLength` per OPS-228):
+
+```
+atReady 12.43 MB · atTitle 12.43 · atCoursePlaying 12.43 · total 12.43 · 35 requests · 26.2 s
+index.wasm 10.06 · index.pck 1.79 · hero art .32 · everything else < .08
+```
+
+Two consequences for a manifest or a load budget:
+
+- Do not build a "playable at X MB, rest streams in" story into a number you publish. Measure at the first
+  moment the player can act; for a stock web export it is the same as the total.
+- The build script's own gzip total understates the wire figure. `scripts/build.py` printed `12.0 MB gzip
+  total` for the same build: it sums only the `.gz` files it wrote, missing the images, fonts and the WebM
+  that nginx serves uncompressed. The gap was 0.43 MB (3.5%), enough to cross an integer boundary.
+
+Content that is not in the boot payload is the only way to move this: GDT-167 streamed art and music out of
+`index.pck` and cut 34.4 MB to 13.3 MB.
+
+**해결:** count bytes to the first playable moment, not to `load`; expect it to equal the total for a stock
+web export, and read it off the browser rather than off the build's gzip sum.
