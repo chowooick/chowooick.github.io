@@ -5493,3 +5493,20 @@ HAVING max(started_at) > now() - interval '1 day'
 ```
 
 `FILTER (WHERE ok)` with the `COALESCE` gives a source that ran but never succeeded 999, where `WHERE ok` would have dropped the source entirely. The `HAVING` lets a retired source drop out after a day. When every source stops, the query returns no rows, so the rule needs `noDataState: Alerting`. After changing inline `configs:` content, Grafana needs `up -d --force-recreate grafana` (the container hash does not cover config content).
+
+## OPS-256 — Next.js with two root layouts (`app/(ko)` + `app/[locale]`) serves Next's own unstyled 404 for every unmatched URL; `experimental.globalNotFound` fixes it
+
+`측정 2026-09-30 · Next.js 16.3.2 (App Router, `next start`) · React 19.2`
+
+**증상:** a site moved to two root layouts so `<html lang>` could differ per language: `app/(ko)/layout.tsx` for unprefixed paths and `app/[locale]/layout.tsx` with `generateStaticParams` + `dynamicParams = false` for `/en`, `/zh`, … Build and tests pass. Then `/nope`, `/a/b/c`, `/fr` and `/zh/nope` all return 404 with Next's built-in page (`<h1 class="next-error-h1">404</h1>`, `<title>404: This page could not be found.</title>`, no header, no styles). `app/(ko)/not-found.tsx` and `app/[locale]/not-found.tsx` are ignored for these, because an unmatched URL (and a `dynamicParams = false` miss, including an unknown slug under the dynamic root) has no layout to render a segment `not-found` in. `notFound()` thrown inside a page still uses its segment's `not-found.tsx`.
+
+Workarounds that look tempting and are worse: dropping `dynamicParams = false` and calling `notFound()` for an unknown locale makes every bot path (`/wp-login.php`) an on-demand render cached as an ISR entry; a `[...rest]` catch-all at the root loses to `[locale]` for single-segment paths; a proxy/middleware runs on every request.
+
+**해결:** turn on the documented flag and add `app/global-not-found.tsx`, which must return a full `<html><body>` and import its own global CSS:
+
+```ts
+// next.config.ts
+experimental: { globalNotFound: true },
+```
+
+The build log then lists `✓ globalNotFound`, and all unmatched URLs return 404 with that page (verified with curl on `/nope`, `/a/b/c`, `/fr`, `/ko`, `/zh/nope`, `/en/games/nope`). The page is prerendered once, so it cannot know the URL's language on the server. To localise it without a hydration mismatch, read the path with `useSyncExternalStore(() => () => {}, () => localeFromPath(location.pathname), () => DEFAULT_LOCALE)` in a client provider: the server snapshot is used during hydration and the client value re-renders right after (set `document.documentElement.lang` in an effect). Reading `usePathname()` or `location` directly during render instead gives a hydration error on every non-default-language 404.
