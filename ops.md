@@ -5307,3 +5307,16 @@ SCRIPT ERROR: Parse Error: Preload file "res://assets/fonts/ZCOOLKuaiLe.subset.w
 Godot writes `<asset>.import` (and `<script>.gd.uid`) next to the source files, not inside `.godot/`. They existed only on the test host, so `--delete` removed them, and without its `.import` file a `.woff2` is an unknown file to the loader. The message says nothing about a missing import.
 
 **해결:** after the first import on the test host, copy the generated files back and commit them: `rsync -az --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:project/godot/ godot/`. Or re-run `--import` after every sync. The same applies to any generator that writes beside its sources.
+
+## OPS-248 — zsh: a glob with no match aborts the whole command line, so `rm -f /tmp/x-*.log; nohup …` starts nothing
+
+`측정 2026-09-30 · zsh 5.9 (macOS), command sent over ssh`
+
+**증상:** `ssh host 'rm -f /tmp/f-*.log; (nohup zsh -l job.sh &)'` printed `zsh:1: no matches found: /tmp/f-*.log`
+and the job never started. `rm -f` does not help: zsh refuses the line before `rm` runs. Thinking it had started,
+I launched it again later, and on the run where the logs did exist two copies ran at once and wrote the same logs.
+bash would have passed the unmatched pattern through and carried on.
+
+**해결:** mark the glob as allowed to match nothing: `rm -f /tmp/f-*.log(N)`, or name the files. After starting a
+detached job over ssh, confirm it with `pgrep -f job.sh`. Do not count with `ps | grep` inside the same ssh
+command: the remote shell's own command line contains the pattern and adds one to the count.
