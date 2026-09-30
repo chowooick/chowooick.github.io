@@ -3899,3 +3899,20 @@ engine runs on `requestAnimationFrame`, and only the front target was getting fr
 
 **해결:** `Page.bringToFront` on the page before reading or clicking it (and before a screenshot). With that one
 call the same check passed all 19 assertions, including the one that had timed out.
+
+## GDT-194 — `WebSocketPeer.close()` finishes later, in `poll()`: a `close()` then an immediate reconnect reports the clean close as an unexpected drop, and the reconnect happens twice
+
+`측정 2026-09-29 · Godot 4.7.2-stable · hand-written SpacetimeDB client (GDScript), Web export on production and headless native`
+
+**증상:** on sign-in, the client logged `disconnected (unexpected): 1000 bye` and then connected twice as the same
+identity. On sign-out it did the same. The code called `close()` and then `open()` in the same frame.
+`WebSocketPeer.close(1000)` only starts the handshake. `STATE_CLOSED` shows up frames later, in the `_process`
+that polls the peer. By then `open()` had already reset the "closing on purpose" flag, so the close was reported as
+a dropped line. The reconnect-with-back-off path then dialled a second time. The two dials also shared one
+`HTTPRequest`, and the second `request()` returned `ERR_BUSY` (44). A test that does `close(); open(token)`
+reproduces it natively: 5 of 11 assertions fail.
+
+**해결:** do not reuse one flag across connections. In `close()`, report the deliberate disconnect at once. Then
+move the peer to a "retiring" list that `_process` polls until `STATE_CLOSED`, and it emits nothing more. At the
+start of `open()`, retire whatever came before and call `cancel_request()` on the token `HTTPRequest`. Also give
+every dial a generation number, so a stale async callback (token fetch, back-off timer) does nothing.
