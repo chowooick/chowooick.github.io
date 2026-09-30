@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T00:09:04Z · 소스 커밋 `e6ab81b` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T00:10:33Z · 소스 커밋 `8aa2d3f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4806,6 +4806,52 @@ parent is frozen: the button looked enabled but the page did not react. Frames a
 get_tree().process_frame` twice so the browser paints, set it back to `false` and await `frame_post_draw`.
 A/B on the M1 Air, headed, three runs each: old 6.4–6.9 s, new 6.6–6.9 s to a responsive page — the two
 skipped 3D frames cost nothing measurable. Time boot in headed Chrome; headless numbers are 3–6x too slow.
+
+## GDT-191 — Movie Maker on macOS: the project's `window_width_override` beats `--resolution`, and a frame the window does not draw is missing from the movie while `_process` keeps running
+
+`측정 2026-09-29 · Godot 4.7.2-stable · Compatibility · MacBook Air M1 (2× display), --write-movie .avi --fixed-fps 30`
+
+**증상:** `godot --path godot --resolution 1920x1080 --write-movie raw.avi …` logged
+`recording movie in 1440×810` — the project's `display/window/size/window_width_override=1440` /
+`window_height_override=810`, not the flag. A later 1080p take logged `5715 frames at 30 FPS` while
+`Engine.get_process_frames()` had reached 10,932; the footage froze at the same frame from about the fifth minute
+of the run, with game time (tweens, timers, network) still advancing underneath. Another session's windowed Godot
+test was open on the same display during that run. Marks keyed to `Engine.get_process_frames()` then point past the
+end of what was recorded.
+
+**해결:** put the size in an `override.cfg` beside `project.godot` for the run (`[display]
+window/size/window_width_override=1920` and `window_height_override=1080`; on a 2× screen that is a
+960 × 540 pt window, which fits). Run with `--always-on-top` (and `caffeinate -d`) so the window keeps drawing, key
+every mark to `Engine.get_frames_drawn()` — one per movie frame — and fail the run when
+`get_process_frames() - get_frames_drawn()` grows. With those three the next take wrote 9,787 frames for
+9,770 marked. MJPEG at `editor/movie_writer/mjpeg_quality=0.92` was about 180 KB a frame (1.9 GB for 5.5 min).
+A run that is killed leaves an AVI with no index: `ffmpeg -i raw.avi -map 0:v -c copy footage.mkv` once makes it
+seekable. An fps-measuring quality ladder sees exactly the fixed fps (30 here), so force its level from the
+command line.
+
+## GDT-192 — `Control.reset_size()` ignores `grow_horizontal`: a control pinned by its centre ends up starting at the centre
+
+`측정 2026-09-29 · Godot 4.7.2-stable · Web export, headless Chrome screenshot at 390 × 844`
+
+**증상:** a `PanelContainer` anchored at `(0.5, 1)` with `offset_left = offset_right = 0` and
+`GROW_DIRECTION_BOTH` sat centred until its label got a larger minimum width and the layout code called
+`reset_size()`. After that the panel's left edge was at the screen centre and its right half ran off the screen.
+`reset_size()` sets the size by moving `offset_right`/`offset_bottom` whatever the grow direction says.
+
+**해결:** do not call `reset_size()` on an anchored control. Set its offsets back to the anchor point
+(`offset_left = offset_right = x`) and let the minimum size re-apply along `grow_*` on the next layout — that path
+honours the grow direction.
+
+## GDT-193 — Web export under CDP: a page that is not the front target gets no animation frames, so a Godot build in it stops dead
+
+`측정 2026-09-29 · Godot 4.7.2 Web export (single-threaded) · Chrome 154, one browser with several targets from Target.createTarget, M1 Air`
+
+**증상:** a check opened a second page in the same browser (second player of a room), and the first page's
+game state stopped changing: it never saw the deal the server had already sent, and a wait on it timed out. The
+engine runs on `requestAnimationFrame`, and only the front target was getting frames.
+
+**해결:** `Page.bringToFront` on the page before reading or clicking it (and before a screenshot). With that one
+call the same check passed all 19 assertions, including the one that had timed out.
 
 ---
 
