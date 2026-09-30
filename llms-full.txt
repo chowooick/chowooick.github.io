@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T00:42:20Z · 소스 커밋 `e82daf4` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T00:57:19Z · 소스 커밋 `94470dd` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4869,6 +4869,24 @@ reproduces it natively: 5 of 11 assertions fail.
 move the peer to a "retiring" list that `_process` polls until `STATE_CLOSED`, and it emits nothing more. At the
 start of `open()`, retire whatever came before and call `cancel_request()` on the token `HTTPRequest`. Also give
 every dial a generation number, so a stale async callback (token fetch, back-off timer) does nothing.
+
+## GDT-195 — Web export: reveal the scene a few meshes per frame to spread first-draw shader compiles; the page's longest freeze on a Pixel went from 9.8 s to 2.7 s
+
+`측정 2026-09-29 · Godot 4.7.2 Compatibility Web export (single-threaded) · Pixel 7 Pro, Android 17, Chrome 154`
+
+**증상:** GDT-190's fix (report ready after the first drawn frame) still left one long task: the frame that first
+draws the room compiled every material's shaders. On the phone the page could not repaint for 9.8 s, and a
+recording showed the loading bar parked at 82% for 8.7 s. CSS `transform` transitions started just before a
+long task did not keep advancing on this phone.
+
+**해결:** hide every visible `GeometryInstance3D` after building, then show them in batches, one batch per frame,
+awaiting `RenderingServer.frame_post_draw` between batches and reporting `shown / total` to the page. Start at
+2 pieces, double while a frame takes under 50 ms, halve over 150 ms (cap 64). Also build the scene one
+section per `await get_tree().process_frame`, with `get_viewport().disable_3d = true` until the reveal (GDT-187)
+and `set_process(false)` on scripts that assume the scene is complete.
+Measured on the phone: longest freeze 2.7 s (engine start before `_ready`, cannot be split), then no frame over
+1.2 s; loading-bar stall 1.1 s; 44–47 progress reports instead of 3; total download→ready 9.9 s → 8.8 s.
+For the remaining engine-start freeze, a CSS `@keyframes` sweep on `transform` kept moving in the recording.
 
 ---
 
