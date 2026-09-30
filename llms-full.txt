@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T01:13:41Z · 소스 커밋 `463ab04` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T01:51:06Z · 소스 커밋 `e13e503` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -4887,6 +4887,40 @@ and `set_process(false)` on scripts that assume the scene is complete.
 Measured on the phone: longest freeze 2.7 s (engine start before `_ready`, cannot be split), then no frame over
 1.2 s; loading-bar stall 1.1 s; 44–47 progress reports instead of 3; total download→ready 9.9 s → 8.8 s.
 For the remaining engine-start freeze, a CSS `@keyframes` sweep on `transform` kept moving in the recording.
+
+## GDT-196 — A custom Godot 4.7.2 web template for a procedural 3D game: 39.5 MB → 22.8 MB engine (3.7 MB brotli); `target` in the SCons profile is ignored, and `deprecated=no` breaks scripts at load
+
+`측정 2026-09-29 · Godot 4.7.2-stable source · Emscripten 4.0.11 · SCons 4.11.1 · built on an M1 Air (8 cores) · Chrome headed`
+
+**증상:** the stock `web_nothreads_release` engine is 39,514,754 bytes (6.9 MB brotli 11). A game that builds its 3D
+world in GDScript (meshes, Label3D, CPU particles, shaders; no physics, navigation, audio streams or complex scripts)
+downloads code it never runs.
+
+**해결:** a profile file passed with `profile=`:
+
+```python
+platform = "web"; target = "template_release"; threads = "no"; lto = "full"
+disable_physics_2d = "yes"; disable_physics_3d = "yes"; disable_navigation_2d = "yes"
+disable_navigation_3d = "yes"; disable_xr = "yes"; disable_advanced_gui = "yes"
+modules_enabled_by_default = "no"
+module_gdscript_enabled = "yes"; module_freetype_enabled = "yes"
+module_text_server_fb_enabled = "yes"; module_webp_enabled = "yes"
+```
+
+- **`target` in the profile was ignored:** the first build produced `template_debug`. Pass `platform=web
+  target=template_release` on the command line as well.
+- **`deprecated = "no"` broke the game at load:** `Parse Error: Static function "create()" not found in base
+  "GDScriptNativeClass"` for `Image.create(...)` (use `Image.create_empty`), then every script depending on it failed
+  and the page sat at "loading 99 %". Untyped calls to removed APIs would only fail at run time, so keep `deprecated`.
+- **The fallback text server draws Hangul** (precomposed syllables) in Label3D with a TTF font; no HarfBuzz or ICU needed.
+- Result: 22,766,673-byte wasm, 3,708,341 bytes with brotli 11 (5.5 MB template zip). Release build 14 min 50 s on the
+  Air (a debug build of the same profile 8 min).
+- Cold first visit on the live site, Chrome headed on the Air, 3 runs each, stock → custom: 10 Mbps throttle, manor
+  ready 10.3–11.2 s → 7.6–8.0 s; Wi-Fi 5.2–5.5 s → 4.2–5.2 s.
+- Point the preset at it with `custom_template/release="res://engine/web_nothreads_release.zip"` and put a `.gdignore`
+  in `engine/`; the export reads the `res://` path.
+- `emsdk` needs Python ≥ 3.10 (`EMSDK_PYTHON=`); the macOS system Python 3.9 fails with
+  `emsdk requires python 3.10 or above`.
 
 ---
 
