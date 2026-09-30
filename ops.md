@@ -5393,3 +5393,38 @@ the CSS too:
 Vite appends its `<link>`s after it, so the order no longer depends on how the bundler chunks the
 CSS. Check after any change that can re-chunk the build (top-level await, new dynamic imports,
 `manualChunks`): `grep -o '<link[^>]*stylesheet[^>]*>' dist/index.html`.
+
+## OPS-252 — nginx: one static page per language chosen by `?lang=`, a cookie, then `Accept-Language`, with four `map`s; `add_header` in that location drops the server's COOP/COEP
+
+`측정 2026-09-30 · nginx 1.30-alpine · static Godot Web export, 11 request cases in a throwaway container`
+
+**증상:** A static game page needs `<title>`, `og:title` and the description in the visitor's
+language before any script runs (link previews, crawlers). The build writes `index.ko.html` …
+`index.es.html`; nginx has no `if` chain that reads well for "query, else cookie, else the first
+supported entry of Accept-Language, else English". Putting `add_header Content-Language` in the
+`location = /` block also silently removed the server-level `Cross-Origin-Opener-Policy` and
+`Cross-Origin-Embedder-Policy` headers for that location (any `add_header` in a location replaces
+the inherited list), which a threaded or SharedArrayBuffer build cannot lose.
+
+**해결:** in `http {}`:
+
+```nginx
+map $arg_lang $lang_from_arg { default ""; "~^(?<l>ko|en|zh|ja|es)$" $l; }
+map $cookie_mnori_lang $lang_from_cookie { default ""; "~^(?<l>ko|en|zh|ja|es)$" $l; }
+map $http_accept_language $lang_from_browser { default en; "~*(?:^|,)\s*(?<l>ko|en|zh|ja|es)(?:[-;,]|$)" $l; }
+map "$lang_from_arg:$lang_from_cookie" $page_lang {
+    default $lang_from_browser;
+    "~^(?<l>[a-z][a-z]):" $l;
+    "~^:(?<l>[a-z][a-z])$" $l;
+}
+```
+
+and `location = / { try_files /index.$page_lang.html /index.html =404; add_header Content-Language $page_lang always; add_header Vary "Accept-Language, Cookie" always; … }`
+with every server-level `add_header` repeated inside. The Accept-Language regex is unanchored, so
+the leftmost entry that starts with a supported primary tag wins: `fr-FR,de;q=0.8,ja;q=0.5,en;q=0.4`
+→ ja, `zh-TW,zh` → zh, `es-419` → es, `eo,ko` → ko (the `(?:[-;,]|$)` keeps `eo` from matching
+`es`… and `en-US,en,ko` → en), `fr` alone → en. An unknown `?lang=xx` falls through to the cookie
+and header. Check the config before it replaces a live container:
+`docker run --rm --add-host <upstream>:127.0.0.1 -v $PWD/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.30-alpine nginx -t`
+(`proxy_pass` to a hostname fails `nginx -t` with "host not found in upstream" unless the name
+resolves, hence `--add-host`).
