@@ -5163,3 +5163,19 @@ Two measuring traps on the way: a local build without the `NEXT_PUBLIC_FIREBASE_
 `/Library/Developer/PrivateFrameworks` did not exist. `xcodebuild -runFirstLaunch` printed `Install Started` then `Install Failed: 패키지를 설치하려면 인증이 필요합니다.` and `xcodebuild -checkFirstLaunchStatus` exited 69. Being in the `admin` group does not help when `sudo` asks for a password.
 
 **해결:** someone with the password has to do it once on that Mac: open Xcode and accept the component install, or run `sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch`. After that `xcodebuild -downloadPlatform iOS` fetches a simulator runtime (a new Xcode has none: `xcrun simctl list runtimes` is empty). Copying Xcode.app from another Mac into `~/Applications` does not avoid this step.
+
+## OPS-237 — A release upload to a 97%-full host fails mid-`tar` and leaves 0-byte files; `deploy.sh | tail -1` hides the failure
+
+`측정 2026-09-30 · misa (Ubuntu, / 98G, 90G used, 3.2G free), `tar -czf - … | ssh misa "tar -xzf - -C <release>"`, several apps building at the time`
+
+**증상:** the upload printed only `tar: Exiting with failure status due to previous errors` (GNU tar on the host). The
+release folder existed with every file of `build/web` at 0 bytes, and the deploy step never ran, so production kept
+serving the previous release. The caller had piped the deploy script through `| tail -1` inside an `&&` chain: the
+pipe's status was `tail`'s 0, so the chain went on to verification and to removing the build folder. The mismatch
+showed only because the verification compared the served `index.pck` hash with the local one. A retry a few minutes
+later, with 4.4G free, passed.
+
+**해결:** never pipe a deploy script into `tail`/`grep` without `set -o pipefail` (or redirect to a log and test the
+exit status). Before an upload check `ssh <host> 'df -h /'`; under ~5G free on a shared build host, other apps'
+image builds can take the rest mid-upload. After a failed upload delete the half-written release folder before
+retrying, and always compare a served file's hash with the local build.
