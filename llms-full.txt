@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-29T23:54:40Z · 소스 커밋 `936e502` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T00:09:04Z · 소스 커밋 `e6ab81b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11252,4 +11252,47 @@ location ~* \.wasm\.br$ {
   release without it. `brotli -q 11` on the 39.5 MB engine took about 75 s on an M1 Max; cache it by content hash.
 - Effect on a cold first visit throttled to 10 Mbps (CDP), three runs each: the engine finished downloading at
   11.3–11.4 s before and 7.4–8.2 s after; unthrottled on Wi-Fi, 2.5–3.6 s → 2.1–2.3 s.
+
+## OPS-221 — `codex exec -i <landscape art>` redraws the same character in a 2:3 frame, but the figure grows: ask for "about 42%" and "the central 60% of the width" to land near 50%
+
+`측정 2026-09-29 · codex-cli 0.154.0 built-in image tool · 8 characters + 1 retry, 1536x1024 references → 1024x1536 outputs`
+
+**증상:** a game needed a tall (2:3) version of eight approved landscape (3:2) splash illustrations. Text-only prompts
+drift off-model (OPS-139), and cropping the landscape art to 2:3 keeps only 44% of its width.
+
+Attaching the approved landscape image with `-i`, asking for "portrait 1024x1536" in the instruction, and adding
+"Draw the SAME character as a new portrait-format illustration: identical face, eye colour, hairstyle, outfit,
+accessories, props, colour palette, rendering style and setting. Only the framing and the pose change; do not copy the
+landscape image by cropping or stretching it" gave 8 of 8 on-model redraws (same face, outfit, props, background world)
+with clean hands, 104–138 s each, three in parallel without rate limits. Unlike OPS-139's same-shape variants, the
+framing did change here: the outputs are genuine 2:3 compositions.
+
+The figure fills more of a tall frame than the prompt asks. Silhouette share of the image (macOS Vision instance mask):
+
+| Prompt | Result |
+| --- | --- |
+| "covers roughly 40-50% of the image", three-quarter body | 61.4% (1 run) |
+| "only about 42%", "occupies roughly the central 60% of the image width", "background visible on BOTH sides", "nothing touches the left or right edge" | 50.8–57.8% (8 runs) |
+
+**해결:** redraw with `-i <approved art>` rather than re-prompting, keep the reference outside the output folder, and
+budget about 10 points of overshoot on area targets in a tall frame (ask for ~42% to get ~50–58%).
+
+## OPS-222 — The shared Pixel locks itself after the screen timeout, and adb cannot open a secure keyguard: verify web builds in desktop Chrome as a phone instead of waiting for a person
+
+`측정 2026-09-29 · Pixel 7 Pro · Android 17 · adb 1.0.41 · screen_off_timeout 1800000`
+
+**증상:** a session came back to the USB phone about 40 minutes after its last command and found it dozing:
+`dumpsys power` → `mWakefulness=Dozing`, `dumpsys window` → `isKeyguardShowing=true`, `mDreamingLockscreen=true`.
+`input keyevent KEYCODE_WAKEUP` woke the screen, but `wm dismiss-keyguard` only raised the fingerprint prompt
+(`mCurrentFocus=Window{… AlternateBouncerView}`), and a swipe up went back to the always-on display.
+`locksettings get-disabled` printed `false`: the lock is a secure one (PIN plus fingerprint), so nothing over adb opens it.
+
+The phone locks whenever no session touches it for `screen_off_timeout` (here 30 min), so any session that pauses for a
+long build or image generation can come back to a locked phone.
+
+**해결:** do not retry unlock tricks. For a web build, run the phone check in desktop Chrome on the Air as the phone:
+Playwright context with the phone's CSS viewport, `isMobile`, `hasTouch` and an Android Chrome User-Agent, Chrome with
+`--use-angle=metal` for WebGL2, and CDP `Input.dispatchTouchEvent` for multi-finger input (GDT-174). Check the physical
+phone early in a task, while it is still awake, and use `adb shell dumpsys window | grep isKeyguardShowing` before planning
+on it.
 
