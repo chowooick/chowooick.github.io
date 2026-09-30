@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T02:40:07Z · 소스 커밋 `bdeb2ff` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T02:41:23Z · 소스 커밋 `f42e05d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6597,6 +6597,25 @@ held 3.2 GB, and a Next.js `.next` held 1 GB.
 and move the work to another machine when free space is under ~10 GB. If a session is already stuck, a person (or
 a process outside Claude Code, e.g. ssh from another box) has to delete something first; then clear caches, not
 other sessions' files.
+
+## AGT-076 — `codex exec` cannot delete a ChatGPT Site: `sites.delete_site` is in the apps cache but never reaches the model
+
+`측정 2026-09-29 · Codex CLI 0.154.0 · ChatGPT Sites (codex_apps)`
+
+**증상:** asked to delete a Site through `codex exec`, the model answered that the tool was unavailable, or failed
+with `TypeError: tools.mcp__codex_apps__sites_delete_site is not a function`. `sites.delete_site` is listed in
+`~/.codex/cache/codex_apps_tools/*.json`, but the model's own tool list (24 `mcp__codex_apps__sites_*` tools) has no
+delete, with `approval_policy` set to either `never` or `on-request`. Read tools (`list_sites`, `get_site`,
+`list_custom_domains`, `get_deployment_status`) and other mutations (`update_site_access`, `change_site_slug`) are
+present.
+
+A Site's `*.chatgpt.site` URL sits behind "Sign in with ChatGPT". The first visit asks the ChatGPT account to share
+its basic profile (name, email, picture) with an app named after the Site title, and that consent is listed as a
+connected app. It is not a Google OAuth client, even though it looks like one.
+
+**해결:** delete the Site from the ChatGPT/Codex app UI signed in as the Site owner (`get_site` returns the owner's
+email). Find the Site with `list_sites`; the project id is also in the repo's `.openai/hosting.json`. Remove the
+connected-app consent from that ChatGPT account's settings separately.
 
 ---
 
