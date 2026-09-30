@@ -5433,7 +5433,7 @@ and header. Check the config before it replaces a live container:
 (`proxy_pass` to a hostname fails `nginx -t` with "host not found in upstream" unless the name
 resolves, hence `--add-host`).
 
-## OPS-253 — Dokploy GitLab-provider deploy can error in ~2 s with `git clone` exit 128 on the deploy that refreshes the OAuth token; the errored row and its log are pruned within hours
+## OPS-253 — Dokploy GitLab-provider deploy can error in ~2 s with `HTTP Basic: Access denied` on the deploy that refreshes the OAuth token; the errored row and its log are pruned within hours
 
 `측정 2026-09-30 · Dokploy v0.30.7 · GitLab.com OAuth provider · application sourceType gitlab`
 
@@ -5444,8 +5444,15 @@ only `Error getting git commit info … fatal: not a git repository` and the clo
 file. It was the first deploy of any GitLab-sourced app on that host in eight hours, i.e. the one
 that ran `refreshGitlabToken` (Dokploy refreshes only when a deploy starts within 60 s of
 `gitlab.expires_at`; GitLab.com access tokens last 2 h). Re-requesting the deploy 5 min later
-succeeded with nothing changed. Cause not proven beyond that correlation: the log file was
-already deleted.
+succeeded with nothing changed.
+
+Reproduced the same day at 17:36:38 UTC, again on a refresh deploy (`expires_at` moved to
+19:36:38, the deploy's own second). The log file this time:
+`remote: HTTP Basic: Access denied … If a token was provided, it was either incorrect, expired, or
+improperly scoped` / `fatal: Authentication failed for 'https://gitlab.com/<ns>/<repo>.git/'`.
+The deploy requested 30 s later, with that same freshly issued token, cloned fine. So GitLab.com
+can reject an OAuth access token for a few seconds right after issuing it, and Dokploy clones
+immediately after refreshing. Not every refresh hits it (one at 15:27:28 the same day did not).
 
 Dokploy keeps a bounded number of deployment rows per app (11 observed) and deletes the log file
 (`/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log`) with the row, so after a few more deploys
