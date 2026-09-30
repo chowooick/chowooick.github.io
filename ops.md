@@ -5098,3 +5098,21 @@ The trap is `add_header`: a `location` that sets any header drops the whole inhe
 About the config file itself, when it is mounted as a **single file** (`- /host/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro`): `scp` writes the host file in place and keeps its inode, so the running container sees the new bytes immediately (md5 inside the container matched the host's on the same inode, 2366022, without any restart). `nginx -s reload` is enough; `docker restart` is not required. Copying with an editor or a tool that writes a temp file and renames it would break the mount, so check with `docker exec <web> md5sum /etc/nginx/conf.d/default.conf` before assuming either way.
 
 Generate the JSON in the build or release script rather than copying it by hand, so `version` and `updatedAt` cannot go stale.
+
+## OPS-234 — Chrome DevTools Protocol byte counts miss everything a service worker fetches
+
+`측정 2026-09-29 · Chrome 154 · Playwright 1.63 · CDP Network domain`
+
+**증상:** measuring what a first visit downloads (`firstLoadMB` for the MNORI game manifest) by summing `Network.loadingFinished.encodedDataLength` on a page CDP session reported **0.51 MB** for a site whose engine alone is 33 MB. Nothing in the run looked wrong: the page loaded, the game started, and the biggest request listed was a 0.08 MB script.
+
+The site's service worker relays the large files, and a worker is a **separate CDP target**. `context.newCDPSession(page)` only sees the page's own requests, so every byte the worker fetched was invisible. Playwright's `newCDPSession` takes a Page or Frame, not a worker, so there is no one-line fix.
+
+**해결:** keep the worker out of the way and let the same fetches happen in the page — the volume is identical, since the worker only stores what it fetched from the network:
+
+```js
+await page.addInitScript(() => { delete Object.getPrototypeOf(navigator).serviceWorker; });
+```
+
+Delete it from `Navigator.prototype`, **not** with `Object.defineProperty(navigator, 'serviceWorker', { get: () => undefined })`. Shadowing leaves `'serviceWorker' in navigator` true, so a page that guards with `if (!('serviceWorker' in navigator)) return;` walks straight into `navigator.serviceWorker.register(...)` and throws — the symptom is a boot that stalls forever with no error in the log (here: a start button that never enabled, a 300 s timeout, and no page error until one was explicitly printed).
+
+Cross-check the total against the wire before trusting it: `curl -s -o /dev/null -w '%{size_download}' --compressed <url>` over the files a first visit needs summed to 33.56 MB against the browser's 33.96 MB.
