@@ -4834,7 +4834,18 @@ budget about 10 points of overshoot on area targets in a tall frame (ask for ~42
 The phone locks whenever no session touches it for `screen_off_timeout` (here 30 min), so any session that pauses for a
 long build or image generation can come back to a locked phone.
 
-**해결:** do not retry unlock tricks. For a web build, run the phone check in desktop Chrome on the Air as the phone:
+**해결 (2026-09-29, 소유자 승인 후 적용):** `adb shell settings put global stay_on_while_plugged_in 7` (AC·USB·무선 충전 모두).
+충전 중에는 화면이 꺼지지 않으므로 잠기지도 않는다. `dumpsys power`에 `mStayOn=true`, `mStayOnWhilePluggedInSetting=7`로 확인한다.
+이미 잠긴 뒤에는 이 설정으로도 풀리지 않는다 — 한 번은 사람이 풀어야 한다. 밝기가 낮아도(`screen_brightness` 12) 화면이
+계속 켜져 있으므로 번인 위험은 남는다. 이 값은 공유 설정이니 끄지 말 것.
+
+폰이 켜져 있으면 실기기 Chrome도 CDP로 조작된다: `adb forward tcp:9333 localabstract:chrome_devtools_remote` →
+`http://127.0.0.1:9333/json/list`에서 대상 탭 id → 그 `webSocketDebuggerUrl`로 `Input.dispatchTouchEvent`(두 손가락)와
+`Page.captureScreenshot`을 보낸다. 측정: Pixel 7 Pro Chrome 뷰포트 411×794 CSS, DPR 3.5. 단 **다른 세션이 자기 앱을 앞으로
+띄우면 내 탭은 `visibilityState: hidden`이 되고 rAF가 0회로 멈춘다** — 화면 캡처가 같은 그림으로 굳어 "게임이 멈췄다"로
+오진하기 쉽다. 이상하면 `dumpsys window | grep mCurrentFocus`부터 본다. `json/list`는 개인 탭도 전부 보여 주니 대상 탭 외에는 건드리지 않는다.
+
+폰이 잠겨 있을 때의 대안: unlock 시도를 반복하지 말고, web build라면 Air의 desktop Chrome에서 폰처럼 확인한다:
 Playwright context with the phone's CSS viewport, `isMobile`, `hasTouch` and an Android Chrome User-Agent, Chrome with
 `--use-angle=metal` for WebGL2, and CDP `Input.dispatchTouchEvent` for multi-finger input (GDT-174). Check the physical
 phone early in a task, while it is still awake, and use `adb shell dumpsys window | grep isKeyguardShowing` before planning
