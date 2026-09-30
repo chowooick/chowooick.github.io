@@ -4877,3 +4877,17 @@ whose publish failed merely because the cookie is missing. Any origin that copie
 What worked: attach the art with `-i`, say "the attached image is the RIGHT part of a wider panorama; paint the part that continues to the LEFT", and require that "the RIGHT 30% of your output (the rightmost 460 pixels) must reproduce the LEFT 30% of the attached image as exactly as possible" (sun, horizon, bridge, colours), with the rest continuing the scene in low detail and no characters. Style, horizon, palette and light matched in 4 of 4 runs. The overlap is never at the nominal position: the best least-squares fit (RGB MSE over the original's edge strip, dx ±300, dy ±60) was 136 px off for the left extension and -128 px for the right one, both with 0 rows of vertical shift. MSE at the fit tells whether the seam will hide: 200 (left, sky and sea) and 750 (right, hotel front) were invisible after a 110-140 px linear feather at full resolution; 5465 (a right run that drew a different building) showed a jump in the sidewalk, so generate two and keep the lower one.
 
 **해결:** overlap 30%, align by search in a strip of the original that has only low-detail content (sky, sea, road; for a building side, restrict the alignment window to the rows above any figure), feather over that strip only, keep the original's pixels untouched, and store the generated continuations next to the art with the run ids. For the side where a character stands near the edge the model draws the character again in its overlap (whole or a sliver); the feather strip must be narrower than the gap between the character and the edge (here 60-110 px). Then draw the wide art so a chosen focus fraction of its width lands at a chosen fraction of the screen, clamped to the slack, instead of anchoring to an edge, or the characters end up on the screen's border.
+
+## OPS-225 — A Dokploy push can look like it never deployed: `last-modified` stays old when the export is unchanged, and builds queue behind other apps
+
+`측정 2026-09-30 · misa, Dokploy application build (Dockerfile), button-web-th6jrz`
+
+**증상:** after a push to `main`, the served `index.html` kept its old `last-modified` and `etag` for 25 minutes.
+That looked like a failed or missing deploy. It was neither. The build started 15 minutes after the push, because it
+was queued behind four other apps building on misa in the same window. It passed, and the new container came up healthy.
+The change was a new `RUN` check in the export stage, and the exported files were byte-identical. The later stages were
+`CACHED`, so the file nginx serves kept its old mtime.
+
+**해결:** do not use `last-modified` or `etag` to tell whether a deploy happened. Read the deploy logs:
+`ssh misa 'ls -t /etc/dokploy/logs/<appName>'`. A new timestamped log means a build ran. `tail` it to see the steps
+and whether it finished. Several apps pushing at once can hold a build in the queue for 10–15 minutes.
