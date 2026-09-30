@@ -4196,3 +4196,11 @@ vertex-count check does not catch it.
 the line was reworded to avoid it. In the check, read stdout and stderr together (`spawnSync`, join both) and fail on
 the text `Convex decomposing failed`, not on the exit code. In a browser test, fail on the same text in the console.
 MaruBuri (GDT-151) built every Korean and Latin character without this step.
+
+## GDT-213 — Five-language UI: Chinese and Japanese need opposite fallback orders, and only a per-character `has_char` test catches missing glyphs
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Pretendard base with Noto Sans SC / JP subsets as fallbacks`
+
+**증상:** Chinese and Japanese share code points with different shapes (直, 骨, 角). With one fallback order, one of the two languages is drawn with the other's glyphs; nothing logs. Separately, a string-table test (all keys present, no Hangul in other languages) passes while the screen shows boxes for characters the subset fonts lack.
+
+**해결:** build the body font per language: a `FontVariation` on the base with `fallbacks = [JP, SC]` for Japanese and `[SC, JP]` otherwise, cached under a key that includes the language; drop the cache and rebuild the `Theme` when the player switches language. In the test, for each language walk every character of every string and assert `font.has_char(code)` on the font the game really uses (it follows fallbacks). Subset the CJK fonts from the same table in the same script, so a new string cannot ship without its glyphs (fontTools order: OPS-245; typed arrays: GDT-211). Fixed widths sized for Korean clip "Back", "Close", "Cerrar": size buttons from `font.get_string_size()` and shrink one-line drawn text to fit instead of letting `draw_string` cut it; check Spanish at phone width first.
