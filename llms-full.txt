@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T07:08:59Z · 소스 커밋 `35f6353` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T07:18:53Z · 소스 커밋 `7ffb3ee` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11963,4 +11963,19 @@ retrying, and always compare a served file's hash with the local build.
 **증상:** `fetch('http://127.0.0.1:<port>/json/new?<url>', {method:'PUT'})` answered with the plain text `Could not create new page`, so `.json()` threw `Unexpected token 'C'`. A minute later every request failed with `SocketError: other side closed`: Chrome had left the foreground and its process was gone (`pidof com.android.chrome` empty, no `chrome_devtools_remote` in `/proc/net/unix`), while `adb forward --list` still showed the forward.
 
 **해결:** open the tab from Android, then attach to it: `adb shell am start -a android.intent.action.VIEW -d '<url>?r=<marker>' com.android.chrome`, wait a few seconds, find the tab in `/json/list` by the marker and connect to its `webSocketDebuggerUrl`. `Page.navigate` reloads it for a clean run and `Page.close` removes it afterwards. This also starts Chrome when it was not running. On a phone shared by sessions, read `dumpsys window | grep mCurrentFocus` before every `adb shell input`: another session's app may have taken the screen, and the tap lands there (AGT-044).
+
+
+## OPS-242 — A Nixpacks image of a Next.js standalone app is 1.67 GB and carries every secret in `docker history`; a three-stage Dockerfile makes it 319 MB, switched through the Dokploy API
+
+`측정 2026-09-30 · Dokploy v0.30.7 · Nixpacks (Ubuntu 24.04 + Nix base) · Next.js 16.3 standalone · Docker 28.5 · GitLab CI`
+
+**증상:** the app of OPS-240 kept producing 1.67 GB images. `docker history <app>:latest` gave the split: 810 MB `npm ci` (every dev dependency stays in the final image), about 600 MB base (Ubuntu 78 MB, apt 103 MB, Nix installer 165 MB, `nix-env` Node 252 MB), 103 MB `next build`, and the source tree copied three times (3 × 46 MB). The server that actually runs, `.next/standalone`, was 104 MB. The same `docker history --no-trunc` printed the database URL with its password and the base64 service-account key: Nixpacks declares every environment variable of the app as a build `ARG`, and ARG values are recorded in each `RUN` layer's metadata. Anyone in the `docker` group on the host can read them.
+
+**해결:**
+- Three stages on `node:22.11-slim`: `deps` (`npm ci` with a cache mount), `build` (`next build`), and a final stage that copies only `.next/standalone`, `.next/static`, `public/` and whatever the host reaches through `docker exec` (list those from the host's scripts before cutting: `grep -n "docker exec" ~/…/*.sh`). Result on the host: 319 MB, `USER node`, `docker history | grep -c DATABASE_URL` is 0.
+- `NEXT_PUBLIC_*` values are inlined at build, so they must be build arguments. With Dokploy's `dockerfile` build type, the app's Environment is **not** passed to the build; only "Build-time Arguments" are. A missing argument still builds, and ships a site with an empty Firebase config. Make the Dockerfile fail instead: a `RUN` that exits 1 when a required `ARG` is empty. A failed build leaves the previous container serving.
+- The switch needs no panel session: `POST /api/application.saveEnvironment {applicationId, env, buildArgs, buildSecrets, createEnvFile}` (send `env` back unchanged; `buildArgs` is the `KEY=value` lines) and `POST /api/application.saveBuildType {applicationId, buildType: "dockerfile", dockerfile: "Dockerfile", dockerContextPath: "", dockerBuildStage: "", herokuVersion, railpackVersion, publishDirectory, isStaticSpa}` with the `x-api-key` header, then read `application.one` back. Both answered 200. Save the settings before the push that adds the Dockerfile: a deploy in between fails the build and changes nothing.
+- Fewer deploys: GitLab `rules: - if: $CI_COMMIT_BRANCH == "main"` plus `changes:` with the paths the image is built from, on the deploy job and on every job that `needs` it. On the day of OPS-240, 20 of 31 pushes changed only docs, tests or check scripts. A pipeline started by hand ("Run pipeline") treats `changes` as true, which is the manual redeploy. Do not add auto-cancel of older pipelines on top: `changes` looks only at the newest push, so a docs push that cancels a pending app push leaves the app change undeployed.
+- Docker Desktop/colima with the containerd image store reported the same image as 494 MB (`docker images`) and 125 MB (`inspect .Size`); compare sizes on the host that runs it.
+- Swarm keeps 5 stopped tasks per service (`TaskHistoryRetentionLimit`), shown as `Exited (143)` after each redeploy. That is the normal SIGTERM of a replaced task, and each one pins its old image against `docker image prune`. Related: OPS-240, OPS-238.
 
