@@ -4500,3 +4500,28 @@ with a first font that has no U+0020.
 **해결:** Keep U+0020 in every subset that can come first in a chain, even a face meant for one
 script only (fontTools: add `0x20` to the unicodes passed to `Subsetter.populate`). It costs one
 empty glyph. To check a build, count the message in a run that opens every screen in `zh` and `ja`.
+
+## GDT-228 — Web: a tap is followed by the browser's own mouse events, and they arrive with `device` 0, not `DEVICE_ID_EMULATION`; a "last input device" switch that rebuilds the HUD on them can drop an awaited dialogue and softlock the game
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Web export · Chrome (Playwright, 390x844, isMobile, hasTouch, headed) · project has emulate_mouse_from_touch=false`
+
+**증상:** On a touch phone, the first tap in the opening dialogue left a new player on a black
+screen forever: the HUD appeared, the dialogue box vanished, the fade-in never ran. With a
+keyboard (same page, same size) the opening finished. The UI switched layout on the last input
+device (`ScreenTouch` → touch, `MouseButton` → keyboard, skipping
+`DEVICE_ID_EMULATION`), and each switch rebuilt the HUD, which freed the dialogue node; the story
+`await`ed its `finished` signal, which the new node never emitted.
+
+The skip did not help: with `emulate_mouse_from_touch=false` Godot emulates nothing, but the
+browser fires its compatibility `mousedown`/`mouseup` after the touch, and Godot's Web platform
+turns them into ordinary `InputEventMouseButton` with `device == 0`. GDT-030's filter only
+catches Godot's own emulation.
+
+**해결:**
+- Ignore mouse buttons for a short window after a touch (1.5 s here) when deciding the input
+  device: `if e is InputEventMouseButton and Time.get_ticks_msec() - last_touch_ms < 1500: return`.
+- Make any HUD rebuild re-open an open conversation (keep its lines and the current line index)
+  so nothing awaiting it is orphaned.
+- Related, same session: a menu that sets `get_tree().paused = true` also pauses the node whose
+  `_process` flushes events to JavaScript, so the page heard `menu_open` only after the menu
+  closed. Send UI events to the page immediately while the tree is paused.
