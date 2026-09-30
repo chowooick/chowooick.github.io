@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T16:11:45Z · 소스 커밋 `61a8b45` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T16:25:24Z · 소스 커밋 `88f408f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -12469,4 +12469,37 @@ in Korean and broke in the others:
   `innerWidth`, and every line of `document.body.innerText` that still has Hangul.
 - Spanish: a player's gender is unknown. "Han ejecutado a {n}" and "Sospecho de {t}" instead of
   "{n} ha sido ejecutado" and "{t} es sospechoso".
+
+## OPS-251 — Vite 8: a shared chunk's CSS is linked before the entry CSS, so an `@layer a, b, c;` order statement in the entry stylesheet arrives too late and the layer order inverts
+`측정 2026-09-30 · Vite 8.3.1 (rolldown) · Chrome 140 · CSS cascade layers`
+
+**증상:** a page that declares its layer order once, at the top of the entry stylesheet
+(`@layer reset, tokens, base, components, screens, utilities, overrides;`), built into a single
+`index-*.css` and rendered correctly. After the entry module gained a top-level `await` and a few
+dynamic `import()`s, the build split the component library into its own chunk and `dist/index.html`
+listed two stylesheets, the chunk first:
+
+```
+<link rel="stylesheet" crossorigin href="/assets/ui-kG8juHsH.css">      <- only `@layer components { … }`
+<link rel="stylesheet" crossorigin href="/assets/index-Bw5g2qMT.css">   <- carries the order statement
+```
+
+Layer order is fixed by the first time each name appears in the document, so `components` became
+the lowest layer and the reset outranked every component. Nothing errors. What showed: an `<h1>`
+with a component class stayed at 16 px (`h1 { font-size: inherit }` from `reset` beat
+`.logo { font-size: var(--logo-fs) }` from `components`), while the same class on a `<div>` was
+172.8 px. DevTools lists both rules as matching; only the layer order explains the winner. A probe
+that prints `CSSLayerStatementRule` / `CSSLayerBlockRule` per stylesheet in document order shows it
+at once.
+
+**해결:** state the layer order in the HTML, before any stylesheet link, and keep the statement in
+the CSS too:
+
+```html
+<style>@layer reset, tokens, base, components, screens, utilities, overrides;</style>
+```
+
+Vite appends its `<link>`s after it, so the order no longer depends on how the bundler chunks the
+CSS. Check after any change that can re-chunk the build (top-level await, new dynamic imports,
+`manualChunks`): `grep -o '<link[^>]*stylesheet[^>]*>' dist/index.html`.
 
