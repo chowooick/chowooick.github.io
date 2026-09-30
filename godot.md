@@ -4444,3 +4444,31 @@ application-label-fr:'Battle Marble'   (and every other language of the template
 **해결:** Put the languages in `config/name_localized`, add `zh_HK` and `zh_TW` explicitly if
 Traditional-locale phones should not fall back to the default, and set `package/name` to the
 label every other language should see. Check the result with `aapt2 dump badging`, no phone needed.
+
+## GDT-226 — Web: Label3D names in Chinese, Japanese or accented Latin need font fallbacks; add them with `set_fallbacks()`, and load the big CJK font lazily through `JavaScriptBridge.eval`
+`측정 2026-09-30 · Godot 4.7.2 (web, custom template with text_server_fb, no HarfBuzz)`
+
+**증상:** A `Label3D` using a bundled Korean font (NanumGothic) drew nothing for `José`, `レイヴン`
+or `瑞文`: the font had Hangul and plain ASCII only (checked with fontTools: `á é ñ ü`, all kana
+and all Han missing). The web build has no system fonts to fall back on.
+
+Setting fallbacks on a preloaded font is a parse error when written as an assignment:
+
+```
+const FONT = preload("res://assets/NanumGothic-Regular.ttf")
+FONT.fallbacks = [other]      # Parse Error: Cannot assign a new value to a constant.
+```
+
+**해결:**
+
+- `var list: Array[Font] = [FONT_KANA, FONT_HAN]` then `FONT.set_fallbacks(list)`. Every script that
+  preloads the same file shares the resource, so one call in `_ready` covers all labels. The
+  fallback text server (no HarfBuzz) uses the fallbacks for Latin, kana and Han.
+- Two small subsets in the pack cover accented Latin, kana and fixed names (55 KB + 6 KB).
+- Names players type need thousands of Han characters (GB 2312 + JIS level 1: 7,882 glyphs,
+  2.4 MB TTF, 1.6 MB gzipped). Fetch that only when a name needs it, without `HTTPRequest`:
+  `JavaScriptBridge.eval("fetch(url).then(r=>r.arrayBuffer()).then(b=>{window.f=new Uint8Array(b)})", true)`,
+  then poll `JavaScriptBridge.eval("window.f||null", true)`. A `Uint8Array` comes back as a
+  `PackedByteArray`; `var f := FontFile.new(); f.data = bytes`, add it with `set_fallbacks`, then
+  set each label's text to `""` and back so it is drawn again. `FONT.has_char(code)` tells whether
+  a name needs it (it checks that font only, not its fallbacks).

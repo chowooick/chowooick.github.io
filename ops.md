@@ -5328,3 +5328,35 @@ command: the remote shell's own command line contains the pattern and adds one t
 **증상:** a deploy script called `compose.deploy`, then polled `compose.one` and `docker ps` for up to 300 s and stopped with "containers did not become healthy". Nothing was wrong with the containers. The Dokploy log for that deployment (`/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log`) did not exist yet: the file appeared 5.5 minutes after the API call, and the compose `up` then finished in seconds. Earlier the same day the same call started within seconds. Deployments are queued host-wide, so the delay depends on what other projects are doing.
 
 **해결:** tell "queued" from "failed" by the log file: no new file under `/etc/dokploy/logs/<appName>/` means Dokploy has not started. Wait at least 15 minutes before giving up, and do not retry the API call meanwhile (a second call queues a second deployment). If the script records release state only after the wait, a timeout leaves the state file one release behind even though production is on the new one; check the state file after any timeout. Related: OPS-244.
+
+## OPS-250 — Adding Chinese/Japanese/Spanish to a Korean web UI: `word-break: keep-all`, `1fr` columns and `nowrap` buttons break at 320 px
+`측정 2026-09-30 · Chrome 140 · CSS`
+
+**증상:** A Korean-first page translated into five languages (GAME-LOCALES contract) looked right
+in Korean and broke in the others:
+
+- `body { word-break: keep-all }` (right for Korean) stops Chinese and Japanese from wrapping at
+  all: they have no spaces, so a sentence runs off the screen.
+- At 320 px the Spanish and Japanese pages scrolled sideways and every line was cut. The cause was
+  not the long text itself: one `white-space: nowrap` row (a top bar, a button row, a header with
+  a button) raised the min-content width of a grid whose column was `1fr` (= `minmax(auto, 1fr)`),
+  and the whole column became wider than the screen.
+- The display web font (Hahmlet) and Pretendard have no Han or kana: titles fell back to a system
+  face, or to none.
+
+**해결:**
+
+- `:root:lang(zh) body, :root:lang(ja) body { word-break: normal; line-break: strict }`, and for
+  Japanese `word-break: auto-phrase` after it (Chrome 119+; others ignore it and keep `normal`).
+- Every grid that holds translated text: `grid-template-columns: minmax(0, 1fr)`; grid and flex
+  children `min-width: 0`; button rows `flex-wrap: wrap` with `flex: 1 1 auto` (not `flex: 1`,
+  whose zero basis never wraps).
+- Title font for zh/ja: cut Noto Serif SC/JP down to the characters in the string table with
+  fontTools (830 characters, 239 KB woff2 for zh). Subset first, then
+  `instancer.instantiateVariableFont(font, {'wght': (700, 900)})`: the other order fails in the
+  subsetter with `KeyError: '.notdef'`. A test compares the table's characters with the list the
+  font was cut from, so a new string cannot ship without its glyphs.
+- Check by script, not by eye alone: at 320 px list every element whose right edge is past
+  `innerWidth`, and every line of `document.body.innerText` that still has Hangul.
+- Spanish: a player's gender is unknown. "Han ejecutado a {n}" and "Sospecho de {t}" instead of
+  "{n} ha sido ejecutado" and "{t} es sospechoso".
