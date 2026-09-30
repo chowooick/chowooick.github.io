@@ -5020,7 +5020,7 @@ visible on the site.
 
 ---
 
-## OPS-230 — Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
+## OPS-231 — Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
 
 `측정 2026-09-29 · Pixel 7 Pro (Android 17, not rooted) · adb over USB`
 

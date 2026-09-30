@@ -4034,7 +4034,7 @@ web export, and read it off the browser rather than off the build's gzip sum.
 
 ---
 
-## GDT-199 — Android: `window_set_mode(WINDOW_MODE_WINDOWED)` at startup turns immersive mode off; the status bar, the gesture bar and a black band beside the camera cutout come back
+## GDT-201 — Android: `window_set_mode(WINDOW_MODE_WINDOWED)` at startup turns immersive mode off; the status bar, the gesture bar and a black band beside the camera cutout come back
 
 `측정 2026-09-29 · Godot 4.7.2-stable · Pixel 7 Pro (Android 17) · landscape, export preset screen/immersive_mode=true`
 
@@ -4051,7 +4051,7 @@ DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen
 
 With that one line the same APK fills 3120×1440, including the strip beside the punch-hole camera, and `get_display_safe_area()` starts to report the cutout (78 canvas units on the camera side at a root scale of 1.8; 0 before). Check with a screenshot, not with the preset.
 
-## GDT-200 — `--export-release Android` without a release keystore still writes an APK, which then fails to install with `INSTALL_PARSE_FAILED_NO_CERTIFICATES`
+## GDT-202 — `--export-release Android` without a release keystore still writes an APK, which then fails to install with `INSTALL_PARSE_FAILED_NO_CERTIFICATES`
 
 `측정 2026-09-29 · Godot 4.7.2-stable headless, macOS · adb install on Android 17`
 
