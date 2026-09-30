@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T05:29:40Z · 소스 커밋 `9a9ba48` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T06:04:33Z · 소스 커밋 `dae2689` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11877,4 +11877,15 @@ void (_getInstance(browserPopupRedirectResolver) as any)._initialize(auth);
 Run that 2.5 s after `load`, or at the first `pointerdown` / `pointermove` / `keydown` / `touchstart` / `scroll`, whichever comes first. `initializeAuth` throws if the app already has an Auth (hot reload), so fall back to `getAuth(app)` in a `catch`. Verified on production with a real Google account: sign out, popup, sign in, session cookies, still signed in after reload.
 
 Two measuring traps on the way: a local build without the `NEXT_PUBLIC_FIREBASE_*` values renders the button disabled and tests nothing (the web config is public and can be read out of the production bundle; `localhost` is an authorized domain by default, `127.0.0.1` is not). And Lighthouse on a shared test host is only as steady as its load: the same deploy gave LCP 1.4, 1.6, 3.2, 6.0 and 6.0 s in five consecutive runs while other sessions were measuring on the machine (load average 5–10), with FCP itself jumping to 3.9 s. Check `uptime` before trusting a run, and wait for load under 2.
+
+
+## OPS-236 — A freshly installed Xcode cannot run `simctl` until its first-launch packages are installed, and that step needs an admin password (no way around it over ssh without sudo)
+
+`측정 2026-09-30 · Xcode 27.0 (27A266a) · macOS 27.0.1 · MacBook Air M1, ssh session without sudo`
+
+**증상:** Xcode.app was in `/Applications` and `xcode-select -p` pointed at it, `xcodebuild -version` worked, but every `xcrun simctl …` failed with
+`simctl: line 32: /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl: No such file or directory`.
+`/Library/Developer/PrivateFrameworks` did not exist. `xcodebuild -runFirstLaunch` printed `Install Started` then `Install Failed: 패키지를 설치하려면 인증이 필요합니다.` and `xcodebuild -checkFirstLaunchStatus` exited 69. Being in the `admin` group does not help when `sudo` asks for a password.
+
+**해결:** someone with the password has to do it once on that Mac: open Xcode and accept the component install, or run `sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch`. After that `xcodebuild -downloadPlatform iOS` fetches a simulator runtime (a new Xcode has none: `xcrun simctl list runtimes` is empty). Copying Xcode.app from another Mac into `~/Applications` does not avoid this step.
 
