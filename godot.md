@@ -4002,7 +4002,7 @@ Values while the keyboard was up, printed from `_process`: `virtual_keyboard_get
 컨테이너를 계속 띄우므로 태그 빠진 버전이 운영에 나가지 않는다. 배포 후 점검의 실패 문구에는
 고칠 저장소와 파일을 적는다.
 
-## GDT-199 — A Godot 4.7.2 web export has no partial start: the whole `index.wasm` + `index.pck` lands before the shell can report `ready`, so "MB to playable" equals total transfer
+## GDT-200 — A Godot 4.7.2 web export has no partial start: the whole `index.wasm` + `index.pck` lands before the shell can report `ready`, so "MB to playable" equals total transfer
 
 `측정 2026-09-29 · Godot 4.7.2 · Chrome 141 · nginx 1.29 (gzip_static)`
 
@@ -4031,3 +4031,37 @@ Content that is not in the boot payload is the only way to move this: GDT-167 st
 
 **해결:** count bytes to the first playable moment, not to `load`; expect it to equal the total for a stock
 web export, and read it off the browser rather than off the build's gzip sum.
+
+---
+
+## GDT-199 — Android: `window_set_mode(WINDOW_MODE_WINDOWED)` at startup turns immersive mode off; the status bar, the gesture bar and a black band beside the camera cutout come back
+
+`측정 2026-09-29 · Godot 4.7.2-stable · Pixel 7 Pro (Android 17) · landscape, export preset screen/immersive_mode=true`
+
+**증상:** the exported APK runs with the status bar on top, the gesture bar at the bottom and black bands left and right, although the preset has `screen/immersive_mode=true`. `adb exec-out screencap` shows the game in about 2976×1258 of the 3120×1440 panel (the same numbers GDT-197 measured as the window size).
+
+The cause was the project's own settings code, shared with desktop: it applied the saved "fullscreen" option on every platform, and the default is off, so it called `DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)` on the phone. On Android that call leaves immersive mode. Nothing is logged.
+
+**해결:** on mobile always ask for fullscreen, whatever the desktop option says:
+
+```gdscript
+var fullscreen := bool(get_value("graphics/fullscreen")) or OS.has_feature("mobile")
+DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+```
+
+With that one line the same APK fills 3120×1440, including the strip beside the punch-hole camera, and `get_display_safe_area()` starts to report the cutout (78 canvas units on the camera side at a root scale of 1.8; 0 before). Check with a screenshot, not with the preset.
+
+## GDT-200 — `--export-release Android` without a release keystore still writes an APK, which then fails to install with `INSTALL_PARSE_FAILED_NO_CERTIFICATES`
+
+`측정 2026-09-29 · Godot 4.7.2-stable headless, macOS · adb install on Android 17`
+
+**증상:** `godot --headless --path client --export-release Android out.apk` prints one warning in the editor language ("release keystore not found") and `ERROR: Project export for preset "Android" failed.`, but leaves an 87 MB `out.apk` behind. A script that only checks `test -s out.apk` goes on, and `adb install -r` fails with:
+
+```
+adb: failed to install out.apk: Failure [INSTALL_PARSE_FAILED_NO_CERTIFICATES: Failed to collect certificates from /data/app/vmdl….tmp/base.apk: Attempt to get length of null array]
+```
+
+The file is the aligned but unsigned APK.
+
+**해결:** for device testing export with `--export-debug Android`, which signs with the debug keystore from the editor settings (`export/android/debug_keystore`); it installs over an earlier debug build with `adb install -r` and keeps the app data. Export plus install of an 87 MB APK took 15 s, so a phone is a practical edit-and-look loop. For a release build, check the exit code of the export, not the file.
+

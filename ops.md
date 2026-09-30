@@ -5017,3 +5017,24 @@ Also measured on the same deploy:
 `X-Content-Type-Options: nosniff`; the COOP/COEP/Permissions-Policy set applies to documents, not to it. Verify with
 `curl -sI` after deploying and assert the three headers in the deploy script — a header lost this way breaks nothing
 visible on the site.
+
+---
+
+## OPS-230 — Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
+
+`측정 2026-09-29 · Pixel 7 Pro (Android 17, not rooted) · adb over USB`
+
+**증상:** testing on-screen sticks needs a finger that stays down, and a second finger for buttons.
+
+- One held finger works: `adb shell input motionevent DOWN x y`, then `MOVE x y` as often as needed, a `sleep`, a screenshot (`adb exec-out screencap -p > shot.png`) and `UP x y`. The game sees an ordinary touch and drag (`input swipe` cannot hold at the end, `input tap` cannot drag). Coordinates are pixels of the current orientation.
+- A second finger does not: writing multi-touch protocol B to the touchscreen node fails, although the shell user is in the `input` group and the node is `crw-rw---- root input`:
+
+```
+$ adb shell sendevent /dev/input/event4 0 0 0
+sendevent: /dev/input/event4: Permission denied
+```
+
+`adb shell input` has no multi-pointer command.
+
+**해결:** split the check. Test the multi-finger routing inside the engine, headless, with synthetic events that carry a touch index (Godot: `InputEventScreenTouch.index`, `Input.parse_input_event`), and use adb on the real phone for what only the phone shows: layout, safe area, single-finger feel. Real two-thumb play still needs a person. A person holding the phone also touches it while the script runs: a stick that looks "held" in a screenshot may be their thumb.
+
