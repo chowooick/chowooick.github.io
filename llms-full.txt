@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T17:30:38Z · 소스 커밋 `a3728e9` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T17:31:26Z · 소스 커밋 `15bced0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5425,6 +5425,34 @@ FONT.fallbacks = [other]      # Parse Error: Cannot assign a new value to a cons
   `PackedByteArray`; `var f := FontFile.new(); f.data = bytes`, add it with `set_fallbacks`, then
   set each label's text to `""` and back so it is drawn again. `FONT.has_char(code)` tells whether
   a name needs it (it checks that font only, not its fallbacks).
+
+## GDT-227 — `Invalid break insert count!` floods the log when the first font of a chain has no U+0020 and the text contains U+200B; keep the space in every subset
+`측정 2026-09-30 · Godot 4.7.2-stable · headless macOS (TextServerAdvanced) and Web export in Chrome · fontTools subsets of ZCOOL KuaiLe and Noto Sans SC`
+
+**증상:** After a Chinese display face was subset to Han only (no ASCII, so no U+0020), every
+Chinese string shaped with it printed
+`ERROR: Invalid break insert count!` / `at: _shaped_text_update_breaks (modules/text_server_adv/text_server_adv.cpp:6717)`.
+The Web build logged 200 of them in its first minute; a headless loop over the string table, 355.
+The strings carried U+200B break hints (GDT-223). Lines still wrapped where they should, so
+the only sign is the log.
+
+Measured with a `TextParagraph` per case (Han-only face with no U+0020 = "no-space face"):
+
+| First font in the chain | Fallbacks | Text | Errors |
+| --- | --- | --- | --- |
+| no-space face | Noto Sans SC | `怪​物​世​界` or `v3 · 第​1​章` | 1 each |
+| no-space face | none | same | 1 each |
+| no-space face | Noto Sans SC | `怪物世界`, `v3 · 第1章`, `A B` (no U+200B) | 0 |
+| Noto Sans SC | no-space face | with U+200B | 0 |
+| same face with U+0020 kept | Noto Sans SC | with U+200B | 0 |
+
+Autowrap on or off made no difference, and neither did whether the face had its own U+200B
+glyph. A space in the text that the fallback draws is fine; the error needs U+200B shaped
+with a first font that has no U+0020.
+
+**해결:** Keep U+0020 in every subset that can come first in a chain, even a face meant for one
+script only (fontTools: add `0x20` to the unicodes passed to `Subsetter.populate`). It costs one
+empty glyph. To check a build, count the message in a run that opens every screen in `zh` and `ja`.
 
 ---
 
