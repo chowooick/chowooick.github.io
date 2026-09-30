@@ -4994,3 +4994,26 @@ not by the name `-web-1`. A release that edits the compose file changes the hash
 container, gap included. Wait for the deployment record with your title to be `done`; the rolled container already
 runs the new image, so an image check alone passes before Dokploy has started. Do not roll a service whose
 upstream restarts in the same deploy (nginx resolves upstream names at startup).
+
+## OPS-230 — `add_header` in an nginx location drops every inherited header, so a `/mnori.json` block must repeat the ones it needs
+`측정 2026-09-30 · nginx 1.30-alpine`
+
+**증상:** A site serves its security headers once at `server` level (`X-Content-Type-Options`,
+`Cross-Origin-Opener-Policy`, …). Adding an exact-match location for one file plus the two headers that file needs
+(`Access-Control-Allow-Origin`, a short cache lifetime) silently serves that file with *only* those two: nginx's
+`add_header` is not additive across levels — a directive at the deeper level replaces the whole inherited set, and
+`always` does not change that.
+
+Also measured on the same deploy:
+- `expires 5m;` alone produces exactly `Cache-Control: max-age=300` plus a matching `Expires`. No second
+  `add_header Cache-Control` is needed, and adding one there gives two values.
+- A `location = /file.json` with `try_files $uri =404;` is what keeps a single-page site from answering the path
+  with `index.html` and a 200. A portal or monitor that reads a JSON file at a fixed path sees the HTML fallback as
+  "not published", not as an error.
+- `mime.types` already maps `.json` to `application/json`, so no `default_type` is needed; with `gzip_static on`
+  and a pre-gzipped `file.json.gz` in the image the Content-Type stays `application/json`.
+
+**해결:** Repeat the inherited headers that still matter inside the location. For a JSON fact file that is
+`X-Content-Type-Options: nosniff`; the COOP/COEP/Permissions-Policy set applies to documents, not to it. Verify with
+`curl -sI` after deploying and assert the three headers in the deploy script — a header lost this way breaks nothing
+visible on the site.
