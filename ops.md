@@ -5188,3 +5188,15 @@ retrying, and always compare a served file's hash with the local build.
 `mkdir: cannot create directory '...': No space left on device`. `df -h /` showed 98G size, 94G used, **0 available**, 100 %. Inodes were at 35 %. `docker system df`: Images 52.96 GB (35.75 GB reclaimable), Local Volumes 16.58 GB, **Build Cache 671 entries, 4.636 GB, 0 active**. Every project deploys by building an image on the host, and nobody prunes. The running sites still answered, so nothing alerted; the next thing to fail would have been a database write.
 
 **해결:** `docker builder prune -af` removes only the build cache: no image, container or volume is touched, and the next build is just slower. After it `df` showed 4.6 G available and the same deploy passed. Do not run `docker image prune -a` or `docker system prune` on a shared host: the unused images are other projects' rollback releases. Before a deploy run `df -h /` on the host; when it is above 90 %, report it to the owner, because the rest (old release images and release directories per project) is each project's own to clean. Related: OPS-005, OPS-237 (the same full host seen mid-upload).
+
+
+## OPS-239 — Driving Safari in an iOS simulator over ssh with no GUI permissions: a one-test XCUITest rotates the device and opens the URL, synthetic `TouchEvent`s in the page do the multi-touch
+
+`측정 2026-09-30 · Xcode 27.0 · iOS 27.0 simulator (iPhone 18 Pro) · MacBook Air M1 over ssh, no sudo`
+
+**증상:** `xcrun simctl` can boot a simulator, `openurl` and `io screenshot`, but it cannot tap or rotate. The usual ways out were all closed from an ssh session: `osascript` on System Events hung (it waits for an Automation/Accessibility prompt on the Mac's screen), `safaridriver --enable` asked for a password, and `safaridriver` sessions with `safari:useSimulator` failed with `Could not find any session hosts that match the requested capabilities`.
+
+**해결:** two pieces, neither needs a permission prompt.
+- Rotation and opening the page: a project with a single UI-testing bundle target (no app target; `CODE_SIGNING_ALLOWED = NO`, `GENERATE_INFOPLIST_FILE = YES`) whose test sets `XCUIDevice.shared.orientation`, calls `XCUIDevice.shared.system.open(url)` and sleeps. Build once with `xcodebuild build-for-testing`, run with `test-without-building`; environment variables prefixed `TEST_RUNNER_` reach the test without the prefix. Take `simctl io <udid> screenshot` in a loop while the test sleeps.
+- Touch input: XCUITest coordinates are single-finger, so two-finger play (joystick + held button) came from the page itself: serve the build locally (the simulator reaches the Mac's `127.0.0.1`) with a script appended that dispatches `new TouchEvent('touchstart'|'touchmove'|'touchend', {touches, targetTouches, changedTouches})` built from `new Touch({identifier, target: canvas, clientX, clientY, …})` on the canvas. A Godot 4.7 web export accepted them like real touches in iOS Safari (cut, claim, UI buttons).
+- The first boot of a new simulator pushed the Air's load average to 189 for about five minutes and Safari sat on its start page; wait for the load to drop before judging the page.
