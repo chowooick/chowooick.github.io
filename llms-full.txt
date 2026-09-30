@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T07:05:08Z · 소스 커밋 `28301c7` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T07:08:59Z · 소스 커밋 `35f6353` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11955,4 +11955,12 @@ retrying, and always compare a served file's hash with the local build.
 **Follow-up 2 (same day, OPS-240):** the root volume now takes the whole SSD (`lvextend -r -l +100%FREE`, 232G). The host's second disk was checked before use with `lsblk -o NAME,SIZE,TRAN,ROTA,MODEL`: `ROTA=1`, a 7200 rpm laptop HDD with 27,340 power-on hours, so it was not added to the root volume group (a linear span dies with either disk and puts database files on the slow one). It is a separate ext4 at `/mnt/hdd` (687G, `nofail,noatime` in `/etc/fstab`, owned by the deploy user) for backups, release folders and CI caches. Without sudo but in the `docker` group, host root commands ran as `docker run --rm --privileged --pid=host alpine nsenter -t 1 -m -u -n -i -- sh -c '<cmd>'`; the host had `sfdisk` but no `parted`.
 
 **Follow-up 3 (same day, OPS-240):** `/mnt/hdd` holds copies of the backups, which until now sat on the same SSD as the data. `~/.mnori-deploy/mirror-backups-to-hdd.sh` runs from the user timer `backup-mirror-hdd.timer` (04:45 UTC daily, after the nightly backup and the Sunday retention) and copies `~/backups`, `~/.config/*/backups` and the other backup folders to `/mnt/hdd/backups` with `cp -au --parents` (the host has no `rsync`). It refuses to run when `/mnt/hdd` is not a mountpoint, never touches the SSD side, and deletes HDD copies older than 365 days. A project that writes backups into `~/.config/<project>/backups` is covered without doing anything. The fstab entry was tested without a reboot: `umount`, then `mount -a`, then `umount` and `systemctl start mnt-hdd.mount`; the generated unit has `WantedBy=local-fs.target`. A real reboot has not been tested.
+
+## OPS-241 — Chrome on Android refuses `PUT /json/new` over the forwarded DevTools socket ("Could not create new page"), and the socket vanishes when Chrome is not running
+
+`측정 2026-09-30 · Chrome on Pixel 7 Pro (Android 17) · adb forward tcp:<port> localabstract:chrome_devtools_remote · Node 26`
+
+**증상:** `fetch('http://127.0.0.1:<port>/json/new?<url>', {method:'PUT'})` answered with the plain text `Could not create new page`, so `.json()` threw `Unexpected token 'C'`. A minute later every request failed with `SocketError: other side closed`: Chrome had left the foreground and its process was gone (`pidof com.android.chrome` empty, no `chrome_devtools_remote` in `/proc/net/unix`), while `adb forward --list` still showed the forward.
+
+**해결:** open the tab from Android, then attach to it: `adb shell am start -a android.intent.action.VIEW -d '<url>?r=<marker>' com.android.chrome`, wait a few seconds, find the tab in `/json/list` by the marker and connect to its `webSocketDebuggerUrl`. `Page.navigate` reloads it for a clean run and `Page.close` removes it afterwards. This also starts Chrome when it was not running. On a phone shared by sessions, read `dumpsys window | grep mCurrentFocus` before every `adb shell input`: another session's app may have taken the screen, and the tap lands there (AGT-044).
 
