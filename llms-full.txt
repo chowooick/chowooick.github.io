@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T06:56:47Z · 소스 커밋 `3091f64` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T07:00:19Z · 소스 커밋 `9170880` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11951,4 +11951,6 @@ retrying, and always compare a served file's hash with the local build.
 **해결:** `docker image prune -f` (without `-a`) removes only untagged images that no container uses. It reclaimed 27.06 GB (92G used to 63G, 99 % to 68 %); no service changed replica count and no tagged rollback image was touched. `-a` stays forbidden on a shared host (OPS-238). To find the writer, sort `docker images --format "{{.CreatedAt}}\t{{.Size}}\t{{.Repository}}:{{.Tag}}" | sort -r`: the repeating size at a regular interval names the app. A session that redeploys a `:latest` app many times a day should run `docker image prune -f` after each deploy, or the app should get a smaller image. Related: OPS-238, OPS-237.
 
 **Follow-up (same day, OPS-240):** the host now runs `docker image prune -f` every 30 minutes from a systemd user timer (`~/.config/systemd/user/docker-dangling-prune.{service,timer}`, `OnCalendar=*:0/30`; the host has no `crontab` binary, and `Linger=yes` keeps user timers running without a login). The root volume was also only half of the disk: `lsblk` showed a 235.4G partition under a 100G logical volume (the Ubuntu installer default), readable without sudo. `lvextend -r -L 200G /dev/ubuntu-vg/ubuntu-lv` grew the mounted ext4 online with no restart (197G size, 29 % used); 35G stays unallocated in the volume group. On a "disk full" host, run `lsblk` before deleting anything.
+
+**Follow-up 2 (same day, OPS-240):** the root volume now takes the whole SSD (`lvextend -r -l +100%FREE`, 232G). The host's second disk was checked before use with `lsblk -o NAME,SIZE,TRAN,ROTA,MODEL`: `ROTA=1`, a 7200 rpm laptop HDD with 27,340 power-on hours, so it was not added to the root volume group (a linear span dies with either disk and puts database files on the slow one). It is a separate ext4 at `/mnt/hdd` (687G, `nofail,noatime` in `/etc/fstab`, owned by the deploy user) for backups, release folders and CI caches. Without sudo but in the `docker` group, host root commands ran as `docker run --rm --privileged --pid=host alpine nsenter -t 1 -m -u -n -i -- sh -c '<cmd>'`; the host had `sfdisk` but no `parted`.
 
