@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T06:50:02Z · 소스 커밋 `203619e` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T06:50:33Z · 소스 커밋 `65f73aa` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5064,6 +5064,14 @@ The drags had all started on a `Button` (a map card filling the width). A `Butto
 **증상:** a modal set `body.size = panel_size - margins` once (and on `resized`), then added `AUTOWRAP_WORD_SMART` labels, an expanding spacer and a button row. On a wide screen it looked right. On a phone-width screen the buttons were gone: no 이전/다음, and with no Esc key the modal could not be closed. Printed: panel 528×600, `body.size.y` **6,070**, button row at y = 6,022, while `body.get_combined_minimum_size().y` was already back to 395. A control's size cannot be below its minimum, so the assignment was raised to the labels' first-pass minimum (GDT-154: one word per line before the width is known). When the minimum later shrinks, a container that is not inside another container is not shrunk back. Nothing logs.
 
 **해결:** re-apply the size when the minimum changes: `body.minimum_size_changed.connect(_layout_panel, CONNECT_DEFERRED)`. Same run afterwards: body 552, row at y = 504, inside the panel. Narrower widths wrap more, so check modals at phone width, not only at the design size.
+
+## GDT-208 — Web export: `DisplayServer.window_set_title()` in the main scene's `_ready()` is overwritten by the project name, and a hand-written `<title>` in the custom shell is lost the same way
+
+`측정 2026-09-30 · Godot 4.7.2 Web export (single-threaded) · headless Chrome on an M1 Air`
+
+**증상:** the custom HTML shell had `<title>땅따먹기 — LANDGRAB</title>` instead of `$GODOT_PROJECT_NAME`, and the main scene's `_ready()` called `DisplayServer.window_set_title("땅따먹기 — LANDGRAB")`. `curl` of the page showed the Korean title, but after the engine started `page.title()` was `LANDGRAB` (`application/config/name`). The engine sets `document.title` to the project name during start-up, after the main scene's `_ready()` has run. Nothing logs, and a check of the served HTML alone passes.
+
+**해결:** set the title again once the game is running. Measured together (not separately): `DisplayServer.window_set_title.call_deferred(...)` in `_ready()`, and in the shell `const PAGE_TITLE = document.title` before the engine loads, restored in the game's "first frame drawn" callback (GDT-190). `page.title()` after boot was then `땅따먹기 — LANDGRAB`. Renaming `application/config/name` also works but changes the desktop `user://` folder. Check the tab title in a real browser after boot, not with `curl`.
 
 ---
 
@@ -11912,4 +11920,25 @@ later, with 4.4G free, passed.
 exit status). Before an upload check `ssh <host> 'df -h /'`; under ~5G free on a shared build host, other apps'
 image builds can take the rest mid-upload. After a failed upload delete the half-written release folder before
 retrying, and always compare a served file's hash with the local build.
+
+## OPS-238 — A deploy to a shared Docker host fails at its first `mkdir` with "No space left on device": the build cache of every project's deploys had filled the disk
+
+`측정 2026-09-30 · Ubuntu host with Docker and Dokploy, 98 GB root volume shared by about 20 projects`
+
+**증상:** `ssh host "mkdir -p ~/project/releases/<release>"` failed with
+`mkdir: cannot create directory '...': No space left on device`. `df -h /` showed 98G size, 94G used, **0 available**, 100 %. Inodes were at 35 %. `docker system df`: Images 52.96 GB (35.75 GB reclaimable), Local Volumes 16.58 GB, **Build Cache 671 entries, 4.636 GB, 0 active**. Every project deploys by building an image on the host, and nobody prunes. The running sites still answered, so nothing alerted; the next thing to fail would have been a database write.
+
+**해결:** `docker builder prune -af` removes only the build cache: no image, container or volume is touched, and the next build is just slower. After it `df` showed 4.6 G available and the same deploy passed. Do not run `docker image prune -a` or `docker system prune` on a shared host: the unused images are other projects' rollback releases. Before a deploy run `df -h /` on the host; when it is above 90 %, report it to the owner, because the rest (old release images and release directories per project) is each project's own to clean. Related: OPS-005, OPS-237 (the same full host seen mid-upload).
+
+
+## OPS-239 — Driving Safari in an iOS simulator over ssh with no GUI permissions: a one-test XCUITest rotates the device and opens the URL, synthetic `TouchEvent`s in the page do the multi-touch
+
+`측정 2026-09-30 · Xcode 27.0 · iOS 27.0 simulator (iPhone 18 Pro) · MacBook Air M1 over ssh, no sudo`
+
+**증상:** `xcrun simctl` can boot a simulator, `openurl` and `io screenshot`, but it cannot tap or rotate. The usual ways out were all closed from an ssh session: `osascript` on System Events hung (it waits for an Automation/Accessibility prompt on the Mac's screen), `safaridriver --enable` asked for a password, and `safaridriver` sessions with `safari:useSimulator` failed with `Could not find any session hosts that match the requested capabilities`.
+
+**해결:** two pieces, neither needs a permission prompt.
+- Rotation and opening the page: a project with a single UI-testing bundle target (no app target; `CODE_SIGNING_ALLOWED = NO`, `GENERATE_INFOPLIST_FILE = YES`) whose test sets `XCUIDevice.shared.orientation`, calls `XCUIDevice.shared.system.open(url)` and sleeps. Build once with `xcodebuild build-for-testing`, run with `test-without-building`; environment variables prefixed `TEST_RUNNER_` reach the test without the prefix. Take `simctl io <udid> screenshot` in a loop while the test sleeps.
+- Touch input: XCUITest coordinates are single-finger, so two-finger play (joystick + held button) came from the page itself: serve the build locally (the simulator reaches the Mac's `127.0.0.1`) with a script appended that dispatches `new TouchEvent('touchstart'|'touchmove'|'touchend', {touches, targetTouches, changedTouches})` built from `new Touch({identifier, target: canvas, clientX, clientY, …})` on the canvas. A Godot 4.7 web export accepted them like real touches in iOS Safari (cut, claim, UI buttons).
+- The first boot of a new simulator pushed the Air's load average to 189 for about five minutes and Safari sat on its start page; wait for the load to drop before judging the page.
 
