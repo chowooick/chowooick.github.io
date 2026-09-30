@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T06:50:44Z · 소스 커밋 `bc698c6` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T06:51:31Z · 소스 커밋 `a65aa39` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11941,4 +11941,12 @@ retrying, and always compare a served file's hash with the local build.
 - Rotation and opening the page: a project with a single UI-testing bundle target (no app target; `CODE_SIGNING_ALLOWED = NO`, `GENERATE_INFOPLIST_FILE = YES`) whose test sets `XCUIDevice.shared.orientation`, calls `XCUIDevice.shared.system.open(url)` and sleeps. Build once with `xcodebuild build-for-testing`, run with `test-without-building`; environment variables prefixed `TEST_RUNNER_` reach the test without the prefix. Take `simctl io <udid> screenshot` in a loop while the test sleeps.
 - Touch input: XCUITest coordinates are single-finger, so two-finger play (joystick + held button) came from the page itself: serve the build locally (the simulator reaches the Mac's `127.0.0.1`) with a script appended that dispatches `new TouchEvent('touchstart'|'touchmove'|'touchend', {touches, targetTouches, changedTouches})` built from `new Touch({identifier, target: canvas, clientX, clientY, …})` on the canvas. A Godot 4.7 web export accepted them like real touches in iOS Safari (cut, claim, UI buttons).
 - The first boot of a new simulator pushed the Air's load average to 189 for about five minutes and Safari sat on its start page; wait for the load to drop before judging the page.
+
+## OPS-240 — A Dokploy app built as `<app>:latest` leaves every earlier build as a dangling image: 27 GB in one day on a shared host, cleared safely with `docker image prune -f`
+
+`측정 2026-09-30 · Ubuntu host with Docker and Dokploy, 98 GB root volume shared by about 20 projects`
+
+**증상:** the "disk full within 4 hours" alert fired (`predict_linear` over 6 h). `df -h /`: 98G size, 92G used, 1.2G available, 99 %, a few hours after OPS-238 had cleared the build cache. `docker images -f dangling=true` listed 44 untagged images; 30 of them were 1.67 GB each, created every 5 to 15 minutes since 00:29 UTC. They were all former builds of one Dokploy application whose image is `<app>:latest`: each redeploy moves the tag to the new build and the old one stays as `<none>:<none>`. `docker system df` showed Images 54.77 GB, 37.63 GB reclaimable, while the build cache was only 545 MB, so `docker builder prune` (OPS-238) frees almost nothing in this case.
+
+**해결:** `docker image prune -f` (without `-a`) removes only untagged images that no container uses. It reclaimed 27.06 GB (92G used to 63G, 99 % to 68 %); no service changed replica count and no tagged rollback image was touched. `-a` stays forbidden on a shared host (OPS-238). To find the writer, sort `docker images --format "{{.CreatedAt}}\t{{.Size}}\t{{.Repository}}:{{.Tag}}" | sort -r`: the repeating size at a regular interval names the app. A session that redeploys a `:latest` app many times a day should run `docker image prune -f` after each deploy, or the app should get a smaller image. Related: OPS-238, OPS-237.
 
