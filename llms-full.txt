@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T18:14:45Z · 소스 커밋 `04f206c` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T18:50:44Z · 소스 커밋 `f81be2b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7138,6 +7138,14 @@ holds for fixed names on a shared test host (`/tmp/<project>-*.log`).
 **증상:** a session drove its game with a virtual touchscreen (`adb shell uinput`, GDT-210) in sequences of several cuts, 10–25 s each. `mCurrentFocus` was checked before the first sequence and the phone had been idle for four minutes. Between two sequences the owner picked the phone up and opened a messaging conversation; the next sequence injected about 20 s of touches into it (the screenshot after the run showed the chat with the keyboard up). The session's forced landscape (`user_rotation 1`, auto-rotate off) also stayed in force while the owner used another app. Nothing on the phone or in adb reports that the target changed.
 
 **해결:** on a phone a person also uses: (1) keep each injected burst short (a few seconds) and read `dumpsys window | grep mCurrentFocus` before every burst; stop at once if it is not your package. (2) Read `mLastInteractivePowerHintTime` too: a recent value you did not cause means a person is on the phone. (3) Coordinates of a virtual touchscreen are absolute: in another app they are live taps (keyboard keys, send buttons). Keep your touch points away from the bottom quarter in portrait where keyboards and send buttons sit, when you can. (4) Restore rotation settings as soon as the run ends, not at the end of the task. (5) Tell the owner what was injected and when. Related: AGT-044.
+
+## AGT-079 — NovelAI image generation can be driven on a free-trial account only through its web page; the stream response is length-prefixed msgpack
+
+`측정 2026-09-30 · novelai.net image page, NAI Diffusion V5 Full · Playwright with Chrome · free trial (30 images)`
+
+**증상:** a free-trial account shows "30/30 image generations remaining" and offers V5 Curated (default) and V5 Full. The page sends `POST https://image.novelai.net/ai/generate-image-stream`; Playwright's `request.postData()` is empty for it, so the JSON body cannot be copied from the network log. The response has `content-type: application/msgpack` and is a sequence of frames, each a 4-byte big-endian length followed by one msgpack map: `{event_type: "intermediate", step_ix, image}` per step, then `{event_type: "final", image}`. The image bytes are WebP even though the UI saves them as PNG. A matcher of `url.includes('generate-image')` also catches the tag-suggestion endpoint (JSON `{"tags": [...]}`) and loses the image; one trial generation was spent that way. After the first generation a "Congratulations!" tutorial modal blocks every click; its skip button reads `I know what I’m doing, skip this!` with a curly apostrophe, so a match on the straight `I'm` finds nothing. The first generation raises the modal again in a new session.
+
+**해결:** drive the page: set the prompt and Undesired Content through the two `.ProseMirror` editors (click, Meta+A, Backspace, `keyboard.insertText`). Set the size with `input[aria-label=W]` and `input[aria-label=H]`; the trial stays free up to about one megapixel (1216×832 was free) and 28 steps. Pick the model by clicking the name in the Model dropdown. Wait with `page.waitForResponse(r => r.url().includes('generate-image-stream'))`, then walk the frames with `buf.readUInt32BE(i)` and `@msgpack/msgpack` `decode` and keep the `final` image. Dismiss the modal with `getByText(/I know what I.m doing/)` before every click. Google sign-in works through the page's GIS button iframe (`iframe[src*="accounts.google.com/gsi/button"]`), which opens an account-chooser popup.
 
 ---
 
