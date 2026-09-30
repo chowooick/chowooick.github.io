@@ -4119,3 +4119,41 @@ The drags had all started on a `Button` (a map card filling the width). A `Butto
 **증상:** the custom HTML shell had `<title>땅따먹기 — LANDGRAB</title>` instead of `$GODOT_PROJECT_NAME`, and the main scene's `_ready()` called `DisplayServer.window_set_title("땅따먹기 — LANDGRAB")`. `curl` of the page showed the Korean title, but after the engine started `page.title()` was `LANDGRAB` (`application/config/name`). The engine sets `document.title` to the project name during start-up, after the main scene's `_ready()` has run. Nothing logs, and a check of the served HTML alone passes.
 
 **해결:** set the title again once the game is running. Measured together (not separately): `DisplayServer.window_set_title.call_deferred(...)` in `_ready()`, and in the shell `const PAGE_TITLE = document.title` before the engine loads, restored in the game's "first frame drawn" callback (GDT-190). `page.title()` after boot was then `땅따먹기 — LANDGRAB`. Renaming `application/config/name` also works but changes the desktop `user://` folder. Check the tab title in a real browser after boot, not with `curl`.
+
+## GDT-209 — Touch screens: `Button` follows only the first finger, so a player resting a thumb on a virtual joystick cannot press any button with the other thumb
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Android export on Pixel 7 Pro (also the Web export on phones)`
+
+**증상:** on the game-over card the owner reported that CUT responded but "이어하기" and "타이틀로" did not. The virtual joystick and CUT read `InputEventScreenTouch` in `_input` per finger, so they work with any finger. `Button` is driven by the mouse that the engine emulates from touch (`input_devices/pointing/emulate_mouse_from_touch`), and that emulation uses the first finger (index 0) only. When the left thumb is still down on the joystick, the right thumb is index 1: no mouse event, no press, no log.
+
+**해결:** press buttons for later fingers yourself, in the app root:
+
+```gdscript
+func _input(event: InputEvent) -> void:
+	if not event is InputEventScreenTouch or event.index == 0:
+		return
+	if event.pressed:
+		var hit: Button = _button_at(screen_root, event.position)   # topmost visible, enabled Button under the point
+		if hit != null: _extra_touch[event.index] = hit
+	elif _extra_touch.has(event.index):
+		var held: Button = _extra_touch[event.index]; _extra_touch.erase(event.index)
+		if is_instance_valid(held) and _button_at(held, event.position) == held: held.pressed.emit()
+```
+
+Measured on the phone with a finger held on the joystick: a second finger on the pause button opened the pause card and on "계속하기" closed it. A single-finger `adb shell input tap` test never shows this bug; test with two pointers (GDT-210).
+
+## GDT-210 — Injecting real multi-touch into an Android app without root: `adb shell uinput` with a virtual touch screen (`sendevent` is denied, `monkey` has no timing)
+
+`측정 2026-09-30 · Pixel 7 Pro, Android 17, adb shell (uid 2000) · Godot 4.7.2 Android export`
+
+**증상:** a game needs "hold CUT with one finger, steer with another". `adb shell input` sends one pointer. `sendevent /dev/input/event4 …` prints `Permission denied` although the shell is in the `input` group. A `monkey -f` script with `PinchZoom(...)` does send two pointers, but all 600 steps ran in 78 ms, so nothing was held.
+
+**해결:** `adb shell uinput <file>` reads one JSON object per line: a `register` command creating a virtual direct-touch device, then `inject` (flat list of type, code, value triples) and `delay` (ms) commands. The device disappears when the command exits.
+
+```
+{"id":1,"command":"register","name":"virtual touch","vid":6353,"pid":19251,"bus":"usb","configuration":[{"type":100,"data":[1,3]},{"type":101,"data":[330]},{"type":103,"data":[47,48,53,54,57,58]},{"type":110,"data":[1]}],"abs_info":[{"code":53,"info":{"value":0,"minimum":0,"maximum":1439,"fuzz":0,"flat":0,"resolution":0}}, … 54 (max 3119), 47 (9), 48 (255), 57 (65535), 58 (255)]}
+{"id":1,"command":"delay","duration":1500}
+{"id":1,"command":"inject","events":[3,47,0, 3,57,9100, 3,53,324, 3,54,2797, 3,58,60, 3,48,8, 1,330,1, 0,0,0]}
+```
+
+`type` 100/101/103/110 are UI_SET_EVBIT/KEYBIT/ABSBIT/PROPBIT; events are multi-touch protocol B (47 slot, 57 tracking id, -1 to lift, 53/54 position, 330 BTN_TOUCH). Give the first `delay` about 1.5 s so the device is registered before the first event. Coordinates are in the panel's natural (portrait) axes: with the screen at ROTATION_90, a landscape point (sx, sy) is (1439 − sy, sx). Measured: a 4 s hold drew a cut line in the game, and a second pointer pressed UI buttons while the first stayed down.
