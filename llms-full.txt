@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T15:50:50Z · 소스 커밋 `0f2db18` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T16:01:17Z · 소스 커밋 `3561f8d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5317,6 +5317,86 @@ function returned early, so the caller got an empty result and no exception of i
 
 **해결:** declare the variable untyped-array: `var choices: Array = … if … else []`. A parse-only check cannot
 catch this. It needs a run that takes the `else` branch.
+
+---
+
+## GDT-223 — Web export: Chinese and Japanese text in an autowrapping `Label` does not wrap at all; a U+200B at each break point makes it wrap
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Web export (nothreads, `include_text_server_data` off) in headed Chrome · Noto Sans SC / JP subsets`
+
+**증상:** A Web export has no ICU break data (GDT-108), so the text server breaks lines only at
+whitespace. Korean, English and Spanish keep wrapping. Chinese and Japanese have no spaces: a
+paragraph in a `Label` with `AUTOWRAP_WORD_SMART` has no break opportunity. The editor and headless
+runs carry ICU data and wrap the same text correctly, so native captures do not show the problem.
+
+Turning on `internationalization/locale/include_text_server_data` fixes it but adds 4.8 MB to the
+`.pck` and brings mid-word breaks to Korean (GDT-108).
+
+**해결:** Insert U+200B ZERO WIDTH SPACE wherever a line may break, in the function that returns
+translated strings, for `zh` and `ja` only. The no-ICU fallback treats it as a break opportunity.
+Measured in the exported build at 390 px: map descriptions, coach tips and the rules dialog wrap
+inside their panels in both languages. Rules that were enough: break only where one side is a CJK
+character; never before closing punctuation, small kana or `ー`; never after an opening bracket;
+never after an ASCII digit (keeps `1枚` together); never inside a `{0}` or `[b]` token.
+
+Three things to watch:
+- Noto Sans SC and Noto Sans JP have no glyph for U+200B, and `Font.has_char(0x200B)` is false for
+  them. Add a cmap entry that maps U+200B to the space glyph when subsetting (fontTools:
+  `table.cmap[0x200B] = table.cmap[0x20]` for each Unicode subtable); the shaper draws it with no advance.
+- Strip the marks before putting a translated string into a `LineEdit`, and before comparing what
+  the player typed with a translated default.
+- `String.left(n)` counts the marks: a 46-character cut shows about half as many visible characters.
+
+---
+
+## GDT-224 — A `Container` is never narrower than its content: `size.x` of an overflowing `HBoxContainer` is the overflowing width, not the width you set
+
+`측정 2026-09-30 · Godot 4.7.2-stable`
+
+**증상:** A row of action buttons (`HBoxContainer`, positioned by hand, `size = Vector2(362, 56)`)
+ran off a 390 px screen in Spanish. A fit routine that compared `get_combined_minimum_size().x`
+with `action_bar.size.x` never shrank anything: the container had already grown to its minimum
+size (410), so the row always "fit".
+
+The same rule hides overflow inside a `ScrollContainer` with horizontal scrolling disabled: one
+wide `HBoxContainer` row (three 150 px buttons) makes the whole `VBoxContainer` column wider than
+the viewport, and every sibling (cards, full-width buttons, wrapped paragraphs) is cut at the right
+edge, although each of them would fit on its own.
+
+**해결:** Keep the available width in a variable set by the layout code and compare against that,
+then set `size` again after shrinking the content. For rows of choices use `HFlowContainer`, and
+give the scroll's column `custom_minimum_size.x` = the viewport width so wrapped labels have a
+width to wrap to. Look at the longest language at phone width: the Korean strings had fit by luck.
+
+---
+
+## GDT-225 — Android prebuilt export: `application/config/name_localized` sets the launcher label per language; the keys are Godot locale names (`zh_TW`, not `zh-rTW`)
+
+`측정 2026-09-30 · Godot 4.7.2-stable headless, `--export-debug Android`, `gradle_build/use_gradle_build=false` · aapt2 36.1.0`
+
+**증상:** It was not clear whether the non-Gradle Android export honours `config/name_localized`,
+or what the default label is.
+
+With `config/name_localized={"en": …, "es": …, "ja": "バトルマーブル", "ko": "배틀마블", "zh": "战斗弹珠", "zh_HK": …, "zh_TW": …}`
+and `package/name="Battle Marble"` in the preset, `aapt2 dump badging app.apk` prints:
+
+```
+application-label:'Battle Marble'
+application-label-ja:'バトルマーブル'
+application-label-ko:'배틀마블'
+application-label-zh:'战斗弹珠'
+application-label-zh-CN:'战斗弹珠'
+application-label-zh-HK:'战斗弹珠'
+application-label-zh-TW:'战斗弹珠'
+application-label-fr:'Battle Marble'   (and every other language of the template)
+```
+
+`zh` also fills `zh-CN`. Every language without an entry gets the preset's `package/name`
+(the project name when that is empty), so the default label is whatever `package/name` says.
+
+**해결:** Put the languages in `config/name_localized`, add `zh_HK` and `zh_TW` explicitly if
+Traditional-locale phones should not fall back to the default, and set `package/name` to the
+label every other language should see. Check the result with `aapt2 dump badging`, no phone needed.
 
 ---
 
