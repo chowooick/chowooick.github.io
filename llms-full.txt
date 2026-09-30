@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T15:36:31Z · 소스 커밋 `4a9664b` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T15:50:50Z · 소스 커밋 `0f2db18` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5291,6 +5291,32 @@ and then did not exit: `_initialize()` never reached its `quit()`, and the proce
 | Noto Sans SC (variable) | 30,890 | yes | 189 | 20,976 |
 
 **해결:** use a rounded Latin face with Latin-1 (Fredoka) as the display face for English and Spanish, and put each reader's own script first in the fallback chain (GDT-106). Instance the variable Noto faces to a static weight with `fontTools.varLib.instancer` after subsetting (the default instance is Thin, GDT-105; subset first, OPS-245). A test that loops over every character of every string and asserts `FontVariation.has_char()` on the chain found a real gap on its first run (日 of 日本語 was in the display subset but not in the body subset).
+
+## GDT-221 — Web export: the engine sets `document.title` to the project name after the main scene's `_ready`, so a title set there is overwritten
+
+`측정 2026-09-30 · Godot 4.7.2-stable · Web export (debug), Chrome 154`
+
+**증상:** the game sets the tab title to its name in the player's language with
+`DisplayServer.window_set_title()` in the main scene's `_ready`. A Playwright check read `document.title` once
+the game was up and got the project's `config/name` with `(DEBUG)` appended, not the localized name. The page's
+own script had also set `document.title` before the engine loaded, and that was overwritten too.
+
+**해결:** set it again a few frames later. `DisplayServer.window_set_title(name)`, then
+`for i in 3: await get_tree().process_frame`, then the same call once more. After that the title stays.
+`application/config/name_localized` does not help here: it follows the OS locale, not a language the player chose.
+
+## GDT-222 — `var x := typed_array if cond else []` compiles, then fails at run time: "Trying to assign an array of type Array to a variable of type Array[Node]"
+
+`측정 2026-09-30 · Godot 4.7.2-stable · GDScript`
+
+**증상:** `var choices := panel.get_children() if panel.visible else []` passed the parser and a headless parse
+check. At run time, on the branch that takes `[]`, it raised
+`SCRIPT ERROR: Trying to assign an array of type "Array" to a variable of type "Array[Node]"`. `:=` infers the
+type from the first operand (`Array[Node]`), and the untyped literal on the other branch does not convert. The
+function returned early, so the caller got an empty result and no exception of its own.
+
+**해결:** declare the variable untyped-array: `var choices: Array = … if … else []`. A parse-only check cannot
+catch this. It needs a run that takes the `else` branch.
 
 ---
 
@@ -12282,4 +12308,17 @@ SCRIPT ERROR: Parse Error: Preload file "res://assets/fonts/ZCOOLKuaiLe.subset.w
 Godot writes `<asset>.import` (and `<script>.gd.uid`) next to the source files, not inside `.godot/`. They existed only on the test host, so `--delete` removed them, and without its `.import` file a `.woff2` is an unknown file to the loader. The message says nothing about a missing import.
 
 **해결:** after the first import on the test host, copy the generated files back and commit them: `rsync -az --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:project/godot/ godot/`. Or re-run `--import` after every sync. The same applies to any generator that writes beside its sources.
+
+## OPS-248 — zsh: a glob with no match aborts the whole command line, so `rm -f /tmp/x-*.log; nohup …` starts nothing
+
+`측정 2026-09-30 · zsh 5.9 (macOS), command sent over ssh`
+
+**증상:** `ssh host 'rm -f /tmp/f-*.log; (nohup zsh -l job.sh &)'` printed `zsh:1: no matches found: /tmp/f-*.log`
+and the job never started. `rm -f` does not help: zsh refuses the line before `rm` runs. Thinking it had started,
+I launched it again later, and on the run where the logs did exist two copies ran at once and wrote the same logs.
+bash would have passed the unmatched pattern through and carried on.
+
+**해결:** mark the glob as allowed to match nothing: `rm -f /tmp/f-*.log(N)`, or name the files. After starting a
+detached job over ssh, confirm it with `pgrep -f job.sh`. Do not count with `ps | grep` inside the same ssh
+command: the remote shell's own command line contains the pattern and adds one to the count.
 
