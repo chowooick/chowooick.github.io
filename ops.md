@@ -4891,3 +4891,21 @@ The change was a new `RUN` check in the export stage, and the exported files wer
 **해결:** do not use `last-modified` or `etag` to tell whether a deploy happened. Read the deploy logs:
 `ssh misa 'ls -t /etc/dokploy/logs/<appName>'`. A new timestamped log means a build ran. `tail` it to see the steps
 and whether it finished. Several apps pushing at once can hold a build in the queue for 10–15 minutes.
+
+## OPS-226 — `codex exec` image tool rejects lingerie and "plunging neckline" pin-up prompts at the input stage in 24–34 s; OPS-179's swimsuit block was at the output stage
+
+`측정 2026-09-29 · codex-cli 0.154.0 built-in image tool · 3 landscape 1536×1024 prompts, 3 parallel runs`
+
+**증상:** three anime pin-up prompts for clearly adult characters failed 3 of 3 with `http 400 ... "Your request was
+rejected by the safety system ... safety_violations=[sexual]"`, `"code": "moderation_blocked"`,
+`"moderation_stage": "input"`. They failed after 24, 33 and 34 s, before any image was drawn (a normal generation
+takes 70–110 s, and the OPS-179 output-stage block took ~140 s). The prompts described (1) a leather halter top with
+"a deep plunging neckline", hot pants and "biting her lower lip, half-lidded eyes", (2) a lace bralette and briefs under
+an open shirt, kneeling on a bed, (3) a corset, garter belt and stockings, lying on a card table. Each prompt also said
+"Her breasts and hips stay covered by the outfit; no nudity" and "Sensual adult pin-up glamour"; that did not help.
+Prompts from the same pipeline at the OPS-179 level (gowns with slits, open backs, one-piece swimsuits, a bikini top
+with a sarong) pass the input stage.
+
+**해결:** treat the tool's ceiling as fashion glamour and swimwear. Lingerie, bedroom scenes and arousal wording
+(lip biting, "sensual", "teasing", "inviting gaze") are refused on the words alone, so the refusal is fast and costs
+no generation. Do not plan adult-rated pin-up art on this tool; choose the content level first, then the tool.
