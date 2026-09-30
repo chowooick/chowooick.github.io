@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-09-30T07:18:53Z · 소스 커밋 `7ffb3ee` · 이 파일은 자동 생성물이다.
+생성 2026-09-30T07:23:18Z · 소스 커밋 `210468b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -11978,4 +11978,20 @@ retrying, and always compare a served file's hash with the local build.
 - Fewer deploys: GitLab `rules: - if: $CI_COMMIT_BRANCH == "main"` plus `changes:` with the paths the image is built from, on the deploy job and on every job that `needs` it. On the day of OPS-240, 20 of 31 pushes changed only docs, tests or check scripts. A pipeline started by hand ("Run pipeline") treats `changes` as true, which is the manual redeploy. Do not add auto-cancel of older pipelines on top: `changes` looks only at the newest push, so a docs push that cancels a pending app push leaves the app change undeployed.
 - Docker Desktop/colima with the containerd image store reported the same image as 494 MB (`docker images`) and 125 MB (`inspect .Size`); compare sizes on the host that runs it.
 - Swarm keeps 5 stopped tasks per service (`TaskHistoryRetentionLimit`), shown as `Exited (143)` after each redeploy. That is the normal SIGTERM of a replaced task, and each one pins its old image against `docker image prune`. Related: OPS-240, OPS-238.
+
+## OPS-243 — Editing an inline `configs: content:` block in a Dokploy compose and redeploying changes nothing: compose reports every container "Running" and the old config stays mounted
+
+`측정 2026-09-30 · Dokploy v0.30.7 · Docker Compose 5.0.2 · Grafana 13.0.7 provisioned from inline compose configs`
+
+**증상:** a monitoring stack keeps its Grafana alert rules and dashboard JSON as `configs: <name>: content: |` blocks in one raw compose. After `compose.update` + `compose.deploy` the deployment log ended with `Container …-grafana-1 Running` and `Docker Compose Deployed: ✅`, `composeStatus` was `done` after 15 s, and the container still showed `Up 5 weeks`. Inside it the provisioning files had none of the new text. `up -d` did not treat the changed config content as a reason to recreate the service.
+
+Two more things that cost time on the way:
+- `/etc/dokploy/compose/<appName>/code/docker-compose.yml` is not the source. It is Dokploy's rendered copy: comments removed, short lists expanded, Traefik labels added (1092 lines against 1100 in the database). Patch the `composeFile` returned by `compose.one`, never the file on disk; comparing the two byte for byte fails even when nothing changed.
+- `project.all` returns projects without their services in this version. To find a `composeId` by `appName`, call `project.one` and then `environment.one` for each environment.
+
+**해결:** after the Dokploy deploy, recreate the one service from the rendered file, which is world-readable:
+`cd /etc/dokploy/compose/<appName>/code && docker compose -p <appName> --env-file .env -f docker-compose.yml up -d --force-recreate --no-deps <service>`.
+Grafana was back in 6 s and logged `finished to provision alerting` and `finished to provision dashboards`. Verify inside the container (`docker exec <c> grep -c <new text> /etc/grafana/provisioning/...`), not by the deployment status. The Grafana admin password in the container environment is only used at first start; if it was changed later, basic auth with the env value answers 401. Related: OPS-240.
+
+**Follow-up 4 (same day, OPS-240):** the Grafana dashboard `mnori-host` and the disk alerts only queried `mountpoint="/"`, so the new disk was collected by node-exporter but shown nowhere. Added three panels for `/mnt/hdd` and the rule `disk-hdd-backup`, whose query ends with `or on() vector(100)`: a missing mount evaluates to 100 %, so one rule covers both a full and an absent disk without relying on NoData handling. Deploying it needed OPS-243.
 
