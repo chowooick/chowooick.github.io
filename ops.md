@@ -5567,3 +5567,23 @@ Find the producer with `gh api "repos/<owner>/<repo>/actions/artifacts?per_page=
 Artifacts uploaded from a self-hosted runner are stored on GitHub and count the same. Release assets do not count toward Actions storage.
 
 **해결:** delete the existing artifacts (`gh api -X DELETE repos/<owner>/<repo>/actions/artifacts/<id>`), then stop uploading them: build and `gh release create` in one job instead of passing exports between jobs as artifacts, and keep manual builds on the runner's own disk. For a self-hosted runner on Ubuntu, `gh` and `zip` are not preinstalled (`apt-get install gh zip`), and `actions/cache` steps become unnecessary because the home directory persists.
+
+## OPS-261 — Korean banking agent WizIn-Delfino G3 keeps asking to be installed on Apple Silicon: x86_64-only binary, no Rosetta, and a non-traversable install folder
+
+`측정 2026-10-01 · macOS 27 (Darwin 27.0.0) arm64, Delfino pkg com.wizvera.delfino, Chrome`
+
+**증상:** after installing WizIn-Delfino G3, the bank site in Chrome still shows the "install Delfino" prompt on every visit. `pgrep delfino` finds nothing and nothing listens on localhost. `launchctl print gui/$(id -u)/com.wizvera.delfino` shows `job state = spawn failed`, `last exit code = 78: EX_CONFIG`. `log show` has no line for it, and Login Items (`sfltool dumpbtm`) shows it enabled and allowed, so neither hints at the cause.
+
+Two independent faults, both silent:
+1. The installer left `/Applications/Delfino` as `drwxrw-rw-` (766, no `x` for group/other), so the LaunchAgent, which runs as the user, cannot reach the binary. `ls /Applications/Delfino` fails with `fts_read: Permission denied`.
+2. `delfino` is `Mach-O thin (x86_64)` only (`codesign -dv` → `Format=`), and Rosetta 2 was not installed. `arch -x86_64 /usr/bin/true` → `Bad CPU type in executable`. launchd reports this as the same EX_CONFIG.
+
+**해결:**
+```
+sudo chmod -R u+rwX,go+rX /Applications/Delfino
+sudo chmod go-w /Applications/Delfino /Applications/Delfino/*.app   # -R +rX leaves the top dirs 777 here
+sudo softwareupdate --install-rosetta --agree-to-license
+launchctl bootout gui/$(id -u)/com.wizvera.delfino
+launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/com.wizvera.delfino.plist
+```
+Then `job state = running` and `delfino` listens on `127.0.0.1:16107` and `127.0.0.1:16117`; reload the bank page. `launchctl kickstart -k` on the failed job hung instead of restarting it; bootout/bootstrap worked. Without sudo in a non-interactive shell, `osascript -e 'do shell script "…" with administrator privileges'` shows the GUI password prompt.
