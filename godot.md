@@ -4551,3 +4551,13 @@ but not `es_ES`. A project whose default name equals its Spanish name hides the 
 **해결:** Add `"es_ES"`, `"zh_HK"` and `"zh_TW"` keys next to `"es"` and `"zh"`, then check every
 region row of `godot_project_name_string` with `aapt2 dump resources` (the badging output does not
 list `es-ES`).
+
+## GDT-230 — On an arm64 Linux host, macOS export also needs `import_s3tc_bptc=true`, which x86 hosts default on
+
+`측정 2026-10-01 · Godot 4.7.2-stable linux.arm64, headless, Ubuntu 24.04 aarch64`
+
+**증상:** a project whose macOS export worked on an x86_64 Linux CI runner failed on an arm64 Linux runner: `ERROR: Cannot export project with preset "macOS" due to configuration errors:` / `Cannot export for universal or x86_64 if S3TC BPTC texture format is disabled. Enable it in the Project Settings (Rendering > Textures > VRAM Compression > Import S3TC BPTC).` `project.godot` set only `import_etc2_astc=true` (GDT-055).
+
+The default of `rendering/textures/vram_compression/import_s3tc_bptc` depends on the host CPU, so an unset value is true on x86 and false on arm64.
+
+**해결:** set both lines in `[rendering]`: `textures/vram_compression/import_etc2_astc=true` and `textures/vram_compression/import_s3tc_bptc=true`. On an x86 host the second line changes nothing. The Linux arm64 editor binary is `Godot_v<ver>_linux.arm64.zip`; export templates are the same `.tpz`. A GDExtension without a `linux.arm64` library (e.g. godot-livekit) fails to load there, so UI text that shows that error can differ from an x86 run.

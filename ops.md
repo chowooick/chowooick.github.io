@@ -5555,3 +5555,15 @@ launched afterwards see the new locale. Per-app locale needs no root: `cmd local
 An untagged job with `shared_runners_enabled: true` can land on either kind of runner. A project runner being online, idle and unlocked does not reserve the job for it.
 
 **해결:** if every job assumes the self-hosted box, turn shared runners off for the project: `glab api -X PUT "projects/:id" -f shared_runners_enabled=false` (or Settings → CI/CD → Runners). Re-running the schedule (`glab api -X POST "projects/:id/pipeline_schedules/<id>/play"`) then ran on the project runner and passed 14 of 14. If only some jobs need the box, give the runner a tag and those jobs `tags:` instead. To check where a job ran: `glab api "projects/:id/jobs?per_page=20"` and read `runner.runner_type` (`instance_type` = shared, `project_type` = yours).
+
+## OPS-260 — GitHub Actions storage on a free account (0.5GB) is filled by `upload-artifact` build outputs, and a self-hosted runner does not change that
+
+`측정 2026-10-01 · GitHub Free (personal), actions/upload-artifact@v4, actions/runner v2.337.0 linux-arm64`
+
+**증상:** GitHub emails "You have used 90% of the Actions storage included" (0.45 GB / 0.5 GB). The only producer was one private repo whose Godot client workflows uploaded macOS (~73MB) and Windows (~40MB) exports with the default 90-day retention: 16 artifacts, 904MB, from about 8 runs in two days. Public repos (Pages artifacts) do not count.
+
+Find the producer with `gh api "repos/<owner>/<repo>/actions/artifacts?per_page=100"` per repo and sum `size_in_bytes` of non-expired ones. The billing usage API needs the `user` scope, which a default `gh` token lacks (404 + "needs the user scope").
+
+Artifacts uploaded from a self-hosted runner are stored on GitHub and count the same. Release assets do not count toward Actions storage.
+
+**해결:** delete the existing artifacts (`gh api -X DELETE repos/<owner>/<repo>/actions/artifacts/<id>`), then stop uploading them: build and `gh release create` in one job instead of passing exports between jobs as artifacts, and keep manual builds on the runner's own disk. For a self-hosted runner on Ubuntu, `gh` and `zip` are not preinstalled (`apt-get install gh zip`), and `actions/cache` steps become unnecessary because the home directory persists.
