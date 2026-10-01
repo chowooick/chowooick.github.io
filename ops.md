@@ -5545,3 +5545,13 @@ adb shell "setprop persist.sys.locale ja-JP; stop; sleep 1; start"
 
 The framework restarts (not the VM), the launcher relabels apps in the new language, and apps
 launched afterwards see the new locale. Per-app locale needs no root: `cmd locale set-app-locales <pkg> --locales ja-JP`.
+
+## OPS-259 — GitLab.com jobs go to SaaS shared runners even when a project runner is online, until shared runners are turned off for the project
+
+`측정 2026-10-01 · GitLab.com, untagged project runner (run_untagged=true) beside instance shared runners`
+
+**증상:** a pipeline-schedule job that had always passed failed with every target `UNREACHABLE TimeoutError`. The job log's "Running on" line named `k8s.saas-linux-small-amd64.runners-manager.gitlab.com`, not the project's self-hosted runner. The job relied on being on that host: it writes the docker bridge gateway into `/etc/hosts` to get around a router that does not hairpin, and on a SaaS runner the gateway is a k8s node, so every request timed out. Every push job in the same project had run on the project runner for days; nothing in `.gitlab-ci.yml` chose a runner (no `tags`), so GitLab picked whichever eligible runner asked first.
+
+An untagged job with `shared_runners_enabled: true` can land on either kind of runner. A project runner being online, idle and unlocked does not reserve the job for it.
+
+**해결:** if every job assumes the self-hosted box, turn shared runners off for the project: `glab api -X PUT "projects/:id" -f shared_runners_enabled=false` (or Settings → CI/CD → Runners). Re-running the schedule (`glab api -X POST "projects/:id/pipeline_schedules/<id>/play"`) then ran on the project runner and passed 14 of 14. If only some jobs need the box, give the runner a tag and those jobs `tags:` instead. To check where a job ran: `glab api "projects/:id/jobs?per_page=20"` and read `runner.runner_type` (`instance_type` = shared, `project_type` = yours).
