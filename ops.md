@@ -5587,3 +5587,12 @@ launchctl bootout gui/$(id -u)/com.wizvera.delfino
 launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/com.wizvera.delfino.plist
 ```
 Then `job state = running` and `delfino` listens on `127.0.0.1:16107` and `127.0.0.1:16117`; reload the bank page. `launchctl kickstart -k` on the failed job hung instead of restarting it; bootout/bootstrap worked. Without sudo in a non-interactive shell, `osascript -e 'do shell script "…" with administrator privileges'` shows the GUI password prompt.
+
+## OPS-262 — The MacBook Air test host has the `docker` CLI on `PATH` but no daemon: image builds cannot be tested there
+
+`측정 2026-10-02 · MacBook Air test host (192.168.0.123) · docker CLI in ~/.local/bin`
+
+**증상:** `ssh 192.168.0.123 'zsh -lc "which docker"'` prints `/Users/chowooick/.local/bin/docker`, so a Dockerfile looks testable on the Air. `docker build` then fails at once:
+`failed to connect to the docker API at unix:///var/run/docker.sock ... no such file or directory`. There is no Docker Desktop, OrbStack or Colima daemon running, and starting one needs the owner's hand.
+
+**해결:** on the Air, test what the Dockerfile runs rather than the image: `npm ci && npm run build` (Node 26 there) and the test suites. Let Dokploy do the image build, then check the live URL (headers, `/healthz`, a browser pass from the Air). For a plain static site (Vite → nginx:alpine, Dokploy GitLab provider, OPS-191 order, domain port 8080), the first deploy went from `running` to `done` in about 1 minute and the letsencrypt certificate was served on the first request.
