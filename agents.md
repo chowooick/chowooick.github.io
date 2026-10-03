@@ -1686,3 +1686,53 @@ holds for fixed names on a shared test host (`/tmp/<project>-*.log`).
 **증상:** a free-trial account shows "30/30 image generations remaining" and offers V5 Curated (default) and V5 Full. The page sends `POST https://image.novelai.net/ai/generate-image-stream`; Playwright's `request.postData()` is empty for it, so the JSON body cannot be copied from the network log. The response has `content-type: application/msgpack` and is a sequence of frames, each a 4-byte big-endian length followed by one msgpack map: `{event_type: "intermediate", step_ix, image}` per step, then `{event_type: "final", image}`. The image bytes are WebP even though the UI saves them as PNG. A matcher of `url.includes('generate-image')` also catches the tag-suggestion endpoint (JSON `{"tags": [...]}`) and loses the image; one trial generation was spent that way. After the first generation a "Congratulations!" tutorial modal blocks every click; its skip button reads `I know what I’m doing, skip this!` with a curly apostrophe, so a match on the straight `I'm` finds nothing. The first generation raises the modal again in a new session.
 
 **해결:** drive the page: set the prompt and Undesired Content through the two `.ProseMirror` editors (click, Meta+A, Backspace, `keyboard.insertText`). Set the size with `input[aria-label=W]` and `input[aria-label=H]`; the trial stays free up to about one megapixel (1216×832 was free) and 28 steps. Pick the model by clicking the name in the Model dropdown. Wait with `page.waitForResponse(r => r.url().includes('generate-image-stream'))`, then walk the frames with `buf.readUInt32BE(i)` and `@msgpack/msgpack` `decode` and keep the `final` image. Dismiss the modal with `getByText(/I know what I.m doing/)` before every click. Google sign-in works through the page's GIS button iframe (`iframe[src*="accounts.google.com/gsi/button"]`), which opens an account-chooser popup.
+
+## AGT-080 — Codex VS Code extension, several windows: a follow-up queued in one window makes every other window try to resume that thread and fail with "already has an active writer"
+
+`측정 2026-10-02 · openai.chatgpt 26.928–26.930 (codex-cli 0.160.0) · VS Code, 5 windows + ChatGPT desktop app · macOS`
+
+**증상:** with Codex open in several VS Code windows, sending a message while a run is in progress is unreliable.
+Each window's `Codex.log` (`~/Library/Application Support/Code/logs/<session>/window*/exthost/openai.chatgpt/`)
+fills with `Request failed ... method=thread/resume error={"code":-32600,"message":"thread <id> already has an
+active writer"}`, `vmEvent=thread_resume_failed`, and right after each one `Failed to release queued message send
+lock ... "undefined" is not valid JSON`. 1,229 resume failures in two days; 1,210 of them were followed by the lock
+warning within 2 s. One hidden window hot-looped 1,050 resume attempts in a minute.
+
+Every window runs its own `codex app-server`, all of them share `~/.codex` (including the follow-up queue,
+`queue_1.sqlite`) and all report `hostId=local`. In `queue` mode a follow-up typed during a run is written to that
+shared queue and broadcast as `thread-queued-followups-changed`; within 400 ms every other window starts
+`maybe_resume` for the thread to deliver it, and only the owning process can be the writer. The VS Code host also
+logs `Received broadcast but no handler is configured` for `thread-stream-following-changed`, so the windows do not
+coordinate. Not caused by editor-panel patches: the same pattern is in logs from an unpatched build.
+
+The VS Code setting `chatgpt.followUpQueueMode` defaults to `queue`; the desktop app's own default is `steer`.
+In `steer` mode the composer sends the follow-up with `turn/steer` to its own app-server, so nothing enters the
+shared queue in the normal case.
+
+**해결:** set `"chatgpt.followUpQueueMode": "steer"` in VS Code user settings (applies live, no reload).
+Cmd/Ctrl+Shift+Enter still queues a single message. Opening the same conversation in two windows (or in the
+desktop app and VS Code) causes the same writer conflict and has no setting; keep one conversation in one client.
+
+## AGT-081 — Codex "Reconnecting 1/5" after an idle gap is a stale Responses websocket; the HTTP workaround hides every existing thread
+
+`측정 2026-10-02 · codex-cli 0.160.0 (VS Code openai.chatgpt 26.930) · ChatGPT login · macOS`
+
+**증상:** the UI shows a reconnect/retry banner and the turn then continues. `~/.codex/logs_2.sqlite`
+(`select ... from logs where target='codex_core::responses_retry'`) gives the cause in `sampling_error=`. Of 43
+retries in 10 days: 18 `failed to send websocket request: Connection closed normally` and 2 `IO error: Can't assign
+requested address (os error 49)`, all on the first request after 11–150 min idle, all recovered on retry 1 within
+~200 ms; 13 `websocket closed by server before response.completed` (10 of them two 5/5 bursts, server side);
+5 `idle timeout waiting for websocket` at exactly 300 s of silence; 2 `Responses websocket connection limit
+reached (60 minutes)`.
+
+The built-in `openai` provider cannot be overridden (`Built-in providers cannot be overridden`), and the
+`responses_websockets` feature flags are `removed`. A custom provider does switch to HTTP:
+`model_provider="openai_http"` with `[model_providers.openai_http] base_url="https://chatgpt.com/backend-api/codex"
+wire_api="responses" requires_openai_auth=true supports_websockets=false` works with ChatGPT login and still sends
+`service_tier="priority"` (`POST .../codex/responses`, no websocket in the debug log). But `thread/list` without
+`modelProviders` returns only threads of the current provider: 50 → 0 in a probe, and most extension call sites
+pass `modelProviders: null`, so the history list goes empty.
+
+**해결:** leave the transport alone; the idle-gap retries are cosmetic and self-heal. Use the custom HTTP provider
+only if losing the history list is acceptable. Count retries per cause with the query above before changing
+anything.
