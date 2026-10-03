@@ -4642,3 +4642,45 @@ FSR 2 at 0.67 was slower than FSR 1 at 0.77; its own pass costs about as much as
 **증상:** a screenshot tool quit through the audio autoload's quit helper: stop every `AudioStreamPlayer`, set its `stream` to `null`, drop the stream cache, `await create_timer(0.15, true, false, true).timeout`, `quit()`. When music and a one-shot were still sounding at that moment, 2 of 3 runs printed `WARNING: 4 ObjectDB instances were leaked at exit` and `ERROR: 2 resources still in use at exit`; `--verbose` listed `AudioStreamPlaybackWAV` and `AudioStreamWAV` for the music track and the last effect. The same wait is enough headless (GDT-095); the real CoreAudio driver releases playbacks later and less predictably.
 
 **해결:** wait 0.5 s between stopping and `quit()`. Same tool, same timing of the last sounds: clean in 9 of 9 runs.
+
+## GDT-237 — Poing godot-admob v5.1.0 (GMA Next-Gen SDK 1.4.0) kills the Android app if an ad is loaded before `on_initialization_complete`
+
+`측정 2026-10-03 · Godot 4.7.2-stable · poing godot-admob 5.1.0 (android-template-v4.7.2.zip) · ads-mobile-sdk 1.4.0 · Pixel 7 Pro, Android 17`
+
+**증상:** calling the `PoingGodotAdMob` singleton's `initialize()` and then, in the same frame, `PoingGodotAdMobInterstitialAd.load(...)` crashes the whole app about two seconds after launch. No GDScript error; logcat shows:
+
+```
+D poing-godot-admob: loading interstitial ad
+E AndroidRuntime: java.lang.IllegalStateException: MobileAds.initialize must be called before using the Google Mobile Ads SDK.
+E AndroidRuntime: 	at com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd$Companion.load(SourceFile:53)
+E AndroidRuntime: 	at com.poingstudios.godot.admob.ads.PoingGodotAdMobInterstitialAd.load$lambda$0(PoingGodotAdMobInterstitialAd.kt:84)
+```
+
+`initialize()` returns at once; the Next-Gen SDK finishes starting on a background thread, and the load runs on the UI thread, where an exception is fatal.
+
+**해결:** connect the singleton's `on_initialization_complete(status: Dictionary)` signal and do the first load (and `set_app_muted`) there. Measured after the fix: the load starts 50 ms after the signal and the test interstitial shows. Other facts from the same setup:
+
+- The plugin works with a **gradle** export only (it brings the maven dependency `com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.4.0`). A prebuilt export with no `_get_android_dependencies` still exports fine; keep the debug app prebuilt and return nothing from the export plugin there (`get_option("gradle_build/use_gradle_build")`).
+- You do not need their editor addon (it downloads binaries when the editor opens). Two AARs from `android-template-v4.7.2.zip` (`ads/libs/poing-godot-admob-{ads,core}-{debug,release}.aar`) plus a 20-line `EditorExportPlugin` returning them from `_get_android_libraries`, the two maven deps from `ads/poing_godot_admob_ads.gd`, and `<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" …/>` from `_get_android_manifest_application_element_contents` is enough. Call the singletons directly: `PoingGodotAdMob`, `PoingGodotAdMobInterstitialAd` (`create()→uid`, `load(unit, request_dict, keywords, uid)`, `show(uid)`, `destroy(uid)`), `PoingGodotAdMobConsentInformation` (`update(dict)`, status ints 0 unknown · 1 not required · 2 required · 3 obtained), `PoingGodotAdMobUserMessagingPlatform`.
+- The Pixel's hashed test-device id appears in logcat as `GMA(BG) 4: Use RequestConfiguration.Builder().setTestDeviceIds(Arrays.asList("…"))`, and UMP prints the same hash.
+- A script that `preload`s an autoload script from an `EditorExportPlugin` or a `--script` test fails to compile if that script names another autoload as a global (`Identifier not found: Sfx`); look it up with `get_node_or_null("/root/Sfx")` instead.
+
+Classic `play-services-ads` 25.5.0 is a different path with a different trap (Kotlin 2.3 metadata against the template's Kotlin 2.1.21) — the bearhunter session wrote its plugin in Java for that reason.
+
+## GDT-238 — Godot 4.7.2 gradle export: `window/handheld/orientation=1` does reach the manifest as portrait; and `android/` in `.gitignore` also ignores `assets/android/`
+
+`측정 2026-10-03 · Godot 4.7.2-stable · gradle_build/use_gradle_build=true · aapt2 36.1.0`
+
+**증상 1:** GDT-072 found a gradle build that kept `screenOrientation` landscape. With `[display] window/handheld/orientation=1` (an integer, GDT-019) a gradle export of a portrait game gives `android:screenOrientation(0x0101001e)=1` (portrait) in `aapt2 dump xmltree --file AndroidManifest.xml`, and the app runs upright on a Pixel 7 Pro. So the integer setting is honoured by gradle builds as well as prebuilt ones (GDT-080); GDT-072's project used a string.
+
+**증상 2:** `--install-android-build-template` writes the template to `<project>/android/`. Ignoring it with a line `android/` in the project's `.gitignore` also matches **every** directory named `android` below, e.g. `assets/android/` holding the launcher icons; `git add` then refuses them ("paths are ignored by one of your .gitignore files") and a commit chained with `&&` silently does not happen.
+
+**해결:** anchor it: `/android/`. Check with `git check-ignore -v <project>/assets/android/<file>` (prints nothing when not ignored). Also exclude it from export presets (`exclude_filter="android/*"`, GDT-020).
+
+## GDT-239 — `keytool -printcert -jarfile` says a Godot release APK is unsigned; it is v2/v3-signed only. Use `apksigner verify --print-certs`
+
+`측정 2026-10-03 · Godot 4.7.2-stable gradle export · JDK 17 keytool · build-tools 36.1.0`
+
+**증상:** a check after `--export-release` that runs `keytool -printcert -jarfile out.apk` prints `서명된 jar 파일이 아닙니다.` (Not a signed jar file) and fails, although the APK installs and is signed with the release key. Godot's APKs carry only the APK Signature Scheme v2/v3 block (minSdk 24), which `keytool` cannot read.
+
+**해결:** for an APK, `$ANDROID_HOME/build-tools/<v>/apksigner verify --print-certs out.apk` (prints `Signer #1 certificate DN: …` and the SHA-256). An `.aab` is jar-signed, so `keytool -printcert -jarfile out.aab` does work for bundles. Either way, check the signer, not that the file exists (GDT-202).

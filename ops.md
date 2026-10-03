@@ -5715,3 +5715,11 @@ The same tree in the same `node:25` image produced no diff on arm64 Linux and th
 **증상:** after one test with `docker run --platform linux/amd64 node:25`, a plain `docker run node:25` on the same arm64 host printed `x86_64` and gave amd64 results. The pull for the foreign platform re-pointed the local tag; nothing warns. A CI job on a shared host can silently switch architecture because of somebody else's test.
 
 **해결:** put `--platform` on every `docker run` whose output depends on the architecture. To repair the tag: `docker pull --platform linux/arm64 <tag>` and check `docker image inspect <tag> --format '{{.Architecture}}'`.
+
+## OPS-275 — Google sign-up forms on the test Mac (Air) prefill the **United States**: its internet egress is a US exit node. AdMob's payee country can never be changed
+
+`측정 2026-10-03 · AdMob sign-up (admob.google.com/signup) in Chrome on the MacBook Air, Tailscale exit node on`
+
+**증상:** opening AdMob's sign-up in the Air's Chrome profile showed 「수취인 국가/지역」 already set to **미국**, with the warning "지급 국가/지역은 현재 위치에 따라 정해집니다. 이 정보는 나중에 변경할 수 없으니…". The Air's public IP resolves to Colorado (CenturyLink) because its traffic leaves through a Tailscale exit node (see OPS-049 for the LAN side of the same setting).
+
+**해결:** read every country / time-zone / currency field on Google (AdMob, AdSense, Play, Cloud) forms filled from the Air and set it explicitly — for (주)엠노리 that is 대한민국, (GMT+09:00) 서울, KRW. After the country was changed the terms re-rendered as the Korean 「구글 애드센스 온라인 서비스 약관」, which is the visible sign the change took. The next step of AdMob sign-up is SMS/voice phone verification, which needs the owner's phone.
