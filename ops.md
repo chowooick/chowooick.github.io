@@ -5596,3 +5596,16 @@ Then `job state = running` and `delfino` listens on `127.0.0.1:16107` and `127.0
 `failed to connect to the docker API at unix:///var/run/docker.sock ... no such file or directory`. There is no Docker Desktop, OrbStack or Colima daemon running, and starting one needs the owner's hand.
 
 **해결:** on the Air, test what the Dockerfile runs rather than the image: `npm ci && npm run build` (Node 26 there) and the test suites. Let Dokploy do the image build, then check the live URL (headers, `/healthz`, a browser pass from the Air). For a plain static site (Vite → nginx:alpine, Dokploy GitLab provider, OPS-191 order, domain port 8080), the first deploy went from `running` to `done` in about 1 minute and the letsencrypt certificate was served on the first request.
+
+## OPS-263 — Workers Free: 50 subrequests per invocation with Workers AI calls counted, and the 51st throws; a cut-off cron run is delivered again 4-6 s later
+
+`측정 2026-10-03 · Cloudflare Workers Free · cron trigger · wrangler 4.135.0 · Workers GraphQL analytics`
+
+**증상:** a six-hourly collector Worker left its run record in `running` 7 times out of 18 with no error in its own log. `wrangler tail` shows only live events, and the Workers Observability query API answers `code 10000 Authentication error` to the wrangler OAuth token. The GraphQL API at `https://api.cloudflare.com/client/v4/graphql` does accept that token. The `workersInvocationsAdaptive` dataset has `dimensions {datetimeFifteenMinutes status scriptVersion}`, `sum {requests errors subrequests}` and `quantiles {cpuTimeP99 wallTimeP99}` for each invocation, and it showed two causes:
+
+- `scriptThrewException` with `subrequests` exactly 50. Normal runs used 41-49 out of 50, counting each fetch, each manual-redirect hop, waiting-room poll and Workers AI binding call. Retries to an origin that answered `HTTP 522` used up the rest. The 51st call threw after the main data was saved, and the `catch` block's own write to close the record threw too.
+- `clientDisconnected` after 148-333 s of wall time, with CPU 50-130 ms. Each one was followed 4-6 s later by a second invocation for the same `scheduledTime`, which used 2 subrequests. The code checked whether a run for the slot was "running for less than 20 min" and treated the redelivery as a duplicate, so the slot was lost.
+
+The 522s were on the origin's side: the same URLs answered 200 from home, from AWS Oregon and, four days later, from Workers again.
+
+**해결:** count subrequests yourself and stop optional work at a reserve kept for the closing writes. After N connection failures to an origin (errors, timeouts, HTTP 52x), skip that origin for the rest of the invocation. Treat a scheduled delivery whose same-slot run started more than about 60 s ago as a redelivery and take that run over. At the start of each run, close older records left `running`. Workers Paid raises the limit to 10,000. Moving the job to a host that is not limited per invocation also avoids it; Workers AI can stay behind a small token-protected relay endpoint on the Worker, one model call per request.
