@@ -4606,3 +4606,23 @@ for ad-hoc, a Developer ID for distribution), or re-sign the exported bundle the
 **증상:** a windowed run that quits cleanly prints `WARNING: 7 RIDs of type "Texture" were leaked.` from `servers/rendering/rendering_device.cpp` `finalize`. A gate that rejects leak warnings then fails although nothing in the game leaks. Bisecting one scene (two interior `ReflectionProbe`s, two procedural `ImageTexture`s, one `GPUParticles3D`) with an environment switch per suspect: without the probes the warning is gone (0 of 1 runs); without the textures or the particles it stays (1 of 1 each). `update_mode = UPDATE_ALWAYS` instead of `UPDATE_ONCE` still leaks 7. Calling `queue_free()` on the probes and waiting 150 ms before `get_tree().quit()` still leaks 7: the reflection atlas outlives the probe nodes.
 
 **해결:** do not use a `ReflectionProbe` in anything a leak-checking gate runs. For an interior's ambient, scale `Environment.ambient_light_energy` down while the camera is inside the room's bounds, and switch `reflected_light_source` to `REFLECTION_SOURCE_DISABLED` there so glossy floors stop mirroring the sky.
+
+## GDT-234 — Forward+ on an M1 MacBook Air: MetalFX spatial upscaling buys more than any single effect, and FSR 2 buys less than FSR 1
+
+`측정 2026-10-03 · Godot 4.7.2-stable · Forward+ on Metal, windowed 1920x1080, VSync off · MacBook Air M1 (adapter name "Apple M1 (Apple7)")`
+
+**증상:** a stylized city scene that holds 60 FPS on an M1 Max ran at 25 FPS on the base M1 at the HIGH preset (SDFGI, SSIL, SSR, SSAO, volumetric fog, glow, 4-split soft sun shadows, about 50 omni/spot lights). Turning off one feature at a time gave these savings: sun shadows 7.3 ms, SDFGI 5.9 ms, lights 5.3 ms, SSIL 4.0 ms, SSR 2.4 ms, fog 2.2 ms, glow 1.8 ms, SSAO 1.3 ms. No single switch got near 60 FPS.
+
+Setting `Viewport.scaling_3d_mode` and `scaling_3d_scale` on the root viewport gave this (frame ms, HIGH / MEDIUM):
+
+| Mode | HIGH | MEDIUM |
+|---|---:|---:|
+| native | 39.6 | 25.7 |
+| FSR 1, 0.77 | 29.3 | 18.8 |
+| FSR 2, 0.67 | 30.1 | 20.9 |
+| MetalFX spatial, 0.67 | 24.9 | 15.7 |
+| MetalFX temporal, 0.5 | 22.1 | 14.7 |
+
+FSR 2 at 0.67 was slower than FSR 1 at 0.77; its own pass costs about as much as it saves. MetalFX spatial needs no motion vectors or jitter, and the UI is not scaled.
+
+**해결:** on Metal, use `SCALING_3D_MODE_METALFX_SPATIAL` and choose the starting quality per GPU. `RenderingServer.get_video_adapter_name()` returns `Apple M1 (Apple7)` for the base chip, so "starts with `Apple M` and has no ` Pro`, ` Max` or ` Ultra`" identifies the small GPUs. MEDIUM with MetalFX spatial at 0.67 measured 61-70 FPS (p99 under 17.7 ms) in a moving playthrough. Use FSR 1 on other Forward+ or Mobile drivers and bilinear on Compatibility, where neither upscaler exists.
