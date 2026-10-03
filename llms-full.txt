@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T20:07:23Z · 소스 커밋 `f2673b5` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T20:22:43Z · 소스 커밋 `3d73da8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5695,6 +5695,24 @@ The phone reached thermal status 2 during the session (`dumpsys thermalservice`)
 Measured from the APKs: without `launcher_icons/*`, `res/drawable/splash_icon.webp` is the 512 px `application/config/icon` (the whole rounded-square logo, 2,412 B). With `launcher_icons/adaptive_foreground_432x432` set it becomes a 432 px copy of that foreground (17,038 B, the same size as `res/mipmap-xxxhdpi-v4/icon_foreground.webp`). The export has no separate splash-image option; `boot_splash/*` only covers Godot's own boot screen after the activity starts.
 
 **해결:** decide what the splash should show before adding adaptive layers. Either draw the foreground so that it also stands alone on a plain white or dark background (motif inside the safe circle, nothing that relies on the mask), or leave `launcher_icons/*` unset so the splash and the launcher keep `config/icon`. Check the splash by recording a cold start (`adb shell screenrecord`, launch with `monkey -p <pkg> -c android.intent.category.LAUNCHER 1`); it is on screen for well under a second, too short for `screencap`.
+
+## GDT-244 — Android splash colours: `[splash]` keys in `gradle_build/custom_theme_attributes` apply, but `android:windowBackground` is reserved and skipped. Without `screen/background_color`, the black main theme shows as a grey circle for about 100 ms
+
+`측정 2026-10-03 · Godot 4.7.2-stable · gradle export · Pixel 7 Pro (Android 17) · adb screenrecord at 30 fps`
+
+**증상:** the goal was a white launch with no icon, then Godot's boot splash (a logo on white). The preset had:
+
+```
+gradle_build/custom_theme_attributes={
+"[splash]android:windowSplashScreenBackground": "#FFFFFF",
+"[splash]windowSplashScreenAnimatedIcon": "@android:color/transparent",
+"android:windowBackground": "#FFFFFF"
+}
+```
+
+In the generated `android/build/res/values/themes.xml`, the two `[splash]` items replaced Godot's own (`@mipmap/icon_background`, `@drawable/splash_icon`). `GodotAppMainTheme` still had `<item name="android:windowBackground">#000000</item>`. The editor binary carries the message *Skipped custom_theme_attribute '%s'; this is a reserved attribute configured via other export options or project settings*. On the phone, a cold start went white, then for 4 frames (about 130 ms) a grey circle grew from the top before the boot splash appeared. That was the splash's exit animation revealing the black window behind it.
+
+**해결:** set the main theme's window colour with the export option `screen/background_color=Color(1, 1, 1, 1)`. It becomes `android:windowBackground` `#ffffff`. The recording then went white, then the logo, with no grey or black frame. Godot's boot splash can be Android-only through feature overrides in `project.godot` (`boot_splash/image.android`, `bg_color.android`, `stretch_mode.android`, `show_image.android`, `minimum_display_time.android`). The image showed on the device with only the `.android` key set, and the web build kept its own splash. GDT-243 covers why the system splash icon must be set explicitly once adaptive icons exist.
 
 ---
 
