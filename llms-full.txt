@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T21:35:59Z · 소스 커밋 `5f41484` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T22:32:37Z · 소스 커밋 `655bf6a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13223,4 +13223,18 @@ The same tree in the same `node:25` image produced no diff on arm64 Linux and th
 **원인:** playwright-core adds `--use-mock-keychain` to every Chrome it launches on macOS (`lib/coreBundle.js`, default args). `ignoreDefaultArgs: ['--enable-automation']` keeps it. So Playwright's Chrome encrypts cookies with a fixed mock key and plain Chrome uses the real macOS Keychain key. Each one fails to decrypt the other's cookies, treats itself as signed out and discards them. A sign-in done in one kind of window is wiped by the next launch of the other kind.
 
 **해결:** sign in to an automation profile **only in a window Playwright opened** (headed, the same launch options the tests use), and never open that profile with plain Chrome (`open -na "Google Chrome" --args --user-data-dir=…` is plain Chrome). For a passkey sign-in, have the script open `https://accounts.google.com/AccountChooser?Email=<account>&continue=<target>` in its own window and poll until the target page is reached, while a person completes the passkey there. Check the result by what the page shows, not by `Preferences` `account_info`: that survives after the cookies are gone.
+
+## OPS-277 — SpacetimeDB 2.8 area-of-interest subscriptions: `SubscribeMulti` with a range on an indexed column works on the v1.json protocol; it cut client-side rows 39 % and cost the server 22 points of one core
+
+`측정 2026-10-03 · SpacetimeDB 2.8.0 standalone · v1.json.spacetimedb · Rust module · MacBook Air (Apple M1), 150 load bots in 6 Godot processes`
+
+**증상:** a hand-written client (OPS-153) subscribed `SELECT * FROM pose WHERE zone = 0`, so every client decoded every player's movement at 10 Hz. Splitting the map into chunks needed message shapes and SQL support that the documentation does not show for the JSON protocol.
+
+- **Messages** (JSON, probed with a Node `WebSocket`): send `{"SubscribeMulti": {"query_strings": [...], "request_id": n, "query_id": {"id": k}}}` and later `{"UnsubscribeMulti": {"request_id": n, "query_id": {"id": k}}}`. The answers are `SubscribeMultiApplied` / `UnsubscribeMultiApplied`, with the rows under `update.tables` exactly like a transaction. **Unsubscribing sends the rows the set held back as deletes.** A rejected set comes back as `SubscriptionError` carrying that `query_id`; the base `Subscribe` stays up.
+- **Moving a window without rows blinking out:** subscribe the new set first, then unsubscribe the old one, and reference-count rows per query in the client cache (a row in both sets arrives twice and leaves once).
+- **Subscription SQL accepts a range on an indexed `u32`:** `SELECT * FROM enemy WHERE chunk >= 525825 AND chunk <= 526850` returned exactly the matching rows. Packing the chunk id as `cx * 1024 + cz` makes the three chunks of a column consecutive, so a 3x3 window is 3 range queries per table instead of 9 equality queries.
+- **Schema:** appending `#[index(btree)] #[default(0u32)] pub chunk: u32` to two live tables in a Rust module migrated under a data-keeping publish (with `--yes` including break-clients, OPS-170). Old rows read 0, so backfill them in a scheduled reducer.
+- **Cost, measured.** Each of the 150 bots decoded every row and walked at 10 Hz, using 48 m chunks and a 3x3 window. Whole-map subscription: 17,946 rows decoded/s per 25-bot process, move p99 142–155 ms, server 50 % of one core. Chunk window: 9,585–11,994 rows/s, p99 59–69 ms, server 72 %. The window moved about 4 times per player per minute, so resubscribing is not the server's extra cost. The likely cause: an update is now evaluated and encoded per distinct query set instead of once for all.
+
+**해결:** use chunked `SubscribeMulti` when client decode is the wall, and expect the server to pay for it. Put hysteresis on the window (here: move only 6 m inside a new chunk). In a load test, **check that the bots actually spread out**: this test's bots started at a spawn point outside their own walking box, only ever reversed direction, and stood in one chunk for every earlier run. With all bots in one spot, chunking showed −4 % instead of −39 %. Print the number of distinct chunks the bots occupy.
 
