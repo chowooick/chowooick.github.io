@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T20:22:43Z · 소스 커밋 `3d73da8` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T20:48:25Z · 소스 커밋 `acd461e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7469,6 +7469,20 @@ anything.
 **증상:** 에이전트가 공식 출처를 확인하려고 WebFetch나 기본 `curl`로 `*.colorado.gov`를 열면 `HTTP 403 Forbidden`이 난다. headed Chrome(자동화 플래그 제거)으로는 200으로 열리지만, `locator('main').innerText()`로 읽은 본문에는 FAQ·요건 같은 접힌 아코디언 내용이 빠져 있어 "페이지에 없다"고 잘못 결론 내기 쉽다.
 
 **해결:** 페이지 HTML 원문을 받는다. 브라우저에서 `page.content()`를 쓰거나, Chrome User-Agent를 붙인 `curl -A "Mozilla/5.0 … Chrome/…"`로 받으면 대부분 200이고 접힌 내용도 HTML 안에 있다(dmv.colorado.gov 확인). 아코디언 본문을 텍스트로 비교해야 하면 `textContent`를 쓰거나 펼친 뒤 읽는다. "확인 못 함"과 "페이지에 없음"을 구분해 기록한다.
+
+## AGT-083 — 교육·참고 링크를 고를 때 상태 코드와 viewport grep은 틀린 신호를 준다: 200인 오류 페이지, 500인 옛 주소, 모바일 판정 오류
+
+`측정 2026-10-03 · curl(Chrome UA, -L) · WebFetch · Playwright(channel chrome, headed, MacBook Air)`
+
+**증상:** 에이전트가 천문·과학 참고 링크를 고르면서 `curl -w '%{http_code}'`와 `grep 'name="viewport"'`로 걸렀더니 판정이 여러 번 틀렸다.
+- `scienceall.com/brd/board/...` 일부 주소는 **200**을 주면서 본문이 "페이지 오류" 화면이다.
+- `astro.kasi.re.kr`(한국천문연구원)의 옛 주소 `/learning/pageView/*`, `/community/post/faq/*`는 전부 **500**이다. 검색 결과에는 아직 많이 나온다. 살아 있는 주소는 `/kor/post/...`이다.
+- `spaceinfo.jaxa.jp`(JAXA 宇宙情報センター)는 DNS가 응답하지 않는다(8.8.8.8·1.1.1.1 모두).
+- WebFetch는 `terms.naver.com`(네이버 지식백과)을 막는다. Chrome UA를 붙인 curl로 받은 HTML에는 본문이 그대로 있다.
+- `sciencebuddies.org`는 curl·WebFetch에 403을 주고, headed Playwright Chrome에도 Cloudflare 확인 화면("잠시만 기다리십시오…")을 띄운다.
+- `eco.mtk.nao.ac.jp`(国立天文台 暦計算室)는 viewport grep에 걸리지 않는다. 하지만 iPhone 에뮬레이션에서 `scrollWidth`가 390이고 읽기에 문제가 없다. 반대로 Playwright `isMobile: true`만 주고 UA를 바꾸지 않으면 Wikipedia가 데스크톱판으로 열려 `scrollWidth` 1120이 나온다.
+
+**해결:** 상태 코드는 1차 필터로만 쓰고, 고른 링크는 본문까지 읽는다. WebFetch가 막히면 Chrome UA로 받은 curl HTML을 읽는다. 폰에서 읽히는지는 viewport grep 대신 Playwright `devices['iPhone 13']`로 열어 `document.documentElement.scrollWidth`와 스크린숏으로 판정한다.
 
 ---
 
