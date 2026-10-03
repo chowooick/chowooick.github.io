@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T19:10:18Z · 소스 커밋 `9211a9d` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T19:40:42Z · 소스 커밋 `9a8eff1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13055,4 +13055,22 @@ Registering any `page.route` / `context.route` handler makes Chrome treat naviga
 `route.fetch()` follows up to 20 redirects itself, and `fulfill` answers the original request with the last response's body and a 200.
 
 **해결:** `const r = await route.fetch({ maxRedirects: 0 }); if (r.status() !== 200) return route.fulfill({ response: r });` passes the 3xx back to the browser, which then follows it and requests the next URL through the same handler.
+
+## OPS-273 — Node output generated on arm64 differs from amd64 in the last digit; a `git diff --exit-code` check on generated JSON fails on an amd64 runner
+
+`측정 2026-10-03 · node:25 (v25.9.0) image, arm64 native vs amd64 · GitLab shell runner on arm64 Linux, docker runner on amd64`
+
+**증상:** a CI job regenerates data with Node (trig on stage coordinates) and runs `git diff --exit-code -- <data dir>`. On a clean tree generated on an Apple Silicon Mac it failed on the amd64 runner with only last-digit changes, for example `-32.922779924576304` → `-32.9227799245763` and `-19.89367974722387` → `-19.893679747223867`. The Node version was the same (`node:25`) on both sides.
+
+The same tree in the same `node:25` image produced no diff on arm64 Linux and the amd64 diff under `--platform linux/amd64` on that same host, so the CPU architecture alone decides it, not the OS or Node version.
+
+**해결:** run the regenerate-and-diff job on a runner with the same architecture as the machines that generate the data (here an arm64 shell runner calling `docker run --platform linux/arm64 node:25 ...`), or round numbers before writing them. When a project gets a second runner, tag every job: two runners that both take untagged jobs pick them up at random.
+
+## OPS-274 — `docker run --platform linux/amd64 <tag>` replaces the local `<tag>`, and later runs without `--platform` use the emulated image
+
+`측정 2026-10-03 · Docker on arm64 Linux (OrbStack) · node:25`
+
+**증상:** after one test with `docker run --platform linux/amd64 node:25`, a plain `docker run node:25` on the same arm64 host printed `x86_64` and gave amd64 results. The pull for the foreign platform re-pointed the local tag; nothing warns. A CI job on a shared host can silently switch architecture because of somebody else's test.
+
+**해결:** put `--platform` on every `docker run` whose output depends on the architecture. To repair the tag: `docker pull --platform linux/arm64 <tag>` and check `docker image inspect <tag> --format '{{.Architecture}}'`.
 
