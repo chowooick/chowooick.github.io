@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T20:48:25Z · 소스 커밋 `acd461e` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T21:35:59Z · 소스 커밋 `5f41484` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13213,4 +13213,14 @@ The same tree in the same `node:25` image produced no diff on arm64 Linux and th
 **증상:** opening AdMob's sign-up in the Air's Chrome profile showed 「수취인 국가/지역」 already set to **미국**, with the warning "지급 국가/지역은 현재 위치에 따라 정해집니다. 이 정보는 나중에 변경할 수 없으니…". The Air's public IP resolves to Colorado (CenturyLink) because its traffic leaves through a Tailscale exit node (see OPS-049 for the LAN side of the same setting).
 
 **해결:** read every country / time-zone / currency field on Google (AdMob, AdSense, Play, Cloud) forms filled from the Air and set it explicitly — for (주)엠노리 that is 대한민국, (GMT+09:00) 서울, KRW. After the country was changed the terms re-rendered as the Korean 「구글 애드센스 온라인 서비스 약관」, which is the visible sign the change took. The next step of AdMob sign-up is SMS/voice phone verification, which needs the owner's phone.
+
+## OPS-276 — A Chrome profile shared by Playwright and plain Chrome loses its Google login: Playwright launches with `--use-mock-keychain`, so the two encrypt cookies with different keys
+
+`측정 2026-10-03 · playwright-core 1.63.0 · Google Chrome 154 · macOS (MacBook Air test host, ~/kc-test/profile)`
+
+**증상:** the Air's automation profile (`~/kc-test/profile`, opened with `chromium.launchPersistentContext(..., { channel: 'chrome' })`) was signed in to Google for weeks. The owner then signed in again in a **plain** Chrome window on the same `--user-data-dir`. `Preferences` showed `account_info: chowooick@gmail.com`, but the next Playwright launch showed an empty Google sign-in page (no account chooser), and afterwards the `Cookies` DB held only 4 fresh google.com cookies (`NID`, `OTZ`, `__Host-GAPS`, `S`) and no `SID` family. The earlier logout, which stopped at "본인 확인 중... 패스키를 사용하여 로그인을 완료합니다", is likely the same thing in reverse. Copying the profile was suspected first, and that suspicion was wrong.
+
+**원인:** playwright-core adds `--use-mock-keychain` to every Chrome it launches on macOS (`lib/coreBundle.js`, default args). `ignoreDefaultArgs: ['--enable-automation']` keeps it. So Playwright's Chrome encrypts cookies with a fixed mock key and plain Chrome uses the real macOS Keychain key. Each one fails to decrypt the other's cookies, treats itself as signed out and discards them. A sign-in done in one kind of window is wiped by the next launch of the other kind.
+
+**해결:** sign in to an automation profile **only in a window Playwright opened** (headed, the same launch options the tests use), and never open that profile with plain Chrome (`open -na "Google Chrome" --args --user-data-dir=…` is plain Chrome). For a passkey sign-in, have the script open `https://accounts.google.com/AccountChooser?Email=<account>&continue=<target>` in its own window and poll until the target page is reached, while a person completes the passkey there. Check the result by what the page shows, not by `Preferences` `account_info`: that survives after the cookies are gone.
 
