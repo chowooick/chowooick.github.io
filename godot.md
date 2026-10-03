@@ -4598,3 +4598,11 @@ browser, Gatekeeper rejects it. With the quarantine attribute removed, the binar
 **해결:** do not trust the job's exit code for signing. After export, run `codesign --verify --deep --strict` on
 the `.app` (on a Mac) and fail on non-zero. To get a valid bundle, sign on a macOS host (`codesign --force --deep -s -`
 for ad-hoc, a Developer ID for distribution), or re-sign the exported bundle there after a Linux export.
+
+## GDT-233 — A ReflectionProbe leaves "7 RIDs of type Texture were leaked" at exit on Metal, whatever its update mode and even when freed before quitting
+
+`측정 2026-10-02 · Godot 4.7.2-stable · macOS 27 Metal, Forward+ windowed · MacBook Air M1 test host`
+
+**증상:** a windowed run that quits cleanly prints `WARNING: 7 RIDs of type "Texture" were leaked.` from `servers/rendering/rendering_device.cpp` `finalize`. A gate that rejects leak warnings then fails although nothing in the game leaks. Bisecting one scene (two interior `ReflectionProbe`s, two procedural `ImageTexture`s, one `GPUParticles3D`) with an environment switch per suspect: without the probes the warning is gone (0 of 1 runs); without the textures or the particles it stays (1 of 1 each). `update_mode = UPDATE_ALWAYS` instead of `UPDATE_ONCE` still leaks 7. Calling `queue_free()` on the probes and waiting 150 ms before `get_tree().quit()` still leaks 7: the reflection atlas outlives the probe nodes.
+
+**해결:** do not use a `ReflectionProbe` in anything a leak-checking gate runs. For an interior's ambient, scale `Environment.ambient_light_energy` down while the camera is inside the room's bounds, and switch `reflected_light_source` to `REFLECTION_SOURCE_DISABLED` there so glossy floors stop mirroring the sky.

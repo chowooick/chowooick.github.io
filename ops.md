@@ -5609,3 +5609,13 @@ Then `job state = running` and `delfino` listens on `127.0.0.1:16107` and `127.0
 The 522s were on the origin's side: the same URLs answered 200 from home, from AWS Oregon and, four days later, from Workers again.
 
 **해결:** count subrequests yourself and stop optional work at a reserve kept for the closing writes. After N connection failures to an origin (errors, timeouts, HTTP 52x), skip that origin for the rest of the invocation. Treat a scheduled delivery whose same-slot run started more than about 60 s ago as a redelivery and take that run over. At the start of each run, close older records left `running`. Workers Paid raises the limit to 10,000. Moving the job to a host that is not limited per invocation also avoids it; Workers AI can stay behind a small token-protected relay endpoint on the Worker, one model call per request.
+
+## OPS-264 — Homebrew `codex` 0.154.0 fails every `codex exec` with "model is not supported when using Codex with a ChatGPT account" after the config default moves to a newer model; the ChatGPT app's bundled CLI works
+
+`측정 2026-10-02 · codex-cli 0.154.0 (/opt/homebrew/bin/codex) · codex-cli 0.159.2 (ChatGPT.app) · ~/.codex/config.toml model = "gpt-6-sol"`
+
+**증상:** unattended image generation (OPS-076) that worked a week earlier exits 1 in 6-9 s with no file. The log ends with
+`warning: Model metadata for 'gpt-6-sol' not found` and `ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."}}`.
+The shared `~/.codex/config.toml` had been switched to the new model by the desktop app; the older Homebrew CLI does not know it.
+
+**해결:** run the CLI the ChatGPT app ships, which follows its own config: `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex exec --skip-git-repo-check -C <empty dir> --sandbox workspace-write -`. With it the same instruction produced a 1024x1536 PNG in 62-90 s, three runs in parallel without errors (9 images). Check `"$CODEX" --version` in scripts instead of assuming `codex` on `PATH` is current.
