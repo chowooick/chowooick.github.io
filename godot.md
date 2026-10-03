@@ -4684,3 +4684,51 @@ Classic `play-services-ads` 25.5.0 is a different path with a different trap (Ko
 **증상:** a check after `--export-release` that runs `keytool -printcert -jarfile out.apk` prints `서명된 jar 파일이 아닙니다.` (Not a signed jar file) and fails, although the APK installs and is signed with the release key. Godot's APKs carry only the APK Signature Scheme v2/v3 block (minSdk 24), which `keytool` cannot read.
 
 **해결:** for an APK, `$ANDROID_HOME/build-tools/<v>/apksigner verify --print-certs out.apk` (prints `Signer #1 certificate DN: …` and the SHA-256). An `.aab` is jar-signed, so `keytool -printcert -jarfile out.aab` does work for bundles. Either way, check the signer, not that the file exists (GDT-202).
+
+## GDT-240 — A Kotlin Godot plugin cannot compile against `play-services-ads` 25.5.0: its Kotlin 2.3 metadata is refused by the build template's Kotlin 2.1.21; write the plugin in Java
+
+`측정 2026-10-03 · Godot 4.7.2-stable Android build template · AGP 8.6.1 · play-services-ads 25.5.0 · JDK 17`
+
+**증상:** a plugin v2 library module with `id 'org.jetbrains.kotlin.android' version '2.1.21'` (the template's own Kotlin, `android/build/config.gradle`) and `compileOnly "com.google.android.gms:play-services-ads:25.5.0"` fails in `:compileReleaseKotlin` with one line per module of the SDK:
+
+```
+e: file:///…/play-services-ads-25.5.0-api.jar!/META-INF/…kotlin_module Module was compiled with an incompatible version of Kotlin. The binary version of its metadata is 2.3.0, expected version is 2.1.0.
+```
+
+The same code in Java compiles and the app links. The template's app module compiles no Kotlin for the `standard` flavour (its `.kt` files are under `instrumented/` and `androidTestInstrumented/`), so the SDK on its classpath does no harm there. The SDK pulls in `user-messaging-platform` 4.0.0 through `play-services-ads-api`, so a separate UMP dependency is not needed.
+
+`godot-lib.jar` for `compileOnly` is not a file in the export templates directory. It is `classes.jar` inside `libs/release/godot-lib.template_release.aar`, which is inside `android_source.zip`.
+
+**해결:** write the plugin in Java (drop the Kotlin plugin from the module), or compile with `-Xskip-metadata-version-check`. Read the SDK's own metadata version before you choose the plugin's language.
+
+## GDT-241 — Android AAB from a Godot 4.7.2 gradle export: 54.9 MB bundle, 31 MB Play download, 149 MB universal APK; `GODOT_ANDROID_KEYSTORE_RELEASE_*` signs it headless
+
+`측정 2026-10-03 · Godot 4.7.2-stable · gradle_build/export_format=1 · arm64-v8a + armeabi-v7a · bundletool 1.18.3`
+
+**증상:** a sideload APK made from the bundle is three times the bundle and five times what Play delivers, which reads like a broken export.
+
+Measured for a small 3D game: `.aab` 54.9 MB, of which `libgodot_android.so` is 71.1 MB (arm64) and 74.9 MB (armv7) before zip compression. `bundletool get-size total --dimensions=ABI` gives 31.4 MB (arm64) and 32.9 MB (armv7) downloaded. `bundletool build-apks --mode=universal` makes one 148.7 MB APK: both ABIs, with the native libraries stored uncompressed (`compress_native_libraries=false`).
+
+A headless `--export-release` of a gradle preset signs with the keystore in the environment variables `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`, `_USER` and `_PASSWORD`, so the password stays out of `export_presets.cfg`. The universal APK takes the same key: `--ks=… --ks-pass=file:… --ks-key-alias=upload --key-pass=file:…`.
+
+**해결:** upload the `.aab`. For a phone on a cable, install the universal APK. Its size is not what players download. To test exactly what was uploaded, cut the APK from the bundle rather than exporting an APK separately.
+
+## GDT-242 — Android: a Godot 4.7.2 GL Compatibility scene renders at the panel's full resolution; on a Pixel 7 Pro that was 17 fps, and `screen_get_scale()` reports 2.40 where the density is 3.5
+
+`측정 2026-10-03 · Godot 4.7.2-stable · Pixel 7 Pro (Android 17, 3120 × 1440, `wm density` 560) · gradle export, release template`
+
+**증상:** a 3D title scene (grass, SSAO, glow, 4× MSAA, a 4096 shadow atlas) that runs at 80 fps on an M1 desktop at 1600 × 900 ran at **17 fps** on the phone. The window is the whole panel, 3120 × 1440, and the 3D renders at that size by default.
+
+Measured on the same phone (frames per second, title screen, averaged over 5 s windows):
+
+| 3D scale | Effects | fps |
+|---|---|---|
+| 1.00 (4.5 Mpx) | all | 17.0 |
+| 0.75 | no SSAO, glow or lens blur, 2× MSAA | 21–29 |
+| 0.52 (1.2 Mpx) | all | 34–40 |
+
+The phone reached thermal status 2 during the session (`dumpsys thermalservice`), and later runs at the same settings read lower. Compare settings back to back, not across a session.
+
+`DisplayServer.screen_get_scale()` returned **2.40** on this phone, while `wm density` 560 is 3.5. A layout that divides the window by it gets 600 units on the short side, not 411 dp.
+
+**해결:** on `OS.has_feature("mobile")`, cap the 3D at a pixel budget before anything else: `get_viewport().scaling_3d_scale = min(1, sqrt(1.2e6 / (w * h)))` from `DisplayServer.window_get_size()`. The 2D UI keeps the panel's resolution, so text stays sharp. Do not assume `screen_get_scale()` is the Android density.
