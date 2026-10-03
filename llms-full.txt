@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T12:22:30Z · 소스 커밋 `807bdb9` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T12:52:22Z · 소스 커밋 `6cfad9c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -12963,4 +12963,26 @@ The shared `~/.codex/config.toml` had been switched to the new model by the desk
 On a field object from `collection.fields.getByName()`, `type` is the Go method `Type()` exposed to the JS VM as a function, so `field.type` is a function and never equals a string. `collection.type` is different: it is a plain value (`'base'`, `'view'`, `'auth'`). `field.name`, `field.values` and other plain struct members read as values; `field.values.indexOf()` and assigning a new JS array both work.
 
 **해결:** compare `field.type()` (or `typeof field.type === 'function' ? field.type() : field.type`). Before touching production, dry-run on a copy: `sqlite3 data.db ".backup /tmp/pbtest/pb_data/data.db"`, copy the applied migrations plus the new one into `/tmp/pbtest/mig`, then `pocketbase migrate up --dir=/tmp/pbtest/pb_data --migrationsDir=/tmp/pbtest/mig` and read the result from `_collections`. A view collection built over the widened field re-reads its schema when it is saved again (`app.save(app.findCollectionByNameOrId(id))`). `pocketbase migrate down` asks `Do you really want to revert…? (y/N)` on stdin and cancels (exit 255) when run over ssh without a terminal.
+
+## OPS-266 — three.js `renderer.dispose()` does not free the WebGL context: an SPA that mounts a new renderer per view hits Chrome's "Too many active WebGL contexts" and evicts the oldest scene
+
+`측정 2026-10-03 · three 0.186 · Google Chrome (Playwright channel chrome, headless) · React 19 SPA`
+
+**증상:** a site with three WebGL views (hero globe, a lab globe, a solar-system scene), each creating its own `WebGLRenderer` on mount and calling `scene` disposal plus `renderer.dispose()` on unmount. Cycling hero → lab → solar seven times (21 renderers) logged `WARNING: Too many active WebGL contexts. Oldest context will be lost.` and the view that lost its context went blank. Nothing failed while navigating slowly by hand; it shows up after a few minutes of browsing or in an end-to-end test that loops through the views.
+
+`renderer.dispose()` releases three.js resources but leaves the context to be reclaimed whenever the browser garbage-collects the canvas. Chrome allows about 16 live contexts.
+
+A second trap in the same code: three.js restores a lost context by itself (`webglcontextlost` is `preventDefault`ed internally), but a scene that renders only when something changes (paused globe, a static diagram) stays blank after `webglcontextrestored`, because nothing asks for a new frame.
+
+**해결:** call `renderer.forceContextLoss()` right after `renderer.dispose()` on teardown (remove your own `webglcontextlost` listeners first, or ignore events after teardown). The same 7-round loop then logs no warning. For on-demand scenes, listen for `webglcontextrestored` on `renderer.domElement` and render again; hide the canvas (show a still) on `webglcontextlost`. Reproduce in a test with `canvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()` then `.restoreContext()` after a few hundred ms.
+
+## OPS-267 — `.gitignore` treats `[backup]/` as a character class: it ignores `b/`, `a/`, `k/`… and not the folder literally named `[backup]`
+
+`측정 2026-10-03 · git 2.54.0 (Apple Git-157)`
+
+**증상:** a folder named `[backup]` holding private files kept appearing as `?? [backup]/` after adding the line `[backup]/` to `.gitignore`. Meanwhile a folder `b/` silently became ignored.
+
+gitignore patterns use fnmatch globbing, where `[...]` matches one character from the set. `.dockerignore` (Go `filepath.Match`) behaves the same way.
+
+**해결:** escape the brackets: `\[backup\]/` (in both `.gitignore` and `.dockerignore`). Check with `git status --porcelain --untracked-files=all` or `git check-ignore -v '[backup]/x'`. Better still, avoid `[`, `]`, `*`, `?` in folder names that need ignoring.
 
