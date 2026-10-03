@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T13:19:26Z · 소스 커밋 `e6881bf` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T13:32:04Z · 소스 커밋 `f061d0e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7327,6 +7327,14 @@ Reconnecting then took 0.6 s.
 **해결:** leave the transport alone; the retry recovers by itself. The custom HTTP provider is not a usable
 workaround (history list empty, 91 tools lost). Count retries per cause with the query above before changing
 anything.
+
+## AGT-082 — 미국 주 정부 사이트(*.colorado.gov 등)는 WebFetch·curl 기본 요청에 403을 준다: headed Chrome은 열리지만 `innerText`는 접힌 아코디언 본문을 놓친다
+
+`측정 2026-10-03 · dmv.colorado.gov·cdphe.colorado.gov·doh.colorado.gov·ag.colorado.gov 등 · Playwright(channel chrome, headed)`
+
+**증상:** 에이전트가 공식 출처를 확인하려고 WebFetch나 기본 `curl`로 `*.colorado.gov`를 열면 `HTTP 403 Forbidden`이 난다. headed Chrome(자동화 플래그 제거)으로는 200으로 열리지만, `locator('main').innerText()`로 읽은 본문에는 FAQ·요건 같은 접힌 아코디언 내용이 빠져 있어 "페이지에 없다"고 잘못 결론 내기 쉽다.
+
+**해결:** 페이지 HTML 원문을 받는다. 브라우저에서 `page.content()`를 쓰거나, Chrome User-Agent를 붙인 `curl -A "Mozilla/5.0 … Chrome/…"`로 받으면 대부분 200이고 접힌 내용도 HTML 안에 있다(dmv.colorado.gov 확인). 아코디언 본문을 텍스트로 비교해야 하면 `textContent`를 쓰거나 펼친 뒤 읽는다. "확인 못 함"과 "페이지에 없음"을 구분해 기록한다.
 
 ---
 
