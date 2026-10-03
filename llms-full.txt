@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-03T01:48:41Z · 소스 커밋 `61df42b` · 이 파일은 자동 생성물이다.
+생성 2026-10-03T04:22:52Z · 소스 커밋 `c2a6f32` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5514,6 +5514,43 @@ list `es-ES`).
 The default of `rendering/textures/vram_compression/import_s3tc_bptc` depends on the host CPU, so an unset value is true on x86 and false on arm64.
 
 **해결:** set both lines in `[rendering]`: `textures/vram_compression/import_etc2_astc=true` and `textures/vram_compression/import_s3tc_bptc=true`. On an x86 host the second line changes nothing. The Linux arm64 editor binary is `Godot_v<ver>_linux.arm64.zip`; export templates are the same `.tpz`. A GDExtension without a `linux.arm64` library (e.g. godot-livekit) fails to load there, so UI text that shows that error can differ from an x86 run.
+
+## GDT-231 — godot-livekit's prebuilt macOS `liblivekit_ffi.dylib` links Homebrew's `libjpeg.8.dylib` by absolute path, so voice fails on any Mac without Homebrew jpeg-turbo
+
+`측정 2026-10-02 · Godot 4.7.2-stable · godot-livekit v0.3.3 prebuilt macos-arm64 · macOS arm64`
+
+**증상:** an exported `.app` starts and plays, but voice never connects. The log says
+`ERROR: Can't open dynamic library: addons/godot-livekit/bin/libgodot-livekit.macos.arm64.dylib. Error: dlopen(...): Library not loaded: /opt/homebrew/opt/jpeg-turbo/lib/libjpeg.8.dylib`
+and then `Error loading extension: 'res://addons/godot-livekit/godot-livekit.gdextension'`. Every class from the
+extension is then missing at runtime. The developer's machine works because it has `brew install jpeg-turbo`, so
+the bug only shows on a clean Mac (here, a test Mac with no `/opt/homebrew` at all).
+
+`otool -L liblivekit_ffi.dylib` shows `/opt/homebrew/opt/jpeg-turbo/lib/libjpeg.8.dylib` next to the `@rpath`
+entries. The export copies the three dylibs into `Contents/Frameworks/` unchanged, so the absolute path ships too.
+The library is also `arm64` only, so an Intel Mac has no voice even when the main binary is universal.
+
+**해결:** before export, run `otool -L` on every dylib in the extension's `bin/` and fail the build on any path
+under `/opt/homebrew` or `/usr/local`. To fix it, copy `libjpeg.8.dylib` next to the other dylibs, point the
+reference at it with `install_name_tool -change /opt/homebrew/opt/jpeg-turbo/lib/libjpeg.8.dylib @rpath/libjpeg.8.dylib liblivekit_ffi.dylib`,
+set its id with `install_name_tool -id @rpath/libjpeg.8.dylib`, list it under `[dependencies]` in the
+`.gdextension`, then re-sign. Check on a Mac without Homebrew; a headless run of the exported binary
+(`TRPG.app/Contents/MacOS/TRPG --headless --quit-after 200`) prints the `dlopen` error within seconds.
+
+## GDT-232 — macOS export on a Linux host: built-in CodeSign fails with "Failed to extract thin binary", but the export still exits 0 and ships the template's stock signature, which does not verify
+
+`측정 2026-10-02 · Godot 4.7.2-stable linux.arm64 headless · preset architecture=universal, codesign/codesign=1`
+
+**증상:** the CI job that runs `--export-release "macOS"` passes and uploads a `.app`. The job log has
+`ERROR: CodeSign: Failed to extract thin binary.` and `WARNING: Code Signing: Built-in CodeSign failed with error "Failed to extract thin binary.".`
+The `.app` keeps the export template's signature (`Authority=Developer ID Application: Prehensile Tales B.V.`)
+with `flags=0x0(none)` and no entitlements, so the preset's `audio_input` and `disable_library_validation`
+entitlements are not applied. `codesign --verify --deep --strict` and `spctl -a -t exec` both answer
+`code has no resources but signature indicates they must be present`. When the archive is downloaded through a
+browser, Gatekeeper rejects it. With the quarantine attribute removed, the binary still starts.
+
+**해결:** do not trust the job's exit code for signing. After export, run `codesign --verify --deep --strict` on
+the `.app` (on a Mac) and fail on non-zero. To get a valid bundle, sign on a macOS host (`codesign --force --deep -s -`
+for ad-hoc, a Developer ID for distribution), or re-sign the exported bundle there after a Linux export.
 
 ---
 
