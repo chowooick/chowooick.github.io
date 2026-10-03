@@ -4626,3 +4626,11 @@ Setting `Viewport.scaling_3d_mode` and `scaling_3d_scale` on the root viewport g
 FSR 2 at 0.67 was slower than FSR 1 at 0.77; its own pass costs about as much as it saves. MetalFX spatial needs no motion vectors or jitter, and the UI is not scaled.
 
 **해결:** on Metal, use `SCALING_3D_MODE_METALFX_SPATIAL` and choose the starting quality per GPU. `RenderingServer.get_video_adapter_name()` returns `Apple M1 (Apple7)` for the base chip, so "starts with `Apple M` and has no ` Pro`, ` Max` or ` Ultra`" identifies the small GPUs. MEDIUM with MetalFX spatial at 0.67 measured 61-70 FPS (p99 under 17.7 ms) in a moving playthrough. Use FSR 1 on other Forward+ or Mobile drivers and bilinear on Compatibility, where neither upscaler exists.
+
+## GDT-235 — `ShaderMaterial.get_shader_parameter()` returns `null` for a uniform that was never set, so `float(...)` on it is a SCRIPT ERROR, not the shader's default
+
+`측정 2026-10-03 · Godot 4.7.2-stable · macOS 27 Metal, Forward+`
+
+**증상:** a fade helper read the current value before tweening it: `var from := float(mat.get_shader_parameter("amount"))`. The uniform has a default in the shader code (`uniform float amount = 0.0;`), but the material had never set it. The first call printed `SCRIPT ERROR: Invalid call. Nonexistent 'float' constructor.` with the helper's line, because `get_shader_parameter()` returned `null` — it reports what the material overrides, not the shader's default. The tween still ran from 0, so the effect looked fine; only a gate that greps logs for `SCRIPT ERROR` caught it.
+
+**해결:** set every uniform you will read back right after creating the material (`mat.set_shader_parameter("amount", 0.0)`), or read defensively: `var v: Variant = mat.get_shader_parameter("amount"); var from: float = v if v is float else 0.0`.
