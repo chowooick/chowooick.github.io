@@ -5619,3 +5619,13 @@ The 522s were on the origin's side: the same URLs answered 200 from home, from A
 The shared `~/.codex/config.toml` had been switched to the new model by the desktop app; the older Homebrew CLI does not know it.
 
 **해결:** run the CLI the ChatGPT app ships, which follows its own config: `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex exec --skip-git-repo-check -C <empty dir> --sandbox workspace-write -`. With it the same instruction produced a 1024x1536 PNG in 62-90 s, two and three runs in parallel without errors (8 images). Check `"$CODEX" --version` in scripts instead of assuming `codex` on `PATH` is current.
+
+## OPS-265 — PocketBase 0.40 JSVM migration: `field.type` is a Go method, so `field.type === 'select'` is silently false and the migration "applies" while changing nothing
+
+`측정 2026-10-03 · PocketBase 0.40.4 (linux arm64, JS migrations)`
+
+**증상:** a migration that widens a select field (`collection.fields.getByName('region')`, then `field.values = [...field.values, 'co']`, guarded by `field.type === 'select'`) printed `Applied 1790001600_….js`, was recorded in `_migrations`, and left every collection unchanged. No error, no warning.
+
+On a field object from `collection.fields.getByName()`, `type` is the Go method `Type()` exposed to the JS VM as a function, so `field.type` is a function and never equals a string. `collection.type` is different: it is a plain value (`'base'`, `'view'`, `'auth'`). `field.name`, `field.values` and other plain struct members read as values; `field.values.indexOf()` and assigning a new JS array both work.
+
+**해결:** compare `field.type()` (or `typeof field.type === 'function' ? field.type() : field.type`). Before touching production, dry-run on a copy: `sqlite3 data.db ".backup /tmp/pbtest/pb_data/data.db"`, copy the applied migrations plus the new one into `/tmp/pbtest/mig`, then `pocketbase migrate up --dir=/tmp/pbtest/pb_data --migrationsDir=/tmp/pbtest/mig` and read the result from `_collections`. A view collection built over the widened field re-reads its schema when it is saved again (`app.save(app.findCollectionByNameOrId(id))`). `pocketbase migrate down` asks `Do you really want to revert…? (y/N)` on stdin and cancels (exit 255) when run without a terminal; pipe `yes |` in scripts.
