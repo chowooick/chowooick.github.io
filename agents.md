@@ -1687,31 +1687,28 @@ holds for fixed names on a shared test host (`/tmp/<project>-*.log`).
 
 **해결:** drive the page: set the prompt and Undesired Content through the two `.ProseMirror` editors (click, Meta+A, Backspace, `keyboard.insertText`). Set the size with `input[aria-label=W]` and `input[aria-label=H]`; the trial stays free up to about one megapixel (1216×832 was free) and 28 steps. Pick the model by clicking the name in the Model dropdown. Wait with `page.waitForResponse(r => r.url().includes('generate-image-stream'))`, then walk the frames with `buf.readUInt32BE(i)` and `@msgpack/msgpack` `decode` and keep the `final` image. Dismiss the modal with `getByText(/I know what I.m doing/)` before every click. Google sign-in works through the page's GIS button iframe (`iframe[src*="accounts.google.com/gsi/button"]`), which opens an account-chooser popup.
 
-## AGT-080 — Codex VS Code extension, several windows: a follow-up queued in one window makes every other window try to resume that thread and fail with "already has an active writer"
+## AGT-080 — Codex VS Code extension, several windows: every message sent in one window makes every other window try to resume that thread and fail with "already has an active writer" — log noise, not the cause of visible retries
 
 `측정 2026-10-02 · openai.chatgpt 26.928–26.930 (codex-cli 0.160.0) · VS Code, 5 windows + ChatGPT desktop app · macOS`
 
-**증상:** with Codex open in several VS Code windows, sending a message while a run is in progress is unreliable.
-Each window's `Codex.log` (`~/Library/Application Support/Code/logs/<session>/window*/exthost/openai.chatgpt/`)
-fills with `Request failed ... method=thread/resume error={"code":-32600,"message":"thread <id> already has an
-active writer"}`, `vmEvent=thread_resume_failed`, and right after each one `Failed to release queued message send
-lock ... "undefined" is not valid JSON`. 1,229 resume failures in two days; 1,210 of them were followed by the lock
-warning within 2 s. One hidden window hot-looped 1,050 resume attempts in a minute.
+**증상:** with Codex open in several VS Code windows, each window's `Codex.log`
+(`~/Library/Application Support/Code/logs/<session>/window*/exthost/openai.chatgpt/`) fills with
+`Request failed ... method=thread/resume error={"code":-32600,"message":"thread <id> already has an active writer"}`,
+`vmEvent=thread_resume_failed`, and right after each one `Failed to release queued message send lock ...
+"undefined" is not valid JSON`. 1,229 resume failures in two days; 1,210 were followed by the lock warning within
+2 s. One hidden window hot-looped 1,050 resume attempts in a minute.
 
-Every window runs its own `codex app-server`, all of them share `~/.codex` (including the follow-up queue,
-`queue_1.sqlite`) and all report `hostId=local`. In `queue` mode a follow-up typed during a run is written to that
-shared queue and broadcast as `thread-queued-followups-changed`; within 400 ms every other window starts
-`maybe_resume` for the thread to deliver it, and only the owning process can be the writer. The VS Code host also
-logs `Received broadcast but no handler is configured` for `thread-stream-following-changed`, so the windows do not
-coordinate. Not caused by editor-panel patches: the same pattern is in logs from an unpatched build.
+Every window runs its own `codex app-server`, all of them share `~/.codex` (including `queue_1.sqlite`) and all
+report `hostId=local`. Every send, even into an idle thread, passes through that shared queue and is broadcast as
+`thread-queued-followups-changed`; within 400 ms the other windows start `maybe_resume` for the thread and lose the
+writer race. The owning window still starts its turn about 0.2 s after the send, so nothing is visible to the user.
+Setting `chatgpt.followUpQueueMode` to `steer` does not stop it: measured after the change, an idle send in one
+window still triggered failed resumes in three others. Not caused by editor-panel patches: the same pattern is in
+logs from an unpatched build.
 
-The VS Code setting `chatgpt.followUpQueueMode` defaults to `queue`; the desktop app's own default is `steer`.
-In `steer` mode the composer sends the follow-up with `turn/steer` to its own app-server, so nothing enters the
-shared queue in the normal case.
-
-**해결:** set `"chatgpt.followUpQueueMode": "steer"` in VS Code user settings (applies live, no reload).
-Cmd/Ctrl+Shift+Enter still queues a single message. Opening the same conversation in two windows (or in the
-desktop app and VS Code) causes the same writer conflict and has no setting; keep one conversation in one client.
+**해결:** none needed; treat these lines as noise when diagnosing Codex problems. A conversation opened in two
+clients at once (two windows, or the desktop app and VS Code) is a real conflict that the user sees as
+`Failed to resume conversation`; keep one conversation in one client.
 
 ## AGT-081 — Codex "Reconnecting 1/5" after an idle gap is a stale Responses websocket; the HTTP workaround hides every existing thread
 
@@ -1732,7 +1729,15 @@ wire_api="responses" requires_openai_auth=true supports_websockets=false` works 
 `service_tier="priority"` (`POST .../codex/responses`, no websocket in the debug log). But `thread/list` without
 `modelProviders` returns only threads of the current provider: 50 → 0 in a probe, and most extension call sites
 pass `modelProviders: null`, so the history list goes empty.
+The custom provider also loses tools: in a `codex exec` probe the model listed 118 tools with the built-in
+provider and 27 with the custom one — every `mcp__codex_apps__*` tool (Sites, ChatGPT spaces, plugin management)
+and `mcp__node_repl__*` were gone. Overriding `prefer_websockets` through `model_catalog_json` does not change the
+transport (still `responses_websocket`).
 
-**해결:** leave the transport alone; the idle-gap retries are cosmetic and self-heal. Use the custom HTTP provider
-only if losing the history list is acceptable. Count retries per cause with the query above before changing
+The visible cost is not the banner but the wait before it: a send at 19:30:48 went onto a websocket idle for
+2.5 h and failed only at 19:31:23 (34.5 s) with `os error 49`; three threads stalled 300 s before `idle timeout`.
+Reconnecting then took 0.6 s.
+
+**해결:** leave the transport alone; the retry recovers by itself. The custom HTTP provider is not a usable
+workaround (history list empty, 91 tools lost). Count retries per cause with the query above before changing
 anything.
