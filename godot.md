@@ -4634,3 +4634,11 @@ FSR 2 at 0.67 was slower than FSR 1 at 0.77; its own pass costs about as much as
 **증상:** a fade helper read the current value before tweening it: `var from := float(mat.get_shader_parameter("amount"))`. The uniform has a default in the shader code (`uniform float amount = 0.0;`), but the material had never set it. The first call printed `SCRIPT ERROR: Invalid call. Nonexistent 'float' constructor.` with the helper's line, because `get_shader_parameter()` returned `null` — it reports what the material overrides, not the shader's default. The tween still ran from 0, so the effect looked fine; only a gate that greps logs for `SCRIPT ERROR` caught it.
 
 **해결:** set every uniform you will read back right after creating the material (`mat.set_shader_parameter("amount", 0.0)`), or read defensively: `var v: Variant = mat.get_shader_parameter("amount"); var from: float = v if v is float else 0.0`.
+
+## GDT-236 — Windowed quit on macOS: `stop()` then a 0.15 s wait is not always enough to release WAV playbacks; 0.5 s was (extends GDT-095)
+
+`측정 2026-10-03 · Godot 4.7.2-stable · macOS, MacBook Air M1, windowed, CoreAudio`
+
+**증상:** a screenshot tool quit through the audio autoload's quit helper: stop every `AudioStreamPlayer`, set its `stream` to `null`, drop the stream cache, `await create_timer(0.15, true, false, true).timeout`, `quit()`. When music and a one-shot were still sounding at that moment, 2 of 3 runs printed `WARNING: 4 ObjectDB instances were leaked at exit` and `ERROR: 2 resources still in use at exit`; `--verbose` listed `AudioStreamPlaybackWAV` and `AudioStreamWAV` for the music track and the last effect. The same wait is enough headless (GDT-095); the real CoreAudio driver releases playbacks later and less predictably.
+
+**해결:** wait 0.5 s between stopping and `quit()`. Same tool, same timing of the last sounds: clean in 9 of 9 runs.
