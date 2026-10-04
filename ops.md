@@ -5823,3 +5823,20 @@ Paperlogy 9 Black (SIL OFL 1.1), Noto Sans KR Black and Gmarket Sans Bold draw �
 An intent before the package exists has only Chrome as a handler, so Chrome loads the https URL in the same tab. `S.browser_fallback_url` is ignored for `scheme=https`, so a fallback cannot stop that.
 
 **해결:** after `appinstalled`, poll `getInstalledRelatedApps()` until it returns the `webapp`, wait 3 s more, then follow the intent. Two runs measured 10.1 s and 10.8 s from accepting the sheet to the app in front, first try. Put a marker in the intent URL (`/?open-app=1`). If the tab reloads with it, the hand-off failed: retry from the reloaded page a few times, then show an "Open app" button. The app strips the marker when `display-mode: standalone` matches. `getInstalledRelatedApps` is 2.2–2.4 s ahead of the real install, so the poll alone is not enough.
+
+## OPS-285 — Web Speech API in Chrome on macOS: the first utterance plays in a different voice (Albert) than later ones
+
+`측정 2026-10-03 · Chrome (stable) on macOS 27.0.1, Korean system language · speechSynthesis`
+
+**증상:** a page that picks a voice with `speechSynthesis.getVoices().find(...)` inside `speak()` played the first
+line in a hoarse male voice and every later line in the chosen voice (Samantha). No error. In Chrome the voice list
+can be empty on the first `getVoices()` call; the code then leaves `utterance.voice` unset, and Chrome falls back to
+the first voice matching `utterance.lang`. On macOS the first `en-US` voice in Chrome's list is **Albert** (the list
+starts `유나 (ko-KR, default)`, `Albert`, `Bad News`, `Bahh`, … — novelty voices included). Recorded with a
+`speechSynthesis.speak` hook: first utterance `voice=null`, then `Samantha`.
+
+Also seen: a male regex like `/male|daniel/` matches `female` in voice names on Windows/Google voices.
+
+**해결:** call `getVoices()` at page load, and make `speak()` wait for a non-empty list (`voiceschanged`, with a
+timeout) before building the utterance. Resolve the voice by exact name from a ranked list, cache it for the session,
+and always set `utterance.voice` so every line uses the same voice.
