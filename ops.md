@@ -5766,3 +5766,19 @@ Measured behaviour:
 - **Internal testing** rolls out at once to an email list. The tester opt-in link only goes to the clipboard: `https://play.google.com/apps/internaltest/<track id>`. To read it, grant `clipboard-read` for `https://play.google.com` and read `navigator.clipboard.readText()`. Testers see the name `<package> (unreviewed)` until the app passes review.
 
 **해결:** write small step scripts against one long-lived Chrome (attach over CDP rather than relaunching, so the Google login survives, OPS-276). After every step, read `innerText` and a screenshot. Match controls by `debug-id` or `aria-label`, and confirm every toggle by reading `input.checked` back. Fill all listing languages before the first save.
+
+## OPS-279 — The Android emulator on the test Mac (Air) has no network, and a Godot GL game hangs QEMU within minutes; use the USB Pixel
+
+`측정 2026-10-03 · Android emulator (sdkmanager "emulator") + system-images;android-35;google_apis;arm64-v8a, -no-window -gpu swiftshader_indirect · MacBook Air (Apple Silicon), Tailscale exit node on`
+
+**증상:** an AVD created and booted headless on the Air (boot completed in 85 s) installed a Godot 4.7.2 release APK and showed its title screen, but inside the emulator nothing reached the internet: `nc -w 5 <public IP> 443` timed out, the app's UMP consent request failed with "2 Error making request", while the Air itself reached the same hosts (HTTP 200) and its firewall was off. A few minutes later the emulator died: `detected a hanging thread 'QEMU2 CPU0 thread'. No response for 15012 ms`, and `adb devices` lost it. Before that, System UI showed "isn't responding" dialogs.
+
+**해결:** do not plan device tests of a GL game on an emulator on the Air. Use the USB Pixel 7 Pro (shared; see AGT-044 for etiquette). If the Pixel is locked (fingerprint), wait until it is unlocked rather than trying the emulator. The emulator packages (~2 GB) were left installed in ~/Library/Android/sdk on the Air; the AVD is `landgrab_qa`.
+
+## OPS-280 — Google Play Console: with managed publishing off, a first app's changes were sent for review on their own once the publishing overview's quick checks passed
+
+`측정 2026-10-03 · Play Console (web, ko UI), new app, organization account`
+
+**증상:** the publishing overview listed 17 changes with a button "검토를 위해 변경사항 17개 제출" and the note "변경사항을 전송하면 검사가 성공적으로 완료되는 즉시 전송됩니다", plus one blocking quick-check issue (incomplete advertising ID declaration, "최대 14분 남음"). After the advertising ID declaration was saved, and without the submit button being pressed, 제출 활동 showed submission 1 at the time the checks finished, status 검토 중. The submission also contained an open testing release of the same bundle that had not been created on purpose; the open testing track stayed paused (트랙 다시 시작) and inactive.
+
+**해결:** treat "save" on the last missing declaration of a new app with managed publishing off as a possible submission: finish the final device test of the bundle **before** completing the last App content item, or turn managed publishing on first if review must wait. Check 게시 개요 → 제출 활동 after any App content change to know whether something was sent.
