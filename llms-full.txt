@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T16:54:09Z · 소스 커밋 `2e66f1d` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T17:14:50Z · 소스 커밋 `7276129` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7676,6 +7676,32 @@ voice in 3 of 18 takes (speaker similarity 0.41-0.56 against the reference, F0 1
 word shows as the same CER on every take of a line. Very short lines ("땅따먹기!", under 1 s)
 also give unreliable speaker-verification scores (0.66-0.89 against 0.85-0.98 for full sentences),
 so judge them by CER and ear-model flags, not by similarity alone.
+
+## AGT-092 — Synthetic speech that a listener calls "robotic" passes every automatic judge; long pauses at full stops are one measurable cause
+
+`측정 2026-10-04 · Qwen3-TTS-12Hz-1.7B-Base-bf16 (mlx-audio 0.5.7) · UTMOS22 strong · Qwen3-Omni-30B-A3B-Instruct-4bit`
+
+**증상:** a native Korean listener rejected the second sentence of a cloned line ("…길 잃으면 내가
+데려가 줄게.") as "sounds like a robot talking". The automatic checks all preferred that take:
+
+1. UTMOS22 gave it 4.26, the highest of the six takes of the line.
+2. Qwen3-Omni, asked whether each clip sounds like a human actress acting or a TTS reading text
+   (1-10), gave the rejected half 9 and the approved first half of the same file 3; it gave 3 to
+   most other lines too, with the same canned sentence about "evenly timed syllables".
+3. Pitch-range and pitch-movement statistics did not single it out: its spread (3.6 semitones SD,
+   10 semitones p10-p90) was ordinary for the set.
+
+What the take did show: a 0.66 s stretch of digital silence before the sentence, a slow even reading
+pace (11 syllables in 1.86 s) and a fall to the bottom of the voice at the end (280 Hz median down to
+140 Hz). Across 128 cloned lines the model paused 0.7-1.0 s at nearly every full stop inside a line
+(48 lines), which is a read-aloud rhythm, not an acted one. Cloning from a reference that is itself the
+model reading a sentence carries the reading delivery into every line cloned from it.
+
+**해결:** do not trust MOS predictors or an audio LLM to catch robotic delivery; put the lines in front
+of a native listener and make flagging cheap. What can be fixed without an ear: cut pauses inside a
+line to about 0.4 s (0.6 s where the script asks for a beat with "…"), clone from expressive
+references (bright, soft, urgent) instead of a neutral read, and when a listener keeps one half of a
+take, splice in the other half from another take at matched speech loudness (12 ms crossfades).
 
 ---
 
