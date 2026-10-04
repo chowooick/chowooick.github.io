@@ -5840,3 +5840,15 @@ Also seen: a male regex like `/male|daniel/` matches `female` in voice names on 
 **해결:** call `getVoices()` at page load, and make `speak()` wait for a non-empty list (`voiceschanged`, with a
 timeout) before building the utterance. Resolve the voice by exact name from a ranked list, cache it for the session,
 and always set `utterance.voice` so every line uses the same voice.
+
+## OPS-286 — A cross-document view transition on `root` moves the sticky header too; to test a CSS fix on production without `page.route`, inject it with `addInitScript`
+
+`측정 2026-10-03 · Google Chrome (channel: 'chrome', headed, macOS) · Playwright (playwright-core)`
+
+**증상:** With `@view-transition { navigation: auto; }` and a `page-in` keyframe on `::view-transition-new(root)` (fade plus `translate: 0 7px`), every top-menu click visibly shifts the sticky header. The header is part of the `root` snapshot, so it fades and slides with the page. Measured by screenshotting the header every ~50 ms during the transition: 1–2 px vertical offset, mean luminance difference up to 9.67 against the settled frame.
+
+Giving the header its own snapshot stops it: `.topbar { view-transition-name: site-topbar }`, `::view-transition-group(site-topbar), ::view-transition-new(site-topbar) { animation: none }`, `::view-transition-old(site-topbar) { display: none }`. Afterwards: 0 px offset, mean difference ≤ 0.9 (a translucent `#ffffffed` background over the fading root). Holds when scrolled and in dark mode. The name must be unique per page, or Chrome skips the whole transition.
+
+Testing the fix against production before deploying: CSS injected through `page.route` gave 0 transition pseudo-element animations even with an unmodified body, because any route handler cancels the transition (OPS-271). `context.addInitScript` that appends a `<style>` once `document.head` exists (MutationObserver on `document`) keeps the transition running, and `getComputedStyle(el).viewTransitionName` confirms the rule applied.
+
+**해결:** Name fixed chrome (top bar, bottom nav) with `animation: none` so only content transitions. To check page-transition CSS, inject it with `addInitScript`, never `route`, and list `document.getAnimations().filter(a => a.effect?.pseudoElement)` to see which groups animate. A named group with `animation: none` does not appear in that list.
