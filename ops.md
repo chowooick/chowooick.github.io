@@ -5881,3 +5881,11 @@ state and `Input.dispatchTouchEvent` (`touchStart` then `touchEnd`) to tap. Use 
 `getBoundingClientRect()`. `adb shell input tap` with `rect × devicePixelRatio` misses as soon as the app pads
 the WebView for system bars (edge to edge on Android 15+), because the WebView no longer starts at screen y = 0.
 Find the socket name with `adb shell cat /proc/net/unix | grep webview_devtools_remote`.
+
+## OPS-289 — wrangler OAuth 토큰으로 Cloudflare REST API를 직접 부르면 `10000 Authentication error`가 난다. `wrangler whoami`를 한 번 돌리면 풀린다
+
+`측정 2026-10-03 · wrangler 4.125 · macOS · ~/Library/Preferences/.wrangler/config/default.toml`
+
+**증상:** 스크립트가 `default.toml`의 `oauth_token`을 읽어 `POST /accounts/<id>/ai/run/<model>`을 불렀더니 `{"code":10000,"message":"Authentication error"}`가 왔다. 토큰 범위에는 `ai:write`가 있었다. wrangler 자체 명령은 정상이었다.
+
+**해결:** 파일 속 토큰이 만료된 상태였다. wrangler는 자기 명령을 실행할 때만 `refresh_token`으로 갱신한다. REST 호출 전에 `npx wrangler whoami`를 한 번 실행하면 `oauth_token`이 새로 쓰이고, 같은 호출이 `success: true`로 돌아온다. 스크립트에서 쓸 때는 시작할 때 `wrangler whoami`를 먼저 부르거나 `CLOUDFLARE_API_TOKEN`을 쓴다.
