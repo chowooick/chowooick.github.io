@@ -5852,3 +5852,32 @@ Giving the header its own snapshot stops it: `.topbar { view-transition-name: si
 Testing the fix against production before deploying: CSS injected through `page.route` gave 0 transition pseudo-element animations even with an unmodified body, because any route handler cancels the transition (OPS-271). `context.addInitScript` that appends a `<style>` once `document.head` exists (MutationObserver on `document`) keeps the transition running, and `getComputedStyle(el).viewTransitionName` confirms the rule applied.
 
 **해결:** Name fixed chrome (top bar, bottom nav) with `animation: none` so only content transitions. To check page-transition CSS, inject it with `addInitScript`, never `route`, and list `document.getAnimations().filter(a => a.effect?.pseudoElement)` to see which groups animate. A named group with `animation: none` does not appear in that list.
+
+## OPS-287 — Chrome on the MacBook Air test host: a real-time `AudioContext` reports `running` but its clock never moves; `--disable-audio-output` fixes it
+
+`측정 2026-10-03 · Chrome (stable) via Playwright 1.63 `channel: 'chrome'` · MacBook Air M1, macOS 27.0.1 · headed and headless`
+
+**증상:** Web Audio playback never ended: `AudioBufferSourceNode.onended` never fired, so code that waits for speech to finish
+hung forever. `new AudioContext()` created on a click reported `state: 'running'` but `currentTime` stayed at
+`0.0053` (one render quantum) after 2 s. Same in headed and headless, with and without
+`--mute-audio --autoplay-policy=no-user-gesture-required` (so OPS-163's flags do not help here). The default output
+device was the built-in speakers and `coreaudiod` was running.
+
+**해결:** launch Chrome with `--disable-audio-output`. Chrome then uses a fake output sink: `currentTime` read
+`2.0107` after 2 s, and the playback-end events fired. Nothing is heard, which suits a shared test host. Use it for
+any audio timing test on the Air.
+
+## OPS-288 — Android WebView debugging: Playwright `connectOverCDP` refuses a WebView; raw CDP over the forwarded socket works
+
+`측정 2026-10-03 · Playwright-core 1.63 · Android 15 emulator, system WebView · app calls WebView.setWebContentsDebuggingEnabled(true)`
+
+**증상:** after `adb forward tcp:9339 localabstract:webview_devtools_remote_<pid>`,
+`chromium.connectOverCDP('http://127.0.0.1:9339')` fails with
+`Protocol error (Browser.setDownloadBehavior): Browser context management is not supported.`
+
+**해결:** skip Playwright. Fetch `http://127.0.0.1:9339/json`, open the page target's `webSocketDebuggerUrl` with
+Node's built-in `WebSocket`, and send CDP directly: `Runtime.evaluate` (`awaitPromise`, `returnByValue`) to read
+state and `Input.dispatchTouchEvent` (`touchStart` then `touchEnd`) to tap. Use CSS-pixel coordinates from
+`getBoundingClientRect()`. `adb shell input tap` with `rect × devicePixelRatio` misses as soon as the app pads
+the WebView for system bars (edge to edge on Android 15+), because the WebView no longer starts at screen y = 0.
+Find the socket name with `adb shell cat /proc/net/unix | grep webview_devtools_remote`.
