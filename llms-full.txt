@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T17:22:27Z · 소스 커밋 `1a469c9` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T17:24:02Z · 소스 커밋 `91d7a92` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5781,6 +5781,17 @@ doc.addEventListener("webkitfullscreenchange", _cb)
 ```
 
 Connect it deferred and read `document.fullscreenElement` in the handler. With this the label switched back within 1.2 s of `exitFullscreen()` in the same test, and a click on the button (CDP mouse event) still entered and left full screen.
+
+## GDT-251 — A container page that is wider than the phone: a Control never gets smaller than its minimum size, and switching `BoxContainer.vertical` in the same layout pass is too late
+
+`측정 2026-10-04 · Godot 4.7.2 · ScrollContainer > VBoxContainer > BoxContainer (two panels), phone layout at 411 px`
+
+**증상:** a screen built from containers (a header and a body `BoxContainer` with two panels inside a `ScrollContainer` with horizontal scrolling disabled) rendered wider than a 411 px phone: the right panel edge and the back button were off screen. Dumping sizes showed the screen at 411 but the scroll at 548-915. Two separate causes:
+
+1. `scroll.set_anchors_preset(PRESET_FULL_RECT)` together with a manual `scroll.size = ...` in `_layout`: anchored sizes win on the next layout, and the manual size is ignored.
+2. `_layout` set `scroll.size` and then `body.vertical = narrow`. At that moment the body was still side by side, so its minimum width (left panel + right panel) was larger than the phone. A Control's size is clamped to its combined minimum size, so the scroll kept the wide size. After `vertical` flipped, the minimum dropped, but nothing laid out again: no `resized` signal followed.
+
+**해결:** do not give a manually sized control full-rect anchors. In the layout function, change orientation and other minimum-size-changing properties first; when the orientation actually changes, run the layout again with `_layout.call_deferred()`, and once more deferred after `enter`. Do not pin the scroll child's width with `custom_minimum_size.x`: with horizontal scrolling disabled, the ScrollContainer fits its child to its own width. A size dump (`get_combined_minimum_size()` against `size` for each node) finds the widest child in one run.
 
 ---
 
@@ -13739,4 +13750,16 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 - Opening that link in the owner's profile showed "You're invited…" with a Become-a-tester button. After the click it showed "You're a tester for <package> (unreviewed)". This internal track needed no App content declarations and no store listing.
 
 **해결:** after any navigating click, wait for the URL to change (or poll it) instead of clicking again. Read controls by `debug-id` or `aria-label` and confirm each state change by reading it back. Close the long-lived browser at the end so other sessions can use the shared profile.
+
+## OPS-301 — Cloudflare without an API token: the signed-in dashboard session answers `/api/v4` calls; and what changes when a DNS-only host is switched to proxied
+
+`측정 2026-10-04 · Cloudflare free plan, dashboard in Chrome (Playwright persistent profile) · nginx 1.30 origin behind Traefik`
+
+**증상:** a site served straight from a home/office origin booted in 3 minutes: the origin sent 0.1-0.2 MB/s to the internet (a 27 MB file in 132-141 s), while it read the same file locally in 0.9 s and the client's line pulled 17 MB/s elsewhere. The zone was on Cloudflare but the host resolved through a DNS-only wildcard. `wrangler whoami` showed only `zone (read)`, no DNS or rules scope, and no API token existed.
+
+- **No token needed:** in a page of `dash.cloudflare.com` with a signed-in session, `fetch('/api/v4/<path>', {headers: {'x-cross-site-security': 'dash', 'content-type': 'application/json'}})` runs the public API as that user. `POST /zones/<id>/dns_records` with `proxied: true` added a host record that overrides the wildcard; `PUT /zones/<id>/rulesets/phases/http_request_cache_settings/entrypoint` created the zone's first cache rule (a GET on that path returns 404 code 10003 until then).
+- **Cache rule:** `action: set_cache_settings`, `cache: true`, edge and browser TTL `respect_origin`, on `ends_with(http.request.uri.path, ".pck")` etc. With the origin's `Cache-Control: no-cache` the edge stores the file and revalidates it with the ETag each time (`cf-cache-status: REVALIDATED`), so a release is live at once. Cloudflare's own fetch from the slow origin was fast: a miss took 2.9 s for 10 MB and 5.3 s for 29 MB; revalidated hits 0.8 s and 1.4 s. Browser boot went from 178-201 s to 7-11 s.
+- **What broke:** the Browser Integrity Check answers `403` to the `Python-urllib/3.x` user agent (curl, Godot's `GodotEngine/4.x` and browsers pass), so urllib-based smoke tests failed with a JSON decode error on an HTML page. Every request now arrives at the origin from a Cloudflare address, so nginx `limit_req` keyed on `$binary_remote_addr` throttles all visitors behind one edge together.
+
+**해결:** send your own `User-Agent` from scripts. Key rate limits on the visitor: `map $http_cf_connecting_ip $limit_key { "" $binary_remote_addr; default $http_cf_connecting_ip; }` and `limit_req_zone $limit_key ...`. A client that bypasses Cloudflare could set the header itself, but that only lets it choose its own rate-limit bucket.
 
