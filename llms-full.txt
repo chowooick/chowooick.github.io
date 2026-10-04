@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T14:37:58Z · 소스 커밋 `92e760d` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T14:54:47Z · 소스 커밋 `47b7cdb` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7577,6 +7577,20 @@ VS Code driven by Playwright `_electron`: the original build stayed at 1 Codex t
 went to 4 tabs, and all 4 came back after a restart. Patching the installed `out/extension.js` is lost on every
 extension update, so reapply it from a watcher (a LaunchAgent with `WatchPaths` on `~/.vscode/extensions`).
 
+## AGT-088 — Codex CLI image tool: a per-picture camera line is what makes a set of the same character look different; bikinis bring thigh straps and open knees on their own
+
+`측정 2026-10-04 · codex-cli 0.154.0, built-in image generation via codex exec, ChatGPT login · reference image attached with -i · 48 scenes, about 130 generations`
+
+**증상:** a set of 6 pictures per character came out as one picture with outfit swaps, although every prompt named a different outfit and place. The shared framing block fixed the shot ("cowboy shot from head to mid-thigh, eye level, wide energetic pose"), and the model followed it in every picture. A second pass with the ceiling raised to bikinis (a GRAC 15 level) brought content misses the first pass never had.
+
+- Variety came from a `Camera:` line per picture written as a camera position ("a high angle from the lip of the skate bowl", "low eye level along the floor", "directly above her, top-down", "a side three-quarter view from the water"), plus a `Pose:` line with a body position (lying on her stomach, kneeling, curled in a chair). With the shot left to those lines, all 48 pictures differed in place, body position and angle.
+- "A cinematic wide shot" shrank the figure to 18–20% of the frame. A float, lounger or chair she sits on is drawn large and pushes a subject mask past 55%; "a medium-wide shot that shows the whole float" fixed it.
+- Thigh straps, garters and harness rings appeared in about 1 picture in 6 once bikinis and short skirts were allowed (race queen, techwear, idol outfits), even with "no garter, thigh or leg straps" in the rule block. Adding "bare thighs, nothing strapped around them" to that outfit's own line removed them, except one strappy bikini that needed "a simple triangle bikini" and a different pose.
+- Seated or kneeling poses facing the camera opened the knees toward it; "legs together", "turned side-on" or "a side three-quarter view" kept them closed. A short skirt with one foot raised framed the skirt from below; shorts fixed it. A yukata "worn loosely" fell open at the legs ("closed all the way down to her ankles" fixed it); a sarong came out sheer unless the line said "opaque".
+- 0 refusals in the bikini pass too. Times rose to 4–8 min per image with 4–7 `codex exec` runs in parallel (70–110 s with 3 the day before).
+
+**해결:** keep the rule block for limits only and put shot, angle and body position in each picture's own lines. Review every picture on a contact sheet and zoom into the hips and legs of seated, lying and kneeling poses; regenerate only the misses with the fix written into that outfit or pose line. See AGT-086 for the first pass.
+
 ---
 
 <!-- source: ops.md -->
@@ -13562,4 +13576,12 @@ Second cost: Supertonic renders 44.1 kHz mono, so a 5 s line is a 460 KB WAV. Fr
 **증상:** `adb devices` was empty on both Macs, and `adb reconnect` printed "no devices/emulators found", while `ioreg -p IOUSB` on one of them listed `"USB Product Name" = "SAMSUNG_Android"` with a serial number. The device's interfaces (`ioreg -r -c IOUSBHostInterface -l`) were class 6 (MTP/PTP), 2 and 10 (CDC) only. An adb-capable device also exposes an interface with `bInterfaceClass = 255`, `bInterfaceSubClass = 66`, `bInterfaceProtocol = 1`. Without it, no host-side command helps; USB debugging is off on the phone.
 
 **해결:** check for the 255/66 interface before you try anything else (`ioreg -r -c IOUSBHostInterface -l -w0 | grep -E '"bInterfaceClass" = 255|"bInterfaceSubClass" = 66'`). If it is missing, the owner has to turn on USB debugging. Start `adb -s <serial> wait-for-usb-device && adb -s <serial> install -r app.apk` in the background right away. In this run the install finished on its own the moment debugging came on, with no second prompt. A phone with a PIN lock still blocks UI checks afterwards (`dumpsys trust` → `deviceLocked=1`, the focus is `Bouncer`; see OPS-222). Poll `deviceLocked=0` the same way to take the screenshot once it is unlocked.
+
+## OPS-297 — Shared test host: `pgrep -f tests/<name>.gd` also matches another worktree's run, because Godot is launched with a relative `--path client`
+
+`측정 2026-10-04 · macOS 26 test host shared by parallel sessions · Godot 4.7.2 headless test scripts`
+
+**증상:** a test run seemed hung, and `pgrep -fl "tests/"` showed `Godot --headless --path client --script ../tests/ui_flow.gd`. The command line was the same as this project's, so it looked like this session's leftover run, and it was killed. `lsof -p <pid> | grep cwd` showed `~/work/landgrab-gamepad/client`, a different worktree of the same repository, and no session there had started it either. Every worktree runs the same relative command, so the command line cannot tell them apart.
+
+**해결:** before killing a process on a shared host, read its working directory (`lsof -p <pid> | grep cwd`) and its start time (`ps -o lstart -p <pid>`), and kill only if both match a run you started. Better still, start test runs with an absolute `--path ~/work/<project>/client` and a log path that names the project, so `pgrep -f <project>` finds only your own. Related: OPS-290 (pgrep matching its own waiter).
 
