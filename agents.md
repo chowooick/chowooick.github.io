@@ -1830,3 +1830,61 @@ extension update, so reapply it from a watcher (a LaunchAgent with `WatchPaths` 
 - 0 refusals in the bikini pass too. Times rose to 4–8 min per image with 4–7 `codex exec` runs in parallel (70–110 s with 3 the day before).
 
 **해결:** keep the rule block for limits only and put shot, angle and body position in each picture's own lines. Review every picture on a contact sheet and zoom into the hips and legs of seated, lying and kneeling poses; regenerate only the misses with the fix written into that outfit or pose line. See AGT-086 for the first pass.
+
+## AGT-089 — Qwen3-TTS VoiceDesign: "commanding · chest voice · boyish · raspy" in a female brief gives a male voice, and a high "idol" brief reads as a child
+
+`측정 2026-10-04 · mlx-audio 0.5.7 · Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16 (MLX, M1 Max) · Korean lines · audeering/wav2vec2-large-robust-24-ft-age-gender`
+
+**증상:** casting eight female game heroines from text briefs. A starship captain brief
+("Female, 27 ... low, deep and powerful chest voice, commanding") and an adventurer brief ("boyish,
+loud, open-throated") came out as men in a third to all of the seeds; the age-gender model said
+male 1.00 for some. The opposite end failed too: "very high pitched, sugary, bell-like idol" gave
+voices the same model heard as a child (child 0.93, age 13) — a problem for any adult character.
+
+The words "female" and an age in the brief do not hold the gender; adjectives that describe male
+voice qualities win. Each seed is a different speaker, so a brief is a distribution, not a voice.
+
+**해결:** write the gender into the timbre words: "a mature young woman's voice, unmistakably
+feminine, mid-low alto, warm yet firm" instead of "deep, chest voice, commanding"; "a grown woman's
+idol voice, adult and polished, never childish, medium-high" instead of "very high". Generate 10-20
+seeds per brief and gate every candidate with an acoustic age-gender model (female >= 0.85,
+child <= 0.15, age >= 19); a language model judge is not enough (AGT-090).
+
+## AGT-090 — Qwen3-Omni as an audio judge: it infers gender from the words, its scores sit at 9-10, and two voices in one clip are "the same speaker"
+
+`측정 2026-10-04 · mlx-vlm (qwen3_omni_moe) · mlx-community/Qwen3-Omni-30B-A3B-Instruct-4bit · M1 Max 64 GB, 3-8 s per clip`
+
+**증상:** used as a "casting director" for synthetic Korean lines. Three ways it misleads:
+
+1. Gender follows the content. Every take of a female captain saying military-style Korean
+   ("함장 노바다 ... 환영한다") was tagged male, while the acoustic model gave female 0.98-0.99 on
+   the same files.
+2. Ratings saturate: 384 takes scored ACTING 9-10 almost everywhere. Only clear failures drop
+   (6-7 with "robotic").
+3. Two utterances joined with a beep, asked "same voice actress?": 95-100 for every pair, including
+   clearly different voices; several answers were garbage tokens. Passing two `audio` files in one
+   prompt raised `Failed to process inputs`.
+
+**해결:** keep it for what it does well — describing a clip and flagging obvious failures
+(robotic, wrong emotion) — and measure the rest: speaker identity with a speaker-verification
+embedding (microsoft/wavlm-base-plus-sv cosine), gender and age with
+audeering/wav2vec2-large-robust-24-ft-age-gender, intelligibility with Whisper CER. Load the
+audeering model with `self.post_init()` in place of the model card's `self.init_weights()` on
+current transformers (`'AgeGenderModel' object has no attribute 'all_tied_weights_keys'`).
+
+## AGT-091 — Qwen3-TTS Base voice cloning: the reference transcript's last word leaks into every take
+
+`측정 2026-10-04 · mlx-audio 0.5.7 · Qwen3-TTS-12Hz-1.7B-Base-bf16, ICL mode (ref_audio + ref_text)`
+
+**증상:** a reference recorded as "…해킹 성공. 생각보다 재밌네, 이거." made all twelve takes of
+"땅따먹기!" come out as "이거 땅따먹기" and "루트 권한. 완벽해." as "이거 루트 권한…" (Whisper CER
+0.57 / 0.31 on every take). Other references with a plain sentence ending did not leak.
+
+Separately, ref_audio without ref_text (speaker-embedding only mode) dropped to a low, male-like
+voice in 3 of 18 takes (speaker similarity 0.41-0.56 against the reference, F0 105-166 Hz).
+
+**해결:** end every reference transcript on a complete sentence, not a trailing tag word ("이거",
+"뭐", "~"), and keep ICL mode (ref_text given). Check each take with an ASR round trip: a leaked
+word shows as the same CER on every take of a line. Very short lines ("땅따먹기!", under 1 s)
+also give unreliable speaker-verification scores (0.66-0.89 against 0.85-0.98 for full sentences),
+so judge them by CER and ear-model flags, not by similarity alone.
