@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T16:30:00Z · 소스 커밋 `f7b9dbf` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T16:54:09Z · 소스 커밋 `2e66f1d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13679,5 +13679,25 @@ Second cost: Supertonic renders 44.1 kHz mono, so a 5 s line is a 460 KB WAV. Fr
 
 Separately, on the Air every call to `https://api.deepseek.com` hung until its timeout: `curl` → `000` after 30 s, httpx `ConnectError` after 30 s. DNS resolves to CloudFront (`3.173.21.63`) through gateway `192.168.0.1`. In the same minutes the developer Mac and misa (host and container) got answers in 0.24-0.36 s. On the Air the app's timeouts (7 s judge, 20 s stream) looked like a slow model.
 
+**정정 (2026-10-04, 같은 날):** the Air's failure was not the network. LuLu (Objective-See firewall, `allowApple: true`, not passive) let `curl` (Apple-signed) out but held the uv-installed `cpython-3.11.16/bin/python3.11` binary, so httpx calls timed out (`ConnectTimeout` 21 s, `ConnectError` 30 s, once `gaierror`) while `nc -z` and `curl` to the same IP worked. After the owner allowed the binary in LuLu, the same calls returned 200 in 0.61-1.04 s. Check `/Library/Objective-See/LuLu/rules.plist` (world-readable NSKeyedArchiver; `action` 1 = allow) for the exact binary path before you blame the network (OPS-299).
+
 **해결:** take model ids from `GET /models`, not from release names. Log the status of every LLM call that falls back, or a typo looks like a slow model. Test LLM features against a deployed server (misa) or from the developer Mac, not from the Air.
+
+## OPS-299 — Serving an app from the MacBook Air behind LuLu: run cloudflared inside a colima VM, create the tunnel with the wrangler OAuth token, add the DNS record through the dashboard form
+
+`측정 2026-10-04 · MacBook Air M1 16 GB (Denver) · LuLu (allowApple, not passive) · colima vz · cloudflared latest · wrangler OAuth`
+
+**증상:** three blockers when a session moves a public site to the Air without anyone at the keyboard.
+
+- LuLu holds every new binary that connects out until someone clicks its alert, and over ssh the session can neither see nor click it. `screencapture` says "could not create image from display". `osascript` System Events fails with -1728 (no accessibility), including when it is run through Terminal.app. In the system TCC database, `/usr/libexec/sshd-keygen-wrapper` has accessibility `0`; only Chrome has screen capture. A downloaded `cloudflared` would hang the same way.
+- The wrangler OAuth token has no DNS write scope (OPS-093), and the dashboard session's `/api/v4` POST answers 403 HTML (OPS-111).
+- Without auto-login, LaunchAgents start only after a console login.
+
+**해결:**
+
+- Read `/Library/Objective-See/LuLu/rules.plist` (world-readable NSKeyedArchiver; decode with `plistlib` by following the UIDs) to see which paths already have `action: 1`. Here `colima`, `limactl`, the uv Python and `com.apple.ssh` were allowed. So cloudflared ran as a container in a dedicated colima profile (`colima start speakout --cpu 1 --memory 1 --disk 4 --vm-type vz`): the VM's traffic passed with no alert, and `--add-host host.docker.internal:host-gateway` reached the server on the host's :8740 (bind it to 0.0.0.0, not 127.0.0.1). `colima start <profile>` switches the global docker context. Run `docker context use default` afterwards, or other sessions' `docker` commands land in your VM.
+- The wrangler OAuth token's `connectivity:admin` scope is enough for tunnels: `POST /accounts/<id>/cfd_tunnel {"name":..,"config_src":"cloudflare"}`, `PUT .../cfd_tunnel/<id>/configurations {"config":{"ingress":[{"hostname":..,"service":"http://host.docker.internal:8740"},{"service":"http_status:404"}]}}`, `GET .../cfd_tunnel/<id>/token`. Pipe the token straight into a 0600 env file on the target, never through stdout, and pass it with `--env-file` (`TUNNEL_TOKEN`). Four connections registered within 2 s.
+- For the CNAME, sign the Air's Chrome profile into the dashboard with Google, then fill the "레코드 추가" form with Playwright. The type picker is a custom control: click it and pick the `option` named CNAME. Fill the target by its placeholder `예: www.example.com` and the name by `루트에 @ 사용`, never by input index, or the target lands in the name field. Proxy is on by default. A specific `speakout` CNAME overrides the `*.mnori.com` A record. Requests then came back with `cf-ray …-DEN`.
+- Deploy without inbound access: a read-only GitLab deploy key on the Air and a LaunchAgent with `StartInterval 60` that runs `git fetch`, `reset --hard` on a new commit and `launchctl kickstart -k` on the server. Measured: live 4 s after the push.
+- Measured gain over misa (OPS-295): a new TTS sentence in 1.0 s instead of 3.5-18 s, and one LLM turn in 3.6 s instead of 12.8 s. Known gaps: no auto-login, macOS auto-install on, and the Air dropped off the LAN once for about 3 minutes (ARP incomplete, uptime unchanged).
 
