@@ -5947,3 +5947,13 @@ workaround in one step.
 
 **해결:** in Node, `execFileSync('npx', ['wrangler', 'auth', 'token'], { stdio: ['ignore', 'pipe', 'ignore'] })
 .toString().trim().split('\n').at(-1)`; fall back to `CLOUDFLARE_API_TOKEN` when it is set. Never log the value.
+
+## OPS-294 — `git apply --unidiff-zero` with some `-U0` hunks left out puts later insertions at the wrong line and still reports success
+
+`측정 2026-10-04 · git 2.50 · macOS`
+
+**증상:** to split one session's work out of a shared dirty checkout, the hunks of `git diff -U0 HEAD -- file` were filtered (another session's hunks dropped) and applied in a clean worktree with `git apply --unidiff-zero`. The apply succeeded with no warning, but pure insertions landed inside other functions; the GDScript file then failed to parse (`Expected indented block after "if" block`) and a web build made from it shipped a broken scene script. The release was caught by running the tests before deploying.
+
+Without context lines, an insertion hunk (`@@ -N,0 +M,K @@`) is placed purely by line number, and the numbers of the kept hunks assume the dropped ones were applied too.
+
+**해결:** filter `git diff -U3` hunks instead and apply them with plain `git apply --check` / `git apply`; context lines place each hunk, and a hunk whose context includes the dropped work fails loudly instead of landing in the wrong place. Then compare the result with the source file (`diff` should show only the dropped work) and compare trees before committing (`git write-tree` in both places). Stage the same patch with `git apply --cached` in the shared checkout so the other session's working files are left alone.
