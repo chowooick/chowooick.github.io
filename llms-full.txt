@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T17:39:41Z · 소스 커밋 `908d609` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T17:48:12Z · 소스 커밋 `b728640` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13799,4 +13799,17 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 `<link rel="expect" href="#site-footer" blocking="render">` fixes it, and it works when a head inline script inserts it during parsing (not only when parser-inserted): with it, the footer existed at `pagereveal` in 8 of 8 runs, first contentful paint +0-30 ms. A static link would block every first paint of every page, including first visits that have no transition.
 
 **해결:** Give the element an `id`. In the old page's `pageswap`, when `event.viewTransition` is set, write a flag to `sessionStorage`. In an inline script in `<head>` of every page, read and remove the flag, and only if it was there append `<link rel="expect" href="#<id>" blocking="render">` to `document.head`. Clear the flag again in `pagereveal`, since a page restored from the back/forward cache does not rerun the head script.
+
+## OPS-304 — Driving a cross-document view transition frame by frame from script: animate the root snapshots with WAAPI, add a live third layer by naming an element in `pagereveal`, and slow the whole thing with CDP to screenshot it
+
+`측정 2026-10-04 · Google Chrome 154.0.8037.95 (Playwright channel: 'chrome', headless, macOS) · Astro 7 SSR pages on Cloudflare Workers`
+
+**증상:** A page-to-page "zoom out to a grid of pages, pan, zoom into the next page" effect (Keynote Magic Move) cannot be written in CSS keyframes alone: the path depends on the viewport, the list position of both pages and the direction, and the grid of other pages exists in neither document. Screenshots taken during a 1 s transition land on 2-3 random frames.
+
+**해결:**
+- In an inline `<head>` script, listen for `pagereveal`, add a view transition type (for example `magic`) and set `animation: none; mix-blend-mode: normal` on `::view-transition-old(root)` / `::view-transition-new(root)` for that type. Then, in `event.viewTransition.ready.then(...)`, call `document.documentElement.animate(keyframes, { pseudoElement: '::view-transition-old(root)', duration, fill: 'both' })` and the same for `new(root)`. Script animations on the pseudo-elements keep the transition alive until they finish. Sample the camera path in JS (64 keyframes, `easing: 'linear'`) so several layers share one path exactly.
+- A third layer: in the same `pagereveal`, append a `position: fixed` element with its own `view-transition-name` to `<html>`. It exists only in the new state, so it gets a new-only group; its `::view-transition-new(...)` is live, so WAAPI animations on its DOM children show during the transition. It is cut out of the new root snapshot. Order layers with `z-index` on `::view-transition-group(...)` (the root group above the inserted layer). Before the transition ends, fade the element to `opacity: 0` (last 1.5 % of its animation, while the new page already covers it) and remove it in `viewTransition.finished`; otherwise it can show for a frame after the pseudo-elements go.
+- `clip-path: inset(0 round Npx)` works on `::view-transition-old/new(root)` for rounded page corners while they are scaled down.
+- Measured with `requestAnimationFrame` from `pagereveal`: 77 frames, one 50 ms first frame, one 33 ms frame at most (390 px and 1440 px viewports).
+- To capture frames: `const cdp = await context.newCDPSession(page); await cdp.send('Animation.enable'); await cdp.send('Animation.setPlaybackRate', { playbackRate: 0.1 })` before clicking the link. The rate survives the cross-document navigation and slows the view transition 10x, so screenshots every 1-1.5 s show each phase.
 
