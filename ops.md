@@ -5933,3 +5933,17 @@ real capture and processing path. The file loops from the moment the stream open
 moments (turn-taking), pad the file with leading silence so that the speech starts after the listening window opens.
 Otherwise the test captures half sentences: speech started 9 s into the file gave a full sentence, and a looping file
 with no lead-in gave three fragments.
+
+## OPS-293 — `npx wrangler auth token` prints a refreshed OAuth token for scripts that call the Cloudflare REST API
+`측정 2026-10-04 · wrangler 4.135.0`
+
+**증상:** a script that reads `oauth_token` from wrangler's `default.toml` gets `{"code":10000,"message":"Authentication
+error"}` from `POST /accounts/<id>/ai/run/<model>` once the stored token has expired (OPS-289).
+
+`npx wrangler auth token` refreshes an expired login with the stored refresh token and prints the token. stdout is a
+banner line, a rule line and the token as the last line, so take the last non-empty line. The same Workers AI call then
+succeeds. This replaces reading `default.toml` (whose path differs between macOS and Linux) and the `wrangler whoami`
+workaround in one step.
+
+**해결:** in Node, `execFileSync('npx', ['wrangler', 'auth', 'token'], { stdio: ['ignore', 'pipe', 'ignore'] })
+.toString().trim().split('\n').at(-1)`; fall back to `CLOUDFLARE_API_TOKEN` when it is set. Never log the value.
