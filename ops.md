@@ -6042,3 +6042,21 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 - **What broke:** the Browser Integrity Check answers `403` to the `Python-urllib/3.x` user agent (curl, Godot's `GodotEngine/4.x` and browsers pass), so urllib-based smoke tests failed with a JSON decode error on an HTML page. Every request now arrives at the origin from a Cloudflare address, so nginx `limit_req` keyed on `$binary_remote_addr` throttles all visitors behind one edge together.
 
 **해결:** send your own `User-Agent` from scripts. Key rate limits on the visitor: `map $http_cf_connecting_ip $limit_key { "" $binary_remote_addr; default $http_cf_connecting_ip; }` and `limit_req_zone $limit_key ...`. A client that bypasses Cloudflare could set the header itself, but that only lets it choose its own rate-limit bucket.
+
+## OPS-302 — Chrome 154 crashes the tab during a cross-document view transition when a stylesheet has `::view-transition-old(<name>):only-child`; use view transition types instead
+
+`측정 2026-10-04 · Google Chrome 154.0.8037.95 (channel: 'chrome', headed, macOS) · Playwright (playwright-core) · Astro site with @view-transition { navigation: auto }`
+
+**증상:** Adding one rule such as `::view-transition-old(site-footer):only-child { display: block }` (or the same with `::view-transition-new(...)` and an `animation`) made Playwright report `page.waitForTimeout: Page crashed` on one specific navigation (`/la` → `/la/stories`) every time, 6 of 6 runs. The same navigation with no extra CSS, with `:only-child` on a name nobody uses (`site-zzz`), or with plain `::view-transition-old(site-footer) { display: none }` did not crash. Other page pairs with the same rule (`/la/stories` → `/la/coupons`) did not crash. It crashed even when no element carried the name in the old page. Also note that `::view-transition-old(x):not(:only-child)` is not a valid selector (no `:not()` after the pseudo-element), so the whole rule is silently dropped.
+
+**해결:** Do not tell exit-only and entry-only groups apart with `:only-child`. Decide it in script and say it with a view transition type: in `pageswap` store whether the element was named (`sessionStorage`), in `pagereveal` read it, check the new page, and `event.viewTransition.types.add('footer-out' | 'footer-in' | 'footer-stay')`. Style with `:root:active-view-transition-type(footer-out)::view-transition-old(site-footer) { display: block; animation: ... }`. 0 crashes in 30+ navigations afterwards.
+
+## OPS-303 — A cross-document view transition captures the new page before the parser reaches the end of `<body>`; an element named in `pagereveal` may not exist yet. Add `<link rel="expect" blocking="render">` from the head script only when a transition is coming
+
+`측정 2026-10-04 · Google Chrome 154.0.8037.95 (channel: 'chrome', headed, macOS) · Cloudflare Workers SSR pages, 50-470 KB HTML`
+
+**증상:** A site footer is named in `pagereveal` only when it is on screen, so it can slide in. On `/housing` → `/stories` (58 KB HTML) `document.querySelector('.site-footer')` was `null` inside `pagereveal` in 2 of 2 runs, so the footer was never named and just appeared with the page. On other pairs it existed. Server timing for these pages: time to first byte 80-310 ms, the rest of the body 17-82 ms later.
+
+`<link rel="expect" href="#site-footer" blocking="render">` fixes it, and it works when a head inline script inserts it during parsing (not only when parser-inserted): with it, the footer existed at `pagereveal` in 8 of 8 runs, first contentful paint +0-30 ms. A static link would block every first paint of every page, including first visits that have no transition.
+
+**해결:** Give the element an `id`. In the old page's `pageswap`, when `event.viewTransition` is set, write a flag to `sessionStorage`. In an inline script in `<head>` of every page, read and remove the flag, and only if it was there append `<link rel="expect" href="#<id>" blocking="render">` to `document.head`. Clear the flag again in `pagereveal`, since a page restored from the back/forward cache does not rerun the head script.
