@@ -5790,3 +5790,13 @@ Measured behaviour:
 **증상:** a service worker cached the fingerprinted `/assets/*.js` and `.css` of a Vite site (`cache.add(url)` from a list the page posted). `caches.keys()` listed every file, yet with the context offline the reload showed a blank page (`#root` empty) and two `net::ERR_FAILED` for the module script and stylesheet. `curl -sI` on `vite preview` showed `Vary: Origin` on the assets. The page requests them with `crossorigin` (Vite adds it), so they carry an `Origin` header; `cache.add` fetched them without one. `caches.match(request)` honours `Vary`, so the stored copies never matched and the worker fell through to the network.
 
 **해결:** for fingerprinted, immutable files match with `caches.match(request, { ignoreVary: true })` (and use it in the "already cached?" check too). After that the offline reload rendered the page and an experiment route. Production behind nginx sent no `Vary: Origin`, so a test against `vite preview` fails where production would pass; test offline against the server the site really runs on, or keep `ignoreVary`.
+
+## OPS-282 — Black Han Sans draws ㄸ like ㅍ: "땅따먹기" in a game's title logo read as "팡파먹기"
+
+`측정 2026-10-03 · Black Han Sans Regular (Google Fonts) · Paperlogy 9 Black 1.001`
+
+**증상:** a Korean title logo set in Black Han Sans at display size (120 px, white fill, ink outline, hard shadow) was read by the owner as "땅파먹기". Rendering the bare glyphs with PIL, without outline or slant, shows the same thing. Black Han Sans draws the doubled consonant ㄸ as one closed box with two upright bars, which is the shape of ㅍ. The same happens to the ㄸ of 땅, so the word reads "팡파먹기". The outline and shadow do not cause it. It is the glyph design, so it shows at every size.
+
+Paperlogy 9 Black (SIL OFL 1.1), Noto Sans KR Black and Gmarket Sans Bold draw ㄸ as two separate ㄷ, and these read correctly with the same treatment. Paperlogy 9 Black is about as heavy as Black Han Sans and 5% wider (advance 0.88 em against 0.835 em). Its ink height is 0.87 em against 0.76 em, so line spacing tuned for Black Han Sans packs the two lines too tight.
+
+**해결:** before you choose a Korean display face, render the actual words and check the doubled consonants (ㄲ ㄸ ㅃ ㅆ ㅉ) next to their look-alikes (ㅍ for ㄸ). Paperlogy is not on Google Fonts. Its official archive is `https://github.com/Freesentation/paperlogy/raw/main/Paperlogy-1.001.zip` (also Homebrew cask `font-paperlogy`), and `OFL license.txt` is in the same repository.
