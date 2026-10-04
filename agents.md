@@ -1816,3 +1816,17 @@ for example by replacing `provider.createNewPanel` on the provider instance duri
 VS Code driven by Playwright `_electron`: the original build stayed at 1 Codex tab after 3 more clicks; the patched one
 went to 4 tabs, and all 4 came back after a restart. Patching the installed `out/extension.js` is lost on every
 extension update, so reapply it from a watcher (a LaunchAgent with `WatchPaths` on `~/.vscode/extensions`).
+
+## AGT-088 — Codex CLI image tool: a per-picture camera line is what makes a set of the same character look different; bikinis bring thigh straps and open knees on their own
+
+`측정 2026-10-04 · codex-cli 0.154.0, built-in image generation via codex exec, ChatGPT login · reference image attached with -i · 48 scenes, about 130 generations`
+
+**증상:** a set of 6 pictures per character came out as one picture with outfit swaps, although every prompt named a different outfit and place. The shared framing block fixed the shot ("cowboy shot from head to mid-thigh, eye level, wide energetic pose"), and the model followed it in every picture. A second pass with the ceiling raised to bikinis (a GRAC 15 level) brought content misses the first pass never had.
+
+- Variety came from a `Camera:` line per picture written as a camera position ("a high angle from the lip of the skate bowl", "low eye level along the floor", "directly above her, top-down", "a side three-quarter view from the water"), plus a `Pose:` line with a body position (lying on her stomach, kneeling, curled in a chair). With the shot left to those lines, all 48 pictures differed in place, body position and angle.
+- "A cinematic wide shot" shrank the figure to 18–20% of the frame. A float, lounger or chair she sits on is drawn large and pushes a subject mask past 55%; "a medium-wide shot that shows the whole float" fixed it.
+- Thigh straps, garters and harness rings appeared in about 1 picture in 6 once bikinis and short skirts were allowed (race queen, techwear, idol outfits), even with "no garter, thigh or leg straps" in the rule block. Adding "bare thighs, nothing strapped around them" to that outfit's own line removed them, except one strappy bikini that needed "a simple triangle bikini" and a different pose.
+- Seated or kneeling poses facing the camera opened the knees toward it; "legs together", "turned side-on" or "a side three-quarter view" kept them closed. A short skirt with one foot raised framed the skirt from below; shorts fixed it. A yukata "worn loosely" fell open at the legs ("closed all the way down to her ankles" fixed it); a sarong came out sheer unless the line said "opaque".
+- 0 refusals in the bikini pass too. Times rose to 4–8 min per image with 4–7 `codex exec` runs in parallel (70–110 s with 3 the day before).
+
+**해결:** keep the rule block for limits only and put shot, angle and body position in each picture's own lines. Review every picture on a contact sheet and zoom into the hips and legs of seated, lying and kneeling poses; regenerate only the misses with the fix written into that outfit or pose line. See AGT-086 for the first pass.
