@@ -4800,3 +4800,31 @@ Parsed joypad events do update the polled state: after `Input.parse_input_event(
 In `page.addInitScript`, replace `navigator.getGamepads` with a function returning `[pad, null, null, null]`, where `pad` is a plain object `{id, index: 0, connected: true, mapping: 'standard', timestamp, axes: [0,0,0,0], buttons: 17 × {pressed, touched, value}}`. After the engine has booted, click the page once and `dispatchEvent` an `Event('gamepadconnected')` with `e.gamepad = pad`. Changing `pad.buttons[i]` (and bumping `timestamp`) is then read by the engine's polling: standard button 0 arrived as `JOY_BUTTON_A`, 9 as `JOY_BUTTON_START`, 12/13 as D-pad up/down. The deployed game started a run from the title on A and paused on Start, both visible in screenshots.
 
 **해결:** use this as the web gamepad smoke test. Wait for the download to finish before connecting (a 64 MB build over the LAN needed about 80 s; at 15 s the boot screen was still at 38%), and hold each button for about 150 ms so at least one engine frame sees it pressed.
+
+## GDT-249 — A `PlaceholderTexture2D` set as a `Button.icon` draws Godot's magenta-and-black checker, not nothing
+
+`측정 2026-10-04 · Godot 4.7.2-stable · macOS, windowed (Metal)`
+
+**증상:** a Button that reserves room for a glyph it draws itself (`icon = PlaceholderTexture2D` with `size = Vector2(30, 30)`, glyph painted in `_draw()`) showed a 30 px magenta/black checkerboard under the glyph in every windowed capture. Headless tests cannot see it.
+
+The placeholder renders as the "missing texture" pattern. Code that uses the same trick only looks right when the button's `icon_*_color` theme colours are fully transparent, which hides the problem until the trick is reused on a normally themed button.
+
+**해결:** reserve the room with a clear texture instead: `icon = ImageTexture.create_from_image(Image.create_empty(30, 30, false, Image.FORMAT_RGBA8))`. The checker was gone in the next capture.
+
+## GDT-250 — Web export: `root.size_changed` misses a full-screen change when the page keeps its size; listen to `fullscreenchange` through `JavaScriptBridge.create_callback`
+
+`측정 2026-10-04 · Godot 4.7.2-stable Web export · Chrome (headed, Playwright, fixed 1440×900 viewport) on macOS`
+
+**증상:** a full-screen button refreshed its label on `get_tree().root.size_changed` (GDT-180). After `document.exitFullscreen()` the page left full screen (`document.fullscreenElement` null) but the button kept saying it was full screen. With Playwright's fixed viewport the page size does not change on entering or leaving full screen, so no resize reached Godot. The same can happen in any embedding that keeps the canvas size.
+
+**해결:** report the DOM event as well:
+
+```gdscript
+static var _cb: JavaScriptObject  # keep a reference, or the callback is collected
+_cb = JavaScriptBridge.create_callback(func(_args: Array) -> void: changed.emit())
+var doc := JavaScriptBridge.get_interface("document")
+doc.addEventListener("fullscreenchange", _cb)
+doc.addEventListener("webkitfullscreenchange", _cb)
+```
+
+Connect it deferred and read `document.fullscreenElement` in the handler. With this the label switched back within 1.2 s of `exitFullscreen()` in the same test, and a click on the button (CDP mouse event) still entered and left full screen.
