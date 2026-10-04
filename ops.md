@@ -5808,3 +5808,18 @@ Paperlogy 9 Black (SIL OFL 1.1), Noto Sans KR Black and Gmarket Sans Bold draw �
 **증상:** a site's own install card (shown on `beforeinstallprompt`) appeared 4–5 s after opening the page on the phone. After a reload, and in two fresh tabs (one per manifest language), the event never came within 45 s, although `Page.getInstallabilityErrors` returned `[]` and `localStorage` held no dismissal. The Chrome menu entry, now named **「설치 및 바로가기 만들기」** (Install and create shortcut), opened a sheet saying 「앱이 이미 설치되어 있습니다 · 클릭하여 앱 열기」. The app had been installed on the phone meanwhile (`firstInstallTime` minutes after the first prompt; the WebAPK `org.chromium.webapk.a…_v2`, label = manifest `short_name`, was missing from `pm list packages` until then). No prompt arrived from then on, and none arrived during that window either.
 
 **해결:** before you debug a missing prompt on a device, find the site's WebAPK: for each `org.chromium.webapk.*` package, `adb pull` its `pm path` and run `aapt dump badging … | grep application-label` (the start URL is in `aapt dump xmltree … AndroidManifest.xml`). `adb uninstall <pkg>` brings the prompt back at once (4 s here). Chrome then shows `ClearDataDialogActivity` ("<app>도 Chrome에서 데이터를 보유하고 있습니다"); choose 「데이터 보관」 to keep the site's storage. A reinstall from the prompt fired `appinstalled` within 0.5 s, because Chrome reuses the minted APK. Shortcuts from the manifest appear in `dumpsys shortcut` under that package. The rich install sheet (description plus `form_factor: "narrow"` screenshots) shows in the dialog that `prompt()` opens.
+
+## OPS-284 — Opening a just-installed PWA from the page on Android: `appinstalled` fires when the user accepts, the WebAPK lands 5–9 s later, and an `intent://` sent before that only reloads the tab
+
+`측정 2026-10-03 · Chrome 154.0.8037.92 · Pixel 7 Pro (Android 17) · WebAPK minted through Play (Finsky)`
+
+**증상:** a site wanted its new app to come to the front right after the install. The page followed `intent://<host>/#Intent;scheme=https;action=android.intent.action.VIEW;end` (a scripted `<a>` click; Chrome allowed it without a user gesture) 0.9 s after `appinstalled`. The tab simply navigated to `https://<host>/` in the browser. The same intent fired a minute later opened `SameTaskWebApkActivity`. Timeline of one install (page console timestamps, logcat):
+
+- +0.0 s user taps 「설치」 in Chrome's sheet → **first `appinstalled`**
+- +4.1 s Finsky `installPackage` … DOWNLOADING
+- +6.4 s **second `appinstalled`**; +6.7 s `navigator.getInstalledRelatedApps()` first returns the app (with `related_applications: [{platform:"webapp", url:"./manifest.webmanifest"}]`)
+- +8.7 s `SessionCommitReceiver: Adding package name to install queue` (the package exists)
+
+An intent before the package exists has only Chrome as a handler, so Chrome loads the https URL in the same tab. `S.browser_fallback_url` is ignored for `scheme=https`, so a fallback cannot stop that.
+
+**해결:** after `appinstalled`, poll `getInstalledRelatedApps()` until it returns the `webapp`, wait 3 s more, then follow the intent. Two runs measured 10.1 s and 10.8 s from accepting the sheet to the app in front, first try. Put a marker in the intent URL (`/?open-app=1`). If the tab reloads with it, the hand-off failed: retry from the reloaded page a few times, then show an "Open app" button. The app strips the marker when `display-mode: standalone` matches. `getInstalledRelatedApps` is 2.2–2.4 s ahead of the real install, so the poll alone is not enough.
