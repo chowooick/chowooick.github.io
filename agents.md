@@ -1796,3 +1796,23 @@ anything.
 - "A wrapped yukata top" opened into a plunging neckline; "a high, closed collar" fixed it. "A thin silver anklet" became a band on the thigh twice; removing the item fixed it. Techwear cargo shorts keep coming with leg straps.
 
 **해결:** describe garments by a cut that cannot be read revealingly (surf suit, racer top, closed collar) instead of adding "no X" clauses, look at every picture on a contact sheet (the model's misses are content, not numbers), and regenerate only the misses. Generation time 70–110 s per image; up to 5 parallel `codex exec` runs worked.
+
+## AGT-087 — Codex VS Code extension: "New Codex Agent" opens only one editor tab, because every call reopens the same `openai-codex://route/extension/panel/new` URI; a unique URI fragment opens a new tab each time
+
+`측정 2026-10-04 · openai.chatgpt 26.930.41038 · VS Code 1.139.1 · macOS`
+
+**증상:** running `Codex: New Codex Agent` (`chatgpt.newCodexPanel`) a second time only focuses the Codex
+editor tab that is already open. No error, no log line.
+
+The extension's `createNewPanel()` runs `vscode.openWith` on the fixed URI
+`openai-codex://route/extension/panel/new` with the custom editor `chatgpt.conversationEditor`, registered with
+`supportsMultipleEditorsPerDocument: false`. VS Code sees the same resource and reveals the existing editor. The URI
+parser in the extension reads only scheme, authority, path and query, so the fragment is free to vary without changing
+the route the webview opens. VS Code compares the fragment when it matches editors.
+
+**해결:** open the same URI with a unique fragment
+(`vscode.Uri.from({scheme:'openai-codex', authority:'route', path:'/extension/panel/new', fragment: randomUUID()})`),
+for example by replacing `provider.createNewPanel` on the provider instance during activation. Measured on a real
+VS Code driven by Playwright `_electron`: the original build stayed at 1 Codex tab after 3 more clicks; the patched one
+went to 4 tabs, and all 4 came back after a restart. Patching the installed `out/extension.js` is lost on every
+extension update, so reapply it from a watcher (a LaunchAgent with `WatchPaths` on `~/.vscode/extensions`).
