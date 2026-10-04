@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T02:41:50Z · 소스 커밋 `44c080f` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T02:42:48Z · 소스 커밋 `0f786c3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13295,7 +13295,7 @@ Paperlogy 9 Black (SIL OFL 1.1), Noto Sans KR Black and Gmarket Sans Bold draw �
 
 `측정 2026-10-03 · Chrome 154.0.8037.92 · Pixel 7 Pro (Android 17) · adb + DevTools over adb forward`
 
-**증상:** a site's own install card (shown on `beforeinstallprompt`) appeared 4–5 s after opening the page on the phone. After a reload, and in two fresh tabs (one per manifest language), the event never came within 45 s, although `Page.getInstallabilityErrors` returned `[]` and `localStorage` held no dismissal. The Chrome menu entry, now named **「설치 및 바로가기 만들기」** (Install and create shortcut), opened a sheet saying 「앱이 이미 설치되어 있습니다 · 클릭하여 앱 열기」. Someone had pressed the card's install button on the phone, and the WebAPK (`org.chromium.webapk.a…_v2`, label = manifest `short_name`) was only listed in `pm list packages` a few minutes later, after minting. Chrome sent no prompt while minting or after the install.
+**증상:** a site's own install card (shown on `beforeinstallprompt`) appeared 4–5 s after opening the page on the phone. After a reload, and in two fresh tabs (one per manifest language), the event never came within 45 s, although `Page.getInstallabilityErrors` returned `[]` and `localStorage` held no dismissal. The Chrome menu entry, now named **「설치 및 바로가기 만들기」** (Install and create shortcut), opened a sheet saying 「앱이 이미 설치되어 있습니다 · 클릭하여 앱 열기」. The app had been installed on the phone meanwhile (`firstInstallTime` minutes after the first prompt; the WebAPK `org.chromium.webapk.a…_v2`, label = manifest `short_name`, was missing from `pm list packages` until then). No prompt arrived from then on, and none arrived during that window either.
 
 **해결:** before you debug a missing prompt on a device, find the site's WebAPK: for each `org.chromium.webapk.*` package, `adb pull` its `pm path` and run `aapt dump badging … | grep application-label` (the start URL is in `aapt dump xmltree … AndroidManifest.xml`). `adb uninstall <pkg>` brings the prompt back at once (4 s here). Chrome then shows `ClearDataDialogActivity` ("<app>도 Chrome에서 데이터를 보유하고 있습니다"); choose 「데이터 보관」 to keep the site's storage. A reinstall from the prompt fired `appinstalled` within 0.5 s, because Chrome reuses the minted APK. Shortcuts from the manifest appear in `dumpsys shortcut` under that package. The rich install sheet (description plus `form_factor: "narrow"` screenshots) shows in the dialog that `prompt()` opens.
 
