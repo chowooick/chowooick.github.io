@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T17:24:02Z · 소스 커밋 `91d7a92` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T17:35:47Z · 소스 커밋 `c3cf991` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5792,6 +5792,25 @@ Connect it deferred and read `document.fullscreenElement` in the handler. With t
 2. `_layout` set `scroll.size` and then `body.vertical = narrow`. At that moment the body was still side by side, so its minimum width (left panel + right panel) was larger than the phone. A Control's size is clamped to its combined minimum size, so the scroll kept the wide size. After `vertical` flipped, the minimum dropped, but nothing laid out again: no `resized` signal followed.
 
 **해결:** do not give a manually sized control full-rect anchors. In the layout function, change orientation and other minimum-size-changing properties first; when the orientation actually changes, run the layout again with `_layout.call_deferred()`, and once more deferred after `enter`. Do not pin the scroll child's width with `custom_minimum_size.x`: with horizontal scrolling disabled, the ScrollContainer fits its child to its own width. A size dump (`get_combined_minimum_size()` against `size` for each node) finds the widest child in one run.
+
+## GDT-252 — `--headless`: `RenderingServer.frame_post_draw` never fires, so an `await` on it hangs forever
+
+`측정 2026-10-04 · Godot 4.7.2-stable · macOS (MacBook Air M1), --headless`
+
+**증상:** a loading screen's "warm up" step did `for i in 3: await RenderingServer.frame_post_draw` so the first frames of a new scene compiled under cover. An end-to-end test that ran the real scene transition headless stopped there: the transition never finished, the game kept its "switching" flag, and every later transition returned early. No error is printed. A probe that counted the signal for one second under `godot --headless --script` printed `FPD 0`; `process_frame` keeps ticking.
+
+**해결:** wait for draws only when something draws:
+
+```gdscript
+var drawn := DisplayServer.get_name() != "headless"
+for i in frames:
+	if drawn:
+		await RenderingServer.frame_post_draw
+	else:
+		await get_tree().process_frame
+```
+
+Search a project for `frame_post_draw` before running its real UI flow headless; any `await` on it is a hang there.
 
 ---
 
