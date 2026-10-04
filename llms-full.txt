@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T12:53:05Z · 소스 커밋 `f5d5242` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T13:11:26Z · 소스 커밋 `9188612` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5733,6 +5733,26 @@ In the generated `android/build/res/values/themes.xml`, the two `[splash]` items
 **해결:** after the first `godot --headless --path client --import`, copy the `[params]` block of an existing file of the same kind into each new `.import` and import again; Godot rebuilds the textures because the parameters changed (here: illustrations 1.7 MB → 480 KB, thumbnails 264 KB → 62 KB at lossy 0.72, masks with mipmaps). Keep the copy as a script, since every later import of a new file starts from the defaults again.
 
 Separately, `exclude_filter="assets/stages/*_c?.webp,..."` in the Web preset left both the `.import` remap and the `.ctex` out of the package (checked with `strings index.pck`). The excluded pictures were served as plain files and loaded at run time with `HTTPRequest` (absolute URL from `JavaScriptBridge.eval("location.origin")`), `Image.load_webp_from_buffer` and `image.generate_mipmaps()` before `ImageTexture.create_from_image`, which worked in Chrome with no console errors.
+
+## GDT-247 — Headless tests: `Input.parse_input_event` of joypad events updates `get_joy_axis` and `is_joy_button_pressed`, but the device never appears in `get_connected_joypads()`
+
+`측정 2026-10-04 · Godot 4.7.2-stable · --headless --script, no pad attached`
+
+**증상:** gameplay code that loops over `Input.get_connected_joypads()` to read the stick or a held button saw nothing in a headless test that injected `InputEventJoypadMotion` / `InputEventJoypadButton` for device 0, although the same events moved menu focus.
+
+Parsed joypad events do update the polled state: after `Input.parse_input_event(motion)` + `Input.flush_buffered_events()`, `Input.get_joy_axis(0, JOY_AXIS_LEFT_X)` returns the injected value and `Input.is_joy_button_pressed(0, JOY_BUTTON_A)` follows press/release. Only the connection list stays empty, because it is filled by the joypad driver, not by events.
+
+**해결:** read the pads from `get_connected_joypads()` plus the last device id seen in `_input` (`InputEventJoypadButton.device` / `InputEventJoypadMotion.device`). Real play is unchanged and headless tests then drive stick movement and held buttons with parsed events (45 checks in one suite, including 8-way stick reading and cutting while A is held).
+
+## GDT-248 — Web export: a scripted gamepad from `navigator.getGamepads` + a `gamepadconnected` event drives Godot 4.7 like a real pad
+
+`측정 2026-10-04 · Godot 4.7.2-stable Web export · Chrome (headed, Playwright) on macOS`
+
+**증상:** a gamepad feature on the web build could not be checked end to end without a physical pad in front of the test machine.
+
+In `page.addInitScript`, replace `navigator.getGamepads` with a function returning `[pad, null, null, null]`, where `pad` is a plain object `{id, index: 0, connected: true, mapping: 'standard', timestamp, axes: [0,0,0,0], buttons: 17 × {pressed, touched, value}}`. After the engine has booted, click the page once and `dispatchEvent` an `Event('gamepadconnected')` with `e.gamepad = pad`. Changing `pad.buttons[i]` (and bumping `timestamp`) is then read by the engine's polling: standard button 0 arrived as `JOY_BUTTON_A`, 9 as `JOY_BUTTON_START`, 12/13 as D-pad up/down. The deployed game started a run from the title on A and paused on Start, both visible in screenshots.
+
+**해결:** use this as the web gamepad smoke test. Wait for the download to finish before connecting (a 64 MB build over the LAN needed about 80 s; at 15 s the boot screen was still at 38%), and hold each button for about 150 ms so at least one engine frame sees it pressed.
 
 ---
 
@@ -13510,4 +13530,14 @@ workaround in one step.
 
 **해결:** in Node, `execFileSync('npx', ['wrangler', 'auth', 'token'], { stdio: ['ignore', 'pipe', 'ignore'] })
 .toString().trim().split('\n').at(-1)`; fall back to `CLOUDFLARE_API_TOKEN` when it is set. Never log the value.
+
+## OPS-294 — `git apply --unidiff-zero` with some `-U0` hunks left out puts later insertions at the wrong line and still reports success
+
+`측정 2026-10-04 · git 2.50 · macOS`
+
+**증상:** to split one session's work out of a shared dirty checkout, the hunks of `git diff -U0 HEAD -- file` were filtered (another session's hunks dropped) and applied in a clean worktree with `git apply --unidiff-zero`. The apply succeeded with no warning, but pure insertions landed inside other functions; the GDScript file then failed to parse (`Expected indented block after "if" block`) and a web build made from it shipped a broken scene script. The release was caught by running the tests before deploying.
+
+Without context lines, an insertion hunk (`@@ -N,0 +M,K @@`) is placed purely by line number, and the numbers of the kept hunks assume the dropped ones were applied too.
+
+**해결:** filter `git diff -U3` hunks instead and apply them with plain `git apply --check` / `git apply`; context lines place each hunk, and a hunk whose context includes the dropped work fails loudly instead of landing in the wrong place. Then compare the result with the source file (`diff` should show only the dropped work) and compare trees before committing (`git write-tree` in both places). Stage the same patch with `git apply --cached` in the shared checkout so the other session's working files are left alone.
 
