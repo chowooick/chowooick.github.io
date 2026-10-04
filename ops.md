@@ -5987,3 +5987,13 @@ Second cost: Supertonic renders 44.1 kHz mono, so a 5 s line is a 460 KB WAV. Fr
 **증상:** a test run seemed hung, and `pgrep -fl "tests/"` showed `Godot --headless --path client --script ../tests/ui_flow.gd`. The command line was the same as this project's, so it looked like this session's leftover run, and it was killed. `lsof -p <pid> | grep cwd` showed `~/work/landgrab-gamepad/client`, a different worktree of the same repository, and no session there had started it either. Every worktree runs the same relative command, so the command line cannot tell them apart.
 
 **해결:** before killing a process on a shared host, read its working directory (`lsof -p <pid> | grep cwd`) and its start time (`ps -o lstart -p <pid>`), and kill only if both match a run you started. Better still, start test runs with an absolute `--path ~/work/<project>/client` and a log path that names the project, so `pgrep -f <project>` finds only your own. Related: OPS-290 (pgrep matching its own waiter).
+
+## OPS-298 — DeepSeek API: `deepseek-v4.1-flash` is rejected with 400 (the ids are `deepseek-flash` and `deepseek-v4-pro`), and the MacBook Air test host cannot reach api.deepseek.com at all
+
+`측정 2026-10-04 · api.deepseek.com · curl 8 · httpx 0.28 · MacBook Air test host (192.168.0.123), misa`
+
+**증상:** an app configured with `model: deepseek-v4.1-flash` got HTTP 400 on `/chat/completions`. The app caught the error and fell back to scripted lines, so with a valid key nothing looked broken. `GET /models` with the same key listed only `deepseek-flash` and `deepseek-v4-pro`. With `deepseek-flash`, a JSON-mode judge call (`thinking: {"type":"disabled"}`, `response_format: json_object`) answered in 1.07 s.
+
+Separately, on the Air every call to `https://api.deepseek.com` hung until its timeout: `curl` → `000` after 30 s, httpx `ConnectError` after 30 s. DNS resolves to CloudFront (`3.173.21.63`) through gateway `192.168.0.1`. In the same minutes the developer Mac and misa (host and container) got answers in 0.24-0.36 s. On the Air the app's timeouts (7 s judge, 20 s stream) looked like a slow model.
+
+**해결:** take model ids from `GET /models`, not from release names. Log the status of every LLM call that falls back, or a typo looks like a slow model. Test LLM features against a deployed server (misa) or from the developer Mac, not from the Air.
