@@ -1783,3 +1783,16 @@ anything.
 **증상:** 뉴스 요약 JSON에 "독자에게 어떤 의미인지"를 쓰는 선택 칸(`take`)을 더하고, 시스템 프롬프트에 "사건·사고·사망, 법원 판결, 이민·비자·세금·법률·의료 판단이 필요한 소식이면 빈 문자열로 둔다"를 넣었다. 실제 기사 4건 중 2건이 규칙을 어겼다. 주차장 사망 사건에는 "사고 현장을 확인하고 차량 안에 혼자 있지 않도록 주의하면 좋아요"를, H-1B 법원 판결에는 "향후 법적 변화를 주시하고 필요 시 대비하세요"를 써서 돌려줬다. 같은 호출의 사실 칸(lead·points·facts)은 정상이었다.
 
 **해결:** 금지 주제는 프롬프트에만 맡기지 않는다. 제목과 요약 첫 문장에 정규식(숨진·사망·체포·법원·판결·비자·H-1B·영주권·이민·세금·의료·선거 등)을 걸어, 걸리면 그 칸을 화면에 내지 않는다. 프롬프트 규칙은 "반드시 빈 문자열"로 따로 한 줄로 떼어 두되, 지켜졌는지는 코드가 판단한다.
+
+## AGT-086 — Codex CLI image tool: 171 outfit-variant illustrations of the same characters, no refusals; which prompt clauses the model obeys and which it ignores
+
+`측정 2026-10-03 · codex-cli 0.154.0, built-in image generation via codex exec, ChatGPT login · reference image attached with -i`
+
+**증상:** a game needed each of 8 original adult anime heroines in 6 further outfits, ending in a swimsuit worn in that place (pool, beach), with a fixed ceiling: no underwear, no nudity, nothing sheer, no suggestive pose. Risks were refusals and drift past the ceiling.
+
+- 171 generations, 0 refusals, swimsuits included, when each outfit was written as what she wears in that place ("a sporty two-piece swimsuit with a high-neck racer top") and never as taking clothes off. Identity held across all cuts with the approved first picture attached as the reference.
+- Ignored or reversed: "no cleavage" alone still gave bikini tops with cleavage; "one-piece swimsuit" came out high-cut at the hips even with "boy-short legs" appended (3 of 6 heroines). Naming a different garment worked every time: "surf suit: short sleeves, zipped high collar, boy-short legs, no cutouts".
+- "Looking back over her shoulder at the viewer" turned the body away (rear view); "turned three-quarters toward the viewer with a sideways glance" kept the framing.
+- "A wrapped yukata top" opened into a plunging neckline; "a high, closed collar" fixed it. "A thin silver anklet" became a band on the thigh twice; removing the item fixed it. Techwear cargo shorts keep coming with leg straps.
+
+**해결:** describe garments by a cut that cannot be read revealingly (surf suit, racer top, closed collar) instead of adding "no X" clauses, look at every picture on a contact sheet (the model's misses are content, not numbers), and regenerate only the misses. Generation time 70–110 s per image; up to 5 parallel `codex exec` runs worked.

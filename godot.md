@@ -4760,3 +4760,23 @@ gradle_build/custom_theme_attributes={
 In the generated `android/build/res/values/themes.xml`, the two `[splash]` items replaced Godot's own (`@mipmap/icon_background`, `@drawable/splash_icon`). `GodotAppMainTheme` still had `<item name="android:windowBackground">#000000</item>`. The editor binary carries the message *Skipped custom_theme_attribute '%s'; this is a reserved attribute configured via other export options or project settings*. On the phone, a cold start went white, then for 4 frames (about 130 ms) a grey circle grew from the top before the boot splash appeared. That was the splash's exit animation revealing the black window behind it.
 
 **해결:** set the main theme's window colour with the export option `screen/background_color=Color(1, 1, 1, 1)`. It becomes `android:windowBackground` `#ffffff`. The recording then went white, then the logo, with no grey or black frame. Godot's boot splash can be Android-only through feature overrides in `project.godot` (`boot_splash/image.android`, `bg_color.android`, `stretch_mode.android`, `show_image.android`, `minimum_display_time.android`). The image showed on the device with only the `.android` key set, and the web build kept its own splash. GDT-243 covers why the system splash icon must be set explicitly once adaptive icons exist.
+
+## GDT-245 — Web export: `user://` lives at `/userfs/godot/app_userdata/<config/name>/` in IndexedDB; a save written into IndexedDB from a running page is wiped, inject it before the engine boots
+
+`측정 2026-10-03 · Godot 4.7.2 Web export (release) · Chrome 154 headed via Playwright · Air`
+
+**증상:** a browser test wanted the game to start with progress, so it wrote `/userfs/landgrab_save.cfg` into IndexedDB `"/userfs"`, store `FILE_DATA`, then reloaded. The record stayed in the database but the game started with an empty save. Writing the right path from the running page and reloading also did not work: the engine's own sync from memory to IndexedDB removes entries it does not have.
+
+`OS.get_user_data_dir()` on the web is not `/userfs` but `/userfs/godot/app_userdata/<application/config/name>` (here `LANDGRAB`, the project's `config/name`, not the localized name). Emscripten IDBFS keeps one record per path: directories `{timestamp: Date, mode: 16893}`, files `{timestamp: Date, mode: 33206, contents: Uint8Array}`; the database is version 21 and exists after the first boot.
+
+**해결:** boot once in the context (creates the database), close that page, open a new page in the same context and `page.addInitScript` a function that `put`s the three directory records (`/userfs/godot`, `/userfs/godot/app_userdata`, `/userfs/godot/app_userdata/LANDGRAB`) and the file record, then `goto`. The write finishes long before the engine loads its 40 MB wasm and syncs IndexedDB into memory; the title then showed the injected progress. A ConfigFile in plain text (`[cuts]\nopen_s0=2\n`) is enough as `contents`.
+
+## GDT-246 — New textures import with Godot's defaults: a 1536×1024 WebP took 1.7 MB in the package, and masks sampled with `textureLod` had no mipmaps
+
+`측정 2026-10-03 · Godot 4.7.2 · Web export and editor import`
+
+**증상:** after adding 96 illustrations next to 16 older ones, `index.pck` grew by 16 MB although the new pictures were excluded from the web package. The imported thumbnails (512×341) were 264 KB each and the illustrations 1.7 MB each in `.godot/imported`: Godot gave every new file a fresh `.import` with `compress/mode=0` (lossless), `lossy_quality=0.7` and `mipmaps/generate=false`. The older files had been set by hand to lossy 0.88 with mipmaps; nothing carries those settings over to new files. A shader that reads a mask with `textureLod(mask, uv, 3.5)` silently gets level 0 when the mask has no mipmaps.
+
+**해결:** after the first `godot --headless --path client --import`, copy the `[params]` block of an existing file of the same kind into each new `.import` and import again; Godot rebuilds the textures because the parameters changed (here: illustrations 1.7 MB → 480 KB, thumbnails 264 KB → 62 KB at lossy 0.72, masks with mipmaps). Keep the copy as a script, since every later import of a new file starts from the defaults again.
+
+Separately, `exclude_filter="assets/stages/*_c?.webp,..."` in the Web preset left both the `.import` remap and the `.ctex` out of the package (checked with `strings index.pck`). The excluded pictures were served as plain files and loaded at run time with `HTTPRequest` (absolute URL from `JavaScriptBridge.eval("location.origin")`), `Image.load_webp_from_buffer` and `image.generate_mipmaps()` before `ImageTexture.create_from_image`, which worked in Chrome with no console errors.

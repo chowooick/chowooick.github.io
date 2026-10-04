@@ -5889,3 +5889,11 @@ Find the socket name with `adb shell cat /proc/net/unix | grep webview_devtools_
 **증상:** 스크립트가 `default.toml`의 `oauth_token`을 읽어 `POST /accounts/<id>/ai/run/<model>`을 불렀더니 `{"code":10000,"message":"Authentication error"}`가 왔다. 토큰 범위에는 `ai:write`가 있었다. wrangler 자체 명령은 정상이었다.
 
 **해결:** 파일 속 토큰이 만료된 상태였다. wrangler는 자기 명령을 실행할 때만 `refresh_token`으로 갱신한다. REST 호출 전에 `npx wrangler whoami`를 한 번 실행하면 `oauth_token`이 새로 쓰이고, 같은 호출이 `success: true`로 돌아온다. 스크립트에서 쓸 때는 시작할 때 `wrangler whoami`를 먼저 부르거나 `CLOUDFLARE_API_TOKEN`을 쓴다.
+
+## OPS-290 — A `zsh -c 'while pgrep -f "X"; do sleep …; done; …'` waiter waits forever: `pgrep -f` matches the waiter's own command line
+
+`측정 2026-10-03 · macOS 27 (Darwin 27.0.0) · zsh, pgrep`
+
+**증상:** background waiters meant to start a job after another finished (`nohup zsh -c 'while pgrep -f "run_cuts.py" >/dev/null; do sleep 15; done; python3 run_cuts.py …'`) never started. `pgrep -fl run_cuts` listed the waiters themselves: their own `zsh -c` argument contains the pattern, so the loop always finds a match. Two waiters on the same pattern also keep each other alive.
+
+**해결:** chain jobs in one script run in the foreground of a single background shell (`job_a; job_b; echo DONE`), and make a later queue wait on a marker file or a log line (`until grep -q QUEUE_DONE queue.log; do sleep 10; done`) instead of a process pattern. If a process match is unavoidable, use a pattern that cannot appear in the waiter, e.g. `pgrep -f '^python3 .*run_cuts'`.
