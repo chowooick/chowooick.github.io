@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T17:14:50Z · 소스 커밋 `7276129` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T17:22:27Z · 소스 커밋 `1a469c9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13726,4 +13726,17 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 - For the CNAME, sign the Air's Chrome profile into the dashboard with Google, then fill the "레코드 추가" form with Playwright. The type picker is a custom control: click it and pick the `option` named CNAME. Fill the target by its placeholder `예: www.example.com` and the name by `루트에 @ 사용`, never by input index, or the target lands in the name field. Proxy is on by default. A specific `speakout` CNAME overrides the `*.mnori.com` A record. Requests then came back with `cf-ray …-DEN`.
 - Deploy without inbound access: a read-only GitLab deploy key on the Air and a LaunchAgent with `StartInterval 60` that runs `git fetch`, `reset --hard` on a new commit and `launchctl kickstart -k` on the server. Measured: live 4 s after the push.
 - Measured gain over misa (OPS-295): a new TTS sentence in 1.0 s instead of 3.5-18 s, and one LLM turn in 3.6 s instead of 12.8 s. Known gaps: no auto-login, macOS auto-install on, and the Air dropped off the LAN once for about 3 minutes (ARP incomplete, uptime unchanged).
+
+## OPS-300 — Play Console internal testing for a new app, end to end by Playwright: the create button navigates after ~15 s, tester lists are `mat-checkbox[aria-label=<list>]`, and no signing prompt appears
+
+`측정 2026-10-04 · Play Console web (ko UI), organization account · playwright-core connectOverCDP to one long-lived persistent context on the Air`
+
+**증상:** extends OPS-278 for a first release of a non-AdMob app.
+
+- `[debug-id=create-app-button]` took longer than 12 s to leave `create-new-app`. The page still showed the filled form, so it looked like nothing had happened, and a second click could create a duplicate app. It had already moved to `/app/<id>/app-dashboard`.
+- On `tracks/internal-testing`, `[debug-id=create-android-release-button]` opens `releases/1/prepare`. The page body stays on "로드 중" for about 10 s. There was **no app signing choice**: Play App Signing is the default, and the uploaded bundle's key became the upload key. Upload: click 「업로드」, take the `filechooser` and `setFiles(aab)`. `[debug-id=added-artifacts-table]` shows `1 (0.1.0)` after about 5 s, and the release name fills itself in. Release notes go in `[debug-id=whats-new] textarea` as `<ko-KR>…</ko-KR>`. `[debug-id=review-button]`, then `[debug-id=main-button]` 「저장 및 출시」, then the dialog's 「저장 및 출시」. Warnings that did not block: no testers yet, no deobfuscation file.
+- Testers tab: an existing email list is a `mat-checkbox[aria-label="<list name>"]` with `aria-checked`. A plain `click()` toggled it; read `aria-checked` back, then `[debug-id=save-button]`. It persisted across a reload, and the track summary changed from 비활성 to 활성. `[debug-id=web-link-share-button]` copies `https://play.google.com/apps/internaltest/<track id>` (read it with clipboard-read granted, OPS-278).
+- Opening that link in the owner's profile showed "You're invited…" with a Become-a-tester button. After the click it showed "You're a tester for <package> (unreviewed)". This internal track needed no App content declarations and no store listing.
+
+**해결:** after any navigating click, wait for the URL to change (or poll it) instead of clicking again. Read controls by `debug-id` or `aria-label` and confirm each state change by reading it back. Close the long-lived browser at the end so other sessions can use the shared profile.
 
