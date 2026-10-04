@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T06:10:58Z · 소스 커밋 `0f8f5e1` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T06:14:59Z · 소스 커밋 `0ff63b2` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13440,4 +13440,40 @@ Find the socket name with `adb shell cat /proc/net/unix | grep webview_devtools_
 **증상:** background waiters meant to start a job after another finished (`nohup zsh -c 'while pgrep -f "run_cuts.py" >/dev/null; do sleep 15; done; python3 run_cuts.py …'`) never started. `pgrep -fl run_cuts` listed the waiters themselves: their own `zsh -c` argument contains the pattern, so the loop always finds a match. Two waiters on the same pattern also keep each other alive.
 
 **해결:** chain jobs in one script run in the foreground of a single background shell (`job_a; job_b; echo DONE`), and make a later queue wait on a marker file or a log line (`until grep -q QUEUE_DONE queue.log; do sleep 10; done`) instead of a process pattern. If a process match is unavoidable, use a pattern that cannot appear in the waiter, e.g. `pgrep -f '^python3 .*run_cuts'`.
+
+## OPS-291 — Android emulator 37.2.12 on macOS: gRPC `injectAudio` (microphone injection) kills the headless emulator
+
+`측정 2026-10-04 · Android emulator 37.2.12.0 (build 16428233) · qemu-system-aarch64-headless · macOS 27.0.1, MacBook Air M1 · Python grpcio client`
+
+**증상:** with the emulator started as `-no-window -grpc 8556`, streaming `AudioPacket`s to
+`EmulatorController.injectAudio` (16 kHz mono S16, `MODE_REAL_TIME` or `MODE_UNSPECIFIED`) while an app records
+makes the client fail with `UNAVAILABLE: Stream removed (recvmsg:Connection reset by peer (54))`, and the emulator
+process is gone (`adb devices` empty). The crash report (`~/Library/Logs/DiagnosticReports/qemu-system-aarch64-headless-*.ips`)
+is `EXC_BAD_ACCESS KERN_INVALID_ADDRESS at 0x58` in `audio_forwarder_enable` ←
+`QemuAudioInputEngine::start` ← `QemuAudioInputStream` ← `EmulatorControllerImpl::injectAudio`. The crash happened
+with `-allow-host-audio`, and also with `-audio coreaudio`. Without either flag the call returned, but the app got
+no audio. A windowed emulator started over ssh (directly, or through `open x.command`) never reached `adb devices`.
+It stopped after `Enabling Vulkan`.
+
+**해결:** do not use `injectAudio` for unattended voice tests on this host. Feed the app's capture code from a file
+instead: in debug builds only, read a 16 kHz mono WAV from the app's files dir in place of `AudioRecord.read`, at
+real-time pace. Copy it in with `adb push x.wav /data/local/tmp/ && adb shell run-as <pkg> cp /data/local/tmp/x.wav files/<name>`.
+This tests turn logic, VAD, socket and server STT end to end, but not the physical microphone.
+
+## OPS-292 — Chrome launched over ssh on the Air gets an all-zero microphone; test the real capture pipeline with Chrome's fake device file
+
+`측정 2026-10-04 · Chrome (stable) via Playwright 1.63 `channel: 'chrome'` · MacBook Air M1, macOS 27.0.1 · launched from an ssh session`
+
+**증상:** `getUserMedia({audio})` succeeds and the track label is `MacBook Air 마이크 (Built-in)`, but every
+sample is 0: peak RMS was 0.0000 in a quiet room and still 0.0000 while `afplay` played speech through the unmuted
+speakers. This held with echo cancellation, noise suppression and AGC all off. macOS hands silent buffers to a process
+whose responsible app has no microphone permission, and there is no prompt over ssh. (The output was muted at
+volume 31; restore it afterwards.)
+
+**해결:** use `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream
+--use-file-for-fake-audio-capture=<16 kHz wav>` (plus `--disable-audio-output`, OPS-287). This still runs Chrome's
+real capture and processing path. The file loops from the moment the stream opens. If the app only listens at certain
+moments (turn-taking), pad the file with leading silence so that the speech starts after the listening window opens.
+Otherwise the test captures half sentences: speech started 9 s into the file gave a full sentence, and a looping file
+with no lead-in gave three fragments.
 
