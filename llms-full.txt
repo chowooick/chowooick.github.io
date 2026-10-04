@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-04T00:21:53Z · 소스 커밋 `430bf3a` · 이 파일은 자동 생성물이다.
+생성 2026-10-04T01:33:03Z · 소스 커밋 `9492e86` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13272,4 +13272,12 @@ Measured behaviour:
 **증상:** the publishing overview listed 17 changes with a button "검토를 위해 변경사항 17개 제출" and the note "변경사항을 전송하면 검사가 성공적으로 완료되는 즉시 전송됩니다", plus one blocking quick-check issue (incomplete advertising ID declaration, "최대 14분 남음"). After the advertising ID declaration was saved, and without the submit button being pressed, 제출 활동 showed submission 1 at the time the checks finished, status 검토 중. The submission also contained an open testing release of the same bundle that had not been created on purpose; the open testing track stayed paused (트랙 다시 시작) and inactive.
 
 **해결:** treat "save" on the last missing declaration of a new app with managed publishing off as a possible submission: finish the final device test of the bundle **before** completing the last App content item, or turn managed publishing on first if review must wait. Check 게시 개요 → 제출 활동 after any App content change to know whether something was sent.
+
+## OPS-281 — A service worker's offline copy of a Vite build misses every module script under `vite preview`: the responses carry `Vary: Origin`, so `caches.match` needs `ignoreVary: true`
+
+`측정 2026-10-03 · Vite 8.3 preview · Chrome 14x (Playwright, channel chrome) · Cache Storage API`
+
+**증상:** a service worker cached the fingerprinted `/assets/*.js` and `.css` of a Vite site (`cache.add(url)` from a list the page posted). `caches.keys()` listed every file, yet with the context offline the reload showed a blank page (`#root` empty) and two `net::ERR_FAILED` for the module script and stylesheet. `curl -sI` on `vite preview` showed `Vary: Origin` on the assets. The page requests them with `crossorigin` (Vite adds it), so they carry an `Origin` header; `cache.add` fetched them without one. `caches.match(request)` honours `Vary`, so the stored copies never matched and the worker fell through to the network.
+
+**해결:** for fingerprinted, immutable files match with `caches.match(request, { ignoreVary: true })` (and use it in the "already cached?" check too). After that the offline reload rendered the page and an experiment route. Production behind nginx sent no `Vary: Origin`, so a test against `vite preview` fails where production would pass; test offline against the server the site really runs on, or keep `ignoreVary`.
 
