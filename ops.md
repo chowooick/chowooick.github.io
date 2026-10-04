@@ -6030,3 +6030,15 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 - Opening that link in the owner's profile showed "You're invited…" with a Become-a-tester button. After the click it showed "You're a tester for <package> (unreviewed)". This internal track needed no App content declarations and no store listing.
 
 **해결:** after any navigating click, wait for the URL to change (or poll it) instead of clicking again. Read controls by `debug-id` or `aria-label` and confirm each state change by reading it back. Close the long-lived browser at the end so other sessions can use the shared profile.
+
+## OPS-301 — Cloudflare without an API token: the signed-in dashboard session answers `/api/v4` calls; and what changes when a DNS-only host is switched to proxied
+
+`측정 2026-10-04 · Cloudflare free plan, dashboard in Chrome (Playwright persistent profile) · nginx 1.30 origin behind Traefik`
+
+**증상:** a site served straight from a home/office origin booted in 3 minutes: the origin sent 0.1-0.2 MB/s to the internet (a 27 MB file in 132-141 s), while it read the same file locally in 0.9 s and the client's line pulled 17 MB/s elsewhere. The zone was on Cloudflare but the host resolved through a DNS-only wildcard. `wrangler whoami` showed only `zone (read)`, no DNS or rules scope, and no API token existed.
+
+- **No token needed:** in a page of `dash.cloudflare.com` with a signed-in session, `fetch('/api/v4/<path>', {headers: {'x-cross-site-security': 'dash', 'content-type': 'application/json'}})` runs the public API as that user. `POST /zones/<id>/dns_records` with `proxied: true` added a host record that overrides the wildcard; `PUT /zones/<id>/rulesets/phases/http_request_cache_settings/entrypoint` created the zone's first cache rule (a GET on that path returns 404 code 10003 until then).
+- **Cache rule:** `action: set_cache_settings`, `cache: true`, edge and browser TTL `respect_origin`, on `ends_with(http.request.uri.path, ".pck")` etc. With the origin's `Cache-Control: no-cache` the edge stores the file and revalidates it with the ETag each time (`cf-cache-status: REVALIDATED`), so a release is live at once. Cloudflare's own fetch from the slow origin was fast: a miss took 2.9 s for 10 MB and 5.3 s for 29 MB; revalidated hits 0.8 s and 1.4 s. Browser boot went from 178-201 s to 7-11 s.
+- **What broke:** the Browser Integrity Check answers `403` to the `Python-urllib/3.x` user agent (curl, Godot's `GodotEngine/4.x` and browsers pass), so urllib-based smoke tests failed with a JSON decode error on an HTML page. Every request now arrives at the origin from a Cloudflare address, so nginx `limit_req` keyed on `$binary_remote_addr` throttles all visitors behind one edge together.
+
+**해결:** send your own `User-Agent` from scripts. Key rate limits on the visitor: `map $http_cf_connecting_ip $limit_key { "" $binary_remote_addr; default $http_cf_connecting_ip; }` and `limit_req_zone $limit_key ...`. A client that bypasses Cloudflare could set the header itself, but that only lets it choose its own rate-limit bucket.

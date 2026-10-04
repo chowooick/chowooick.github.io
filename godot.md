@@ -4828,3 +4828,14 @@ doc.addEventListener("webkitfullscreenchange", _cb)
 ```
 
 Connect it deferred and read `document.fullscreenElement` in the handler. With this the label switched back within 1.2 s of `exitFullscreen()` in the same test, and a click on the button (CDP mouse event) still entered and left full screen.
+
+## GDT-251 — A container page that is wider than the phone: a Control never gets smaller than its minimum size, and switching `BoxContainer.vertical` in the same layout pass is too late
+
+`측정 2026-10-04 · Godot 4.7.2 · ScrollContainer > VBoxContainer > BoxContainer (two panels), phone layout at 411 px`
+
+**증상:** a screen built from containers (a header and a body `BoxContainer` with two panels inside a `ScrollContainer` with horizontal scrolling disabled) rendered wider than a 411 px phone: the right panel edge and the back button were off screen. Dumping sizes showed the screen at 411 but the scroll at 548-915. Two separate causes:
+
+1. `scroll.set_anchors_preset(PRESET_FULL_RECT)` together with a manual `scroll.size = ...` in `_layout`: anchored sizes win on the next layout, and the manual size is ignored.
+2. `_layout` set `scroll.size` and then `body.vertical = narrow`. At that moment the body was still side by side, so its minimum width (left panel + right panel) was larger than the phone. A Control's size is clamped to its combined minimum size, so the scroll kept the wide size. After `vertical` flipped, the minimum dropped, but nothing laid out again: no `resized` signal followed.
+
+**해결:** do not give a manually sized control full-rect anchors. In the layout function, change orientation and other minimum-size-changing properties first; when the orientation actually changes, run the layout again with `_layout.call_deferred()`, and once more deferred after `enter`. Do not pin the scroll child's width with `custom_minimum_size.x`: with horizontal scrolling disabled, the ScrollContainer fits its child to its own width. A size dump (`get_combined_minimum_size()` against `size` for each node) finds the widest child in one run.
