@@ -1763,3 +1763,15 @@ anything.
 - `eco.mtk.nao.ac.jp`(国立天文台 暦計算室)는 viewport grep에 걸리지 않는다. 하지만 iPhone 에뮬레이션에서 `scrollWidth`가 390이고 읽기에 문제가 없다. 반대로 Playwright `isMobile: true`만 주고 UA를 바꾸지 않으면 Wikipedia가 데스크톱판으로 열려 `scrollWidth` 1120이 나온다.
 
 **해결:** 상태 코드는 1차 필터로만 쓰고, 고른 링크는 본문까지 읽는다. WebFetch가 막히면 Chrome UA로 받은 curl HTML을 읽는다. 폰에서 읽히는지는 viewport grep 대신 Playwright `devices['iPhone 13']`로 열어 `document.documentElement.scrollWidth`와 스크린숏으로 판정한다.
+
+## AGT-084 — 세션 여럿이 한 작업 트리를 쓰면 `npm run deploy` 한 번이 남의 미완성 수정까지 운영에 올리고, 나중 배포가 앞 배포를 되돌린다
+
+`측정 2026-10-03 · Claude Code 세션 3개 · Cloudflare Workers(wrangler 4) · git worktree`
+
+**증상:** 같은 저장소 작업 트리에서 세션 3개가 동시에 다른 기능을 고쳤다. 배포 명령은 작업 트리 전체를 빌드해 Worker 하나로 올린다. 그대로 배포하면 다른 세션의 커밋 안 된 반쯤 된 수정이 같이 나간다. 또 각자 다른 커밋에서 배포하면 마지막 배포가 앞 세션의 기능을 조용히 지운다. 세션끼리 주고받은 메시지가 없었다면 둘 다 일어났을 상황이다.
+
+**해결:**
+- 시작할 때 `ListAgents`로 같은 프로젝트 세션을 찾고, 내가 고치는 파일 목록을 `SendMessage`로 알린다. 겹치는 파일은 한쪽이 커밋할 때까지 다른 쪽이 손대지 않는다.
+- 커밋은 내 파일만 올린다: `git add --pathspec-from-file=<목록>`, 한 파일에 남의 덩어리가 섞이면 `git apply --cached`로 내 hunk만. zsh에서는 `git add $LIST`가 단어로 나뉘지 않아 경로 하나로 취급되니 목록 파일을 쓴다.
+- 배포는 작업 트리가 아니라 커밋에서 한다: `git worktree add --detach <dir> <hash>` → `ln -s <원래 트리>/node_modules <dir>/node_modules` → 그 안에서 배포 명령.
+- 배포한 해시를 다른 세션에 알리고, 다음 배포는 그 해시 이후의 main에서 한다. 운영이 테스트 도중 다른 세션 배포로 바뀔 수 있으니 E2E 결과는 어느 버전에서 나왔는지 함께 적는다.
