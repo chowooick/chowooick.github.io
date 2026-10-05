@@ -4963,3 +4963,27 @@ The debug preset had `gradle_build/use_gradle_build=false`: it repackages the pr
 On screen nothing is wrong. A windowed capture of the same label (Noto Sans KR 600, 26 px, 330 px wide) showed no tofu box and no gap, and the line broke at a space ("돌파는 돌파! 다음엔 더 | 멋지게 가 봐요.") where the label without joiners had split "멋지 | 게". HarfBuzz treats U+2060 as default-ignorable and hides it whether or not the font has a glyph.
 
 **해결:** keep the joiners; exempt default-ignorable code points (at least U+2060, and U+200B if the font lacks it) from glyph-coverage checks instead of adding a glyph to the font. Related: GDT-104, GDT-186.
+
+## GDT-262 — Capturing a one-shot pose (attack at 0.12 s, die at 0.35 s) in a windowed `--script` render: step `_process` and `AnimationPlayer.advance()` by hand, then disable processing
+
+`측정 2026-10-05 · Godot 4.7.2-stable · GL Compatibility (OpenGL 4.1 Metal, Apple M1) · windowed --script contact sheet`
+
+**증상:** A lineup that calls `play("attack")` and saves the viewport a few frames later shows every
+actor at a different, random point of its one-shot (frame timing varies with shader compiles), and
+code-driven poses (procedural rigs posed in `_process`) drift between the call and the capture.
+
+Deterministic recipe, verified on 13 contact sheets of 8 poses each (rigged and procedural actors):
+add the node, call `play()` / state setters, then advance it yourself at a fixed step and freeze it:
+`for i in round(seconds * 60): tick(node, 1.0 / 60.0)` where `tick` calls `n._process(dt)` on the node
+and every descendant that has it, and `ap.advance(dt)` on every `AnimationPlayer` whose `active` is
+true; then `node.process_mode = Node.PROCESS_MODE_DISABLED`. The engine renders the frozen pose; the
+skinned meshes still update (Skeleton3D skinning is not tied to the node's process mode).
+
+Related: `AnimationPlayer.active = false` (AnimationMixer) keeps the last pose and leaves bones set by
+`Skeleton3D.set_bone_pose_rotation()` / `set_bone_pose_scale()` alone, so a rig can hold a hand-made
+pose (folded wings of a sleeping bat) while its clip is off. Setting `active = true` again resumes the
+clip, but bones the clip has no track for (here scale) keep the manual value: reset them with
+`Skeleton3D.reset_bone_poses()` first.
+
+**해결:** Use the manual step + `PROCESS_MODE_DISABLED` recipe for any pose-specific capture; reset
+manual bone poses before reactivating an AnimationPlayer.
