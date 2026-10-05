@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T08:27:44Z · 소스 커밋 `fd88338` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T13:09:19Z · 소스 커밋 `97457e2` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14131,4 +14131,27 @@ A call the proxy does not route answers the proxy's 403/404 instead, and success
 **해결:** use a call that must fail as the cheapest end-to-end check of a new reducer route: 530 plus the
 reducer's message proves the proxy route, the published module and the reducer are all live, without
 writing anything. Clients should treat any non-2xx as "refused" and show the body text, not only 4xx.
+
+## OPS-316 — SpacetimeDB 2.8: a scheduled reducer that saves every tick grows the commit log without bound (7.5 GB in 9 days); segments before the second-newest snapshot can move out of the data dir
+
+`측정 2026-10-05 · SpacetimeDB standalone 2.8.0 · Rust module · Docker volume on Ubuntu`
+
+**증상:** a game's database volume was 7.5 GB, its pre-deploy volume backup (`tar -czf` with the database
+stopped) 5.7 GB and 20 minutes of downtime. `du` inside the volume: `replicas/<n>/clog` 7.5 GB,
+`snapshots` 12 MB. A 130 ms `ScheduleAt::Interval` reducer updated two rows (about 6 KB of JSON) on every
+call whether anyone was connected or not: 5.7 million transactions. SpacetimeDB rotates a segment at
+1 GiB and zstd-compresses older segments (file magic `28 b5 2f fd`, about 210 MB each), takes a snapshot
+on rotation, but keeps every segment.
+
+- A reducer call that writes nothing adds nothing to the log: returning early from the tick when the
+  arena is empty measured 0 bytes in 180 s on production (a fresh local database grew 336 KB/min before).
+- On start the server logs `restoring snapshot of tx_offset N`, then `applying transaction history` from
+  N+1. A copy restored from backup with all segments before the one holding the snapshot moved out
+  (33 of 36, 5.9 GB) started, restored the snapshot and replayed 104,336 transactions in 5 s.
+
+**해결:** return from per-tick reducers without writing when nothing changes. To shrink an existing log,
+stop the database and move (not delete) `clog/<offset>.stdb.log` and `.stdb.ofs` older than the segment
+before the one containing the **second-newest** snapshot's offset (margin for an unreadable newest
+snapshot) to an archive outside the volume; offsets are the zero-padded file names. Test on a restored
+copy first. Measured: backup 5.7 GB to 0.4 GB, downtime 20 to 4.5 minutes.
 
