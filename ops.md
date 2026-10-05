@@ -6492,3 +6492,16 @@ The same morning the Air's data volume reached 100 % (144 MiB free) and an `rsyn
 `write: No space left on device`. The cheapest safe space was each project's own build output synced from this Mac:
 `godot/android/build/build` alone was 654 MiB. Exclude Gradle and export output from the rsync (`--exclude godot/android`)
 and delete only your own project's copy on the Air.
+
+## OPS-327 — Cross-document view transition with per-element WAAPI choreography: move a single-sided group with the `translate` property, and a test's own `ready.then` runs before the page's, so `getAnimations()` there misses the page's animations
+
+`측정 2026-10-05 · Playwright bundled Chromium (playwright-core 1.63.0, headless, macOS 27.0.1) · Astro site with @view-transition { navigation: auto }`
+
+**증상:** A three-beat page turn (article recedes, the row of pages slides one page over, the chosen page comes forward) names the article and the neighbor cards on both pages (old page in `pageswap`, new page in `pagereveal`, all with different names so every group is old-only or new-only) and animates them from the new page with `document.documentElement.animate(..., { pseudoElement })` in `viewTransition.ready.then`. A Playwright check that listed `document.getAnimations()` in its own `ready.then` (added with `addInitScript`) reported only `::view-transition-old(root)`, as if the choreography had not run; the page itself animated correctly.
+
+- Promise callbacks run in registration order. An init script registers its `pagereveal` listener, and so its `ready.then`, before the page's inline head script; at that moment the page has not called `animate()` yet. Wrapping `Element.prototype.animate` with a counter showed 12 calls and the expected names on the elements. Read state after a `setTimeout`, or count `animate()` calls.
+- A neighbor card with a 3D transform (`rotateY` under a parent `perspective`) is captured with that transform as the group's `transform` matrix. Animating the CSS `translate` property on `::view-transition-group(name)` moves the group in screen space on top of that matrix, without reading or rebuilding it; `opacity` on the group fades it.
+- For the article image, animating `transform` (`translate(...) scale(...)`) on `::view-transition-old/new(name)` with a `transform-origin` at the top of its visible part, `clip-path: inset(<visible top> 0 0 round 20px)`, and a `mask-image: linear-gradient(#000 52%, transparent)` whose `mask-size` animates from `100% <3 × visible height>` to `100% <visible height>` gives a page that shrinks to a neighbor's depth and fades out at the bottom like it. Only the part between the header and the bottom of the screen is shown, also when the old page was scrolled.
+- Frame times at 1440 × 900, real speed, from `pagereveal`: 17 ms with a few 33 ms frames.
+
+**해결:** Give every moving piece its own one-sided name, drive them all from one WAAPI timeline in the new page's `ready.then`, move side cards with `translate` on their group, and verify with an `animate()` counter or a later read rather than `getAnimations()` in an earlier-registered `ready.then`.
