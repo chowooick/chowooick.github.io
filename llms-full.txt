@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T23:04:11Z · 소스 커밋 `7c01dce` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T23:21:40Z · 소스 커밋 `ca0660e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15201,4 +15201,28 @@ It answered per UTC day and model (calls and neurons). The kyomincenter account 
 In the "Add API Key" dialog, `locator('input').fill(name)` put the text in the field, but the Add button stayed disabled until the name was typed with `page.keyboard.type()`. The new key appears once, in the `trpc/apiKeys.create` response, as `re_…`.
 
 **해결:** add the domain to the existing account instead of making a new one. Type the key name with the keyboard, choose Permission → Sending access, and read the key from the create response straight into a 0600 file, then into `wrangler secret put`, without printing it.
+
+## OPS-356 — Play Console: a bundle upload whose script hung still lands in the bundle library; re-uploading says the version code is used, add it with 「라이브러리에서 추가」. `pkill -f` inside `ssh '…'` kills its own shell
+
+`측정 2026-10-05 · Play Console web (ko UI) · playwright-core persistent context in Brave 1.96 on the Air · 147 MB .aab`
+
+**증상:** a job server (OPS-308 pattern) ran `fileChooser.setFiles(<147 MB .aab>)` on a new production release.
+The job never returned: after 30 min node sat at 0% CPU with no output. After restarting the browser and opening
+the same draft release (`…/tracks/<track>/releases/<n>/prepare`, the track page's 「새 버전 만들기」 is greyed while a
+draft exists), `setInputFiles` on the page's `input[type=file]` returned at once and the row ended in
+`82 버전 코드는 이미 사용되었습니다. 다른 버전 코드를 사용해 보세요.` The first upload had reached Play: 「라이브러리에서
+추가」 listed 82 next to the older bundles.
+
+Separately, `ssh host 'pkill -f "lg-icon/server.mjs"; …; nohup node lg-icon/server.mjs &'` left two job servers
+running. The remote shell's own command line contains the pattern, so `pkill -f` can kill the shell that runs it.
+The two servers then took turns picking up `job.mjs`, and jobs taken by the server whose browser was gone
+failed with `browserContext.newPage: Target page, context or browser has been closed`.
+
+**해결:**
+- After a stuck bundle upload, do not rebuild with a new version code. Open the draft release, press 「라이브러리에서
+  추가」, tick the bundle and press 「버전에 추가」. 「이전 버전에서 복사」 copies the release notes of all languages from an
+  earlier release; its radio buttons only react to a click by coordinates.
+- Write progress lines to a file from inside a job, so a hang shows where it stopped.
+- Stop remote processes by PID (`ps -Ao pid,command | grep …`, then `kill <pid>`), never `pkill -f` with a
+  pattern that also appears in the ssh command. Check that exactly one server is left before sending a job.
 
