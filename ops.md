@@ -6211,3 +6211,35 @@ malls landed 10–25 m from their OpenStreetMap buildings (Nominatim); unconvert
 branch, then take prices and full address from that branch's Apple Maps page. Convert all China map
 coordinates GCJ-02→WGS84 before use. Branch names differ between platforms (Dianping
 `思茅小馆(昆明站店)` = Apple `思茅小馆(双龙商场店)`, same Dianping id), so match on the Dianping id, not the name.
+
+## OPS-310 — Python 3.9 rejects a valid UTF-8 script with "SyntaxError: Non-UTF-8 code" when a line holds a long run of multibyte text
+
+`측정 2026-10-05 · macOS system /usr/bin/python3 3.9.6`
+
+**증상:** a generator script with long Korean strings (one string literal per line, ~900 Hangul
+characters) failed at start-up:
+`SyntaxError: Non-UTF-8 code starting with '\xec' in file build.py on line 185, but no encoding declared`.
+The file is valid UTF-8: `open(p,'rb').read().decode('utf-8')` succeeds and
+`ast.parse(open(p, encoding='utf-8').read())` parses it. Adding `# -*- coding: utf-8 -*-` is the
+reflex fix suggested by the message and does not address the cause — the 3.9 file tokenizer
+mishandles very long lines of multibyte text.
+
+**해결:** run the source through `compile()` instead of the file tokenizer:
+`python3 -c "exec(compile(open('build.py',encoding='utf-8').read(),'build.py','exec'))"`,
+or use a newer Python (Homebrew `python3.12`), or keep long strings in a JSON/text file that the
+script loads.
+
+## OPS-311 — Kunming government sites (*.km.gov.cn) refuse connections from outside China; cite a mirror
+
+`측정 2026-10-05 · curl and WebFetch from a Korean home connection`
+
+**증상:** `http://kmds.km.gov.cn/...` (Kunming party-history office) and `http://www.kmwh.gov.cn/...`
+(Wuhua district) both fail with `connect ECONNREFUSED 116.52.6.87:443` in WebFetch, and curl
+returns nothing. `m.yunnan.cn` also blocks some article URLs with an HTTP-proxy page
+("The request contains some unreasonable content", Block Event ID ...).
+
+**해결:** do not retry. The same official text is usually republished on reachable hosts:
+the district's own media account on `news.qq.com/rain/a/...`, `m.thepaper.cn/baijiahao_...` (official
+WeChat accounts mirrored to The Paper), `rujiazg.com`, `chinanews.com`. Search the article title and
+cite the mirror with its date. A plain `curl` also needs `--compressed`: several of these hosts send
+gzip regardless of `Accept-Encoding`, and the body otherwise looks like binary garbage.
