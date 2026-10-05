@@ -6696,3 +6696,41 @@ The same `curl` from other hosts:
 It is not misa: `ssh busan 'head -c 8000000 /dev/urandom' > /dev/null` from the developer Mac took 141 s (57 KB/s), so the office's path to Korea is slow for any host, while the same Mac pulled a jsDelivr file at 1.7 MB/s. The traceroute leaves through 207.225.112.3 / 63.225.124.17 (Lumen) and reaches Korea Telecom (112.174.x) at hop 7.
 
 **해결:** judge a Korean origin's speed from `busan` (or `oregon` for a far client), not from the office Macs. Give production browser tests run from the office a load timeout of minutes (the farm tests use 6 minutes for 22 MB). OPS-301 measured an origin "sending 0.1-0.2 MB/s to the internet" with a client in the same situation; check its origin from busan before relying on that number.
+
+## OPS-339 — Cloudflare free-plan zone settings through the dashboard session API: the endpoints and bodies that worked, and the two that do not look like the rest
+
+`측정 2026-10-05 · Cloudflare free plan, new zone registered at Cloudflare Registrar · API calls made with fetch('/api/v4…', {headers: {'x-cross-site-security': 'dash'}}) from a signed-in dashboard page in Brave (Playwright)`
+
+**증상:** setting up a new zone by hand is a dozen dashboard screens; the API is faster, but two of the calls do not follow the usual `PATCH /zones/:id/settings/<name>` shape and failed on the first try.
+
+All of these answered 200 on a free zone:
+
+| Setting | Call |
+|---|---|
+| DNSSEC | `PATCH /zones/:id/dnssec {"status":"active"}` (status `pending` at once; Registrar adds the DS itself) |
+| HTTPS, TLS, SSL | `PATCH /zones/:id/settings/always_use_https {"value":"on"}`, `…/min_tls_version {"value":"1.2"}`, `…/ssl {"value":"strict"}` |
+| HSTS | `PATCH /zones/:id/settings/security_header {"value":{"strict_transport_security":{"enabled":true,"max_age":31536000,"include_subdomains":true,"preload":false,"nosniff":true}}}` |
+| www to apex | proxied `AAAA www 100::`, then `PUT /zones/:id/rulesets/phases/http_request_dynamic_redirect/entrypoint` with a `redirect` rule, `target_url.expression: concat("https://apex", http.request.uri.path)`, `preserve_query_string: true` |
+| **Crawler Hints** | **`POST`** `/zones/:id/flags/products/cache/changes {"feature":"crawlhints_enabled","value":true}` (`PATCH` answers 405) |
+| AI training crawlers | `PUT /zones/:id/bot_management {"ai_training":"block","is_robots_txt_managed":true}` |
+| Free managed WAF | `PUT /zones/:id/rulesets/phases/http_request_firewall_managed/entrypoint` with one `execute` rule, `action_parameters.id: 77454fe2d30c4220b5701f6fdfb893ba` (Cloudflare Managed Free Ruleset); the entrypoint did not exist before (404 on GET) |
+| Rate limiting (the one free rule) | `PUT /zones/:id/rulesets/phases/http_ratelimit/entrypoint`, `characteristics: ["cf.colo.id","ip.src"]`, `period: 10`, `mitigation_timeout: 10` |
+| Email Routing | `POST /zones/:id/email/routing/enable {}` adds the MX and SPF records itself; then `POST …/email/routing/rules` with a `literal` `to` matcher and a `forward` action to an already verified address |
+| **DMARC Management** | **`PATCH /zones/:id/email/auth/dmarc-reports {"enabled":true}`** (the dashboard's call); it adds `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:<hash>@dmarc-reports.cloudflare.net` |
+| Web Analytics | `POST /accounts/:acct/rum/site_info {"host":"<zone>","zone_tag":"<id>","auto_install":true}` |
+
+After the `bot_management` call the response showed `ai_training: "block"` with `ai_bots_protection` still `"disabled"`, and the zone's `/robots.txt` (served by the Worker) came back with Cloudflare's text in front: `Content-Signal: search=yes,ai-train=no,use=reference` plus `Disallow: /` blocks for Amazonbot, Applebot-Extended, Bytespider and others. Search crawlers are not blocked.
+
+A deep link such as `dash.cloudflare.com/<acct>/<zone>/email/dmarc-management` opened in **headless** Brave stopped on "보안 확인 수행 중" with a Turnstile checkbox. Headed, waiting a few seconds and clicking `input[type=checkbox]` in each frame passed it; the API calls above made from the account home page did not meet the check.
+
+**해결:** use the table as is. Make the Crawler Hints call a `POST` and DMARC Management the `dmarc-reports` `PATCH`; enable Email Routing before adding rules so the MX records exist. Open dashboard pages headed when a script has to click in them.
+
+## OPS-340 — Cloudflare Email Sending (open beta) answered 401 Unauthorized, code 2036, for an account where Email Routing works
+
+`측정 2026-10-05 · wrangler 4.135.0 (OAuth login) and the dashboard session · Cloudflare free plan account, Workers Free`
+
+**증상:** `wrangler email sending settings <zone>` failed with `A request to the Cloudflare API (/zones/<id>/email/sending/subdomains) failed. Unauthorized [code: 2036]`. The same `GET` from the signed-in dashboard session also answered 401 with code 2036. Email Routing calls on the same zone answered 200, and `wrangler turnstile widget create` and `wrangler d1 create` worked with the same wrangler login.
+
+So the 401 is not a missing wrangler OAuth scope alone: the account itself is not let into Email Sending yet. The dashboard's "이메일 전송 (베타)" menu item exists on the zone; its page rendered empty.
+
+**해결:** do not plan a launch mail on Email Sending without first getting a 200 from `GET /zones/:id/email/sending/subdomains`. Keep a sender that works today as the fallback (Resend free plan, OPS-104) and set SPF, DKIM and DMARC for whichever one sends.
