@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T23:26:31Z · 소스 커밋 `ba68086` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T23:28:51Z · 소스 커밋 `652e208` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6101,6 +6101,16 @@ The first launch on that device still fails with `FBSOpenApplicationErrorDomain 
 So `window size / screen_get_scale()` does not give points on the 1× monitor: the window is 2× too large, and a capped UI factor leaves the layout 3793 units wide.
 
 **해결:** scale the UI in proportion to the window (`factor = min(w / 1440, h / 900)` with no low upper cap, then lay out at `size / factor`). That gives the same 1440 × 900-shaped layout on every screen, whatever unit the window reports. Do not rely on `screen_get_scale()` to convert to points on a mixed-DPI desktop. The 1× monitor also renders 4× the pixels it shows (14 MP for a 2560 × 1440 panel). Related: GDT-090.
+
+## GDT-277 — Drag-to-scroll that also starts on buttons (the fix for GDT-204): watch the touch in `_input`, and let a release that ended a scroll reach the button but do nothing
+
+`측정 2026-10-05 · Godot 4.7.2-stable · headless SceneTree test with injected `InputEventScreenTouch` / `InputEventScreenDrag` (emulate_mouse_from_touch on) · Air (M1)`
+
+**증상:** a page taller than a phone screen had to scroll under a finger. Most of its surface is tiles and buttons, and a `ScrollContainer` does not pan when the drag starts on one of them (GDT-204).
+
+**해결:** do the scrolling yourself in `_input()` of the screen that owns the page. `_input` sees the `InputEventScreenTouch` / `InputEventScreenDrag` before the GUI gets the emulated mouse events for the same finger. Once the drag passes a small threshold (here 12 px of the scaled page, mostly vertical), mark the touch as a scroll with a global flag and move the page by the drag's delta. Keep a velocity from the last drag steps and let it decay for a glide (`v *= exp(-dt * 3.5)`), and drop it if the finger rested more than 90 ms before lifting. Do not swallow the emulated mouse press or release. Make every control under the finger act on the **release** for touch (the emulated mouse events carry `device == InputEvent.DEVICE_ID_EMULATION`, GDT-030) and skip the action when the flag is set. A real mouse keeps acting on press. Clear the flag on the next touch press. Give pressable controls a `cancel_press()` (spring back the scale, put a slider back to its value at the press) and call it on the subtree when the scroll starts. Turn off focus-on-hover (`NOTIFICATION_MOUSE_ENTER`) on touch, or the emulated motion moves the focus along the drag path.
+
+Measured: a 260 px drag that started on a tool tile scrolled the page and left the selection as it was. A drag that started on an equip button scrolled and equipped nothing. A tap on the same tile or button selected or equipped it. A 9 px wobble during a tap stayed a tap. A 300 px flick kept moving the page after the lift. Keyboard focus was scrolled into view separately: after each focus move, compare the focused control's rect with the clip and tween the scroll.
 
 ---
 
