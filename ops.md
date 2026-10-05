@@ -6310,3 +6310,39 @@ stop the database and move (not delete) `clog/<offset>.stdb.log` and `.stdb.ofs`
 before the one containing the **second-newest** snapshot's offset (margin for an unreadable newest
 snapshot) to an archive outside the volume; offsets are the zero-padded file names. Test on a restored
 copy first. Measured: backup 5.7 GB to 0.4 GB, downtime 20 to 4.5 minutes.
+
+## OPS-317 — A web font named `"Serif KR"` is silently dropped in production: Lightning CSS unquotes it to `font-family:Serif KR`, Chrome rejects that `@font-face`, and every heading falls back to a system serif
+
+`측정 2026-10-05 · astro 5.18 build (Vite 6, Lightning CSS minify) · Chrome 154 on Android 17 (Pixel 7 Pro) · Chrome 14x headless`
+
+**증상:** a self-hosted Korean display face declared as `@font-face { font-family: "Serif KR"; src: url(/fonts/serif-kr-sub.woff2) }`
+was never used. `document.fonts` listed only the other two faces (`Pretendard:loaded`, `Seal:loaded`), the preload
+warned "preloaded but not used within a few seconds", and headings rendered in the system serif (Noto Serif CJK on
+Android). Screenshots looked plausible, so the fallback went unnoticed until `document.fonts` was read on a device.
+The built CSS had `@font-face{font-family:Serif KR;...}`: the minifier strips the quotes from a multi-word family
+name. An unquoted family name whose first word is the generic keyword `serif` is not accepted by Chrome, so the
+whole rule is discarded without an error.
+
+**해결:** never start a family name with a generic keyword (`serif`, `sans-serif`, `monospace`, `cursive`,
+`fantasy`, `system-ui`); a single made-up identifier such as `HeroSerif` survives minification unchanged. After a
+build, check on a real page that `[...document.fonts].map(f => f.family + ':' + f.status)` lists every face you ship.
+
+## OPS-318 — PWA install card never shows on return visits when the listener lives in a `client:idle` island: Chrome fires `beforeinstallprompt` before the island hydrates
+
+`측정 2026-10-05 · Chrome 154.0.8037.92 on Android 17 (Pixel 7 Pro) · Astro 5 Preact island (client:idle) · Workbox 7.4 SW already controlling`
+
+**증상:** a site's own "폰에 설치하기" card appeared on the first visit and never again: on later loads
+`window.__bip` was unset and no card rendered, while `Page.getInstallabilityErrors` returned `[]` and no WebAPK
+existed (`chrome://webapks` empty for the origin). On the first visit the service worker registers late, so
+`beforeinstallprompt` came after hydration; once the worker controls the page, Chrome fires the event early and
+an island hydrated on idle has not attached its listener yet.
+
+Related in the same session: `@vite-pwa/astro` `registerType: 'autoUpdate'` with `registerSW()` reloads the open
+page when a new worker takes control. A deploy in the middle of a long client-side job (here a 9 MB audio download
+loop) reloaded the page and silently stopped the job at 15 of 18 files.
+
+**해결:** catch the event in an inline `<head>` script — `addEventListener('beforeinstallprompt', e => { e.preventDefault();
+window.__bip = e; dispatchEvent(new Event('app:bip')) })` — and let the island read `window.__bip` on mount and listen
+for `app:bip`. After that the card showed on every load and the native "앱 설치" sheet installed the WebAPK. For
+updates use Workbox `skipWaiting: true, clientsClaim: true` and register `/sw.js` yourself without the auto-reload;
+the next navigation picks up the new build.
