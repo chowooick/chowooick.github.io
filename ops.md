@@ -6170,3 +6170,44 @@ the copy:
 The Google account came across in the copy: the account chooser offered it and a site sign-in
 through it completed (`SIGNED_IN`). Check the sign-in line before running the suite, so a missing
 session fails one step instead of the whole run.
+
+## OPS-310 — China restaurant data without login: Dianping shop pages open with `?msource=applemaps`; Apple Maps place pages carry Dianping menu prices; 360 map POI search needs no key; China map coordinates are GCJ-02
+
+`측정 2026-10-05 · curl 8 from macOS · m.dianping.com · maps.apple.com · restapi.map.so.com · Chrome 154 headless on the Air`
+
+**증상:** researching Chinese restaurants (address, hours, average spend, dishes, coordinates) from
+outside China: `m.dianping.com/search/...` and dish pages return only a phone-login wall
+(`手机号快捷登录`); Amap web endpoints (`amap.com/service/poiInfo`) return an Alibaba captcha page;
+Bing via curl returns unrelated results; DuckDuckGo lite returns a bot challenge; WebSearch rarely
+finds the branch page.
+
+What works without login or key:
+
+- **Dianping shop page:** `http://m.dianping.com/shop/<id>?msource=applemaps` returns the full
+  server-rendered page (≈230 KB). Its embedded JSON has `"name"`, `"branchName"`, `"avgPrice"`
+  (人均), `"regionName"`, `"categoryName"`, the hours as `"value":"周一至周日\n10:00-22:00","name":"营业时间"`,
+  recommended dishes as `"dishName":…,"recommendCount":N`, `"hasQueue"`, and
+  `"branchIds":"id1,id2,…"` listing the brand's other branches in the same city. Fetch each branch id
+  the same way to find a named branch. The address is masked after a few characters (`钱王街67******`)
+  and `lat`/`lng` are 0. The same URL without `msource=applemaps`, and `/dish…` pages, hit the login wall.
+- **Apple Maps place page:** `https://maps.apple.com/place?place-id=<H…>` or `?auid=<n>&lsp=57879`
+  via curl returns server-rendered HTML with the Chinese name, full address, phone, hours, AVG. COST,
+  **recommended dishes with prices** (`野生菌过桥米线 ¥99`), recent review text, a
+  `dianping.com/shop/<id>` link (the bridge to the Dianping page above), and
+  `<meta property="place:location:latitude/longitude">`.
+  `maps.apple.com/search?query=…` is client-rendered (empty via curl); run it in headless Chrome
+  (`page.goto('https://maps.apple.com/search?query=<kw>&center=<lat,lng>&span=0.03,0.03')`, wait ~9 s,
+  read `a[href*="place"]`) to get place ids and the full address of the top hit.
+- **360 map POI search:** `https://restapi.map.so.com/newapi?keyword=<kw>&cityname=<城市>&batch=1&number=15&sid=1000`
+  returns JSON (`name`, `address`, `x`, `y`, `tel`, `pguid`) with no key. Data can be years old
+  (closed or renamed branches still listed).
+
+Coordinates from Apple Maps in China and from 360 map are **GCJ-02**, not WGS84. Kunming offset is
+about +0.003° lat / +0.0015° lng. Converted with the standard iterative GCJ-02→WGS84 inverse, two
+malls landed 10–25 m from their OpenStreetMap buildings (Nominatim); unconverted they are ~300 m off.
+
+**해결:** seed one Dianping id from any Apple Maps page of the brand (WebSearch with
+`allowed_domains: ["maps.apple.com"]` and the English brand name finds them), walk `branchIds` to the
+branch, then take prices and full address from that branch's Apple Maps page. Convert all China map
+coordinates GCJ-02→WGS84 before use. Branch names differ between platforms (Dianping
+`思茅小馆(昆明站店)` = Apple `思茅小馆(双龙商场店)`, same Dianping id), so match on the Dianping id, not the name.
