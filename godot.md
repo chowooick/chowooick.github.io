@@ -4953,3 +4953,13 @@ Frame rate in the same build, read from `Engine.get_frames_per_second()` every 5
 The debug preset had `gradle_build/use_gradle_build=false`: it repackages the prebuilt APK template, whose theme is compiled in. The theme options exist only for gradle builds, and the editor shows them on a non-gradle preset without complaint.
 
 **해결:** judge the launch on a gradle preset. Flipping `use_gradle_build=true` for one export regenerated `themes.xml` (`windowSplashScreenBackground #FFFFFF`, transparent icon, `windowBackground #ffffff`), and a cold start recorded at 4 fps went home screen → white → the game's own first frame, with no icon and no dark frame. The gradle debug APK was 92 MB against 32 MB for the template build. Related: GDT-243, GDT-244.
+
+## GDT-261 — GDT-104's U+2060 WORD JOINER has no glyph in Noto Sans KR or Jua: it draws as nothing, but a `Font.has_char()` glyph-coverage test reports it missing
+
+`측정 2026-10-05 · Godot 4.7.2-stable · TextServerAdvanced · windowed macOS run (M1) · Noto Sans KR and Jua subsets (fontTools)`
+
+**증상:** after inserting U+2060 between Hangul syllables (GDT-104) in an autowrapped `Label`, a headless UI test that walks every visible label and checks `font.has_char(ch)` for each character failed with `glyph '⁠' in '돌⁠파⁠는…'`. The bundled Korean faces do not map the code point: fontTools `getBestCmap()` has no 0x2060 in Noto Sans KR (a subset that keeps U+2000–U+206F) nor in Jua.
+
+On screen nothing is wrong. A windowed capture of the same label (Noto Sans KR 600, 26 px, 330 px wide) showed no tofu box and no gap, and the line broke at a space ("돌파는 돌파! 다음엔 더 | 멋지게 가 봐요.") where the label without joiners had split "멋지 | 게". HarfBuzz treats U+2060 as default-ignorable and hides it whether or not the font has a glyph.
+
+**해결:** keep the joiners; exempt default-ignorable code points (at least U+2060, and U+200B if the font lacks it) from glyph-coverage checks instead of adding a glyph to the font. Related: GDT-104, GDT-186.
