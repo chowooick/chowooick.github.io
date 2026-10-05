@@ -6932,3 +6932,39 @@ moment it lands on another runner: switch such jobs to the public URL before or 
 - 그날 탭이 메모리 한도로 세 번 죽은 뒤, 다음 세션 요청이 `Remote Automation is turned off`로 거절됐다. 원인은 확인하지 못했다. 기기에서 다시 켜야 한다.
 
 **해결:** 이동·상태 읽기·메모리 사망 재현은 safaridriver로 하고, 탭이 필요한 소리 시작은 `alwaysAllowAutoplay`로 대신한다. 기기 음성 시작처럼 진짜 탭이 필요한 확인은 사람 손이나 다른 도구가 필요하다.
+
+## OPS-352 — Biblica 허가 요청 폼은 "As an individual"을 골라도 법인 칸(기관명·유형·주소·전화·웹사이트·설립 연도·직함·서명 권한·등록 증명 파일)을 필수로 검사한다
+
+`측정 2026-10-06 · https://www.biblica.com/permission-request-form/ (Gravity Forms, form id 64) · Brave 154 + Playwright`
+
+**증상:** `I am applying` 에서 `As an individual`(`#choice_64_7_1`)을 고르고 개인 칸(`field_64_21` 주소, `field_64_22` 전화)만 채워 제출하면
+"There was a problem with your submission"과 함께 `field_64_9`(Organization/entity name), `93`(Organization type), `11`(Address), `12`(Phone),
+`13`(Website URL), `14`(year established), `15`(designation), `91`(signing authority), `19`(proof of registration 파일)이 "This field is required."로 돌아온다.
+`window.gf_form_conditional_logic[64]`에 이 칸들을 숨기는 규칙이 없어서(규칙은 `17`이 `91 = No`일 때 보이는 것 하나뿐) 화면에도 그대로 보인다.
+
+**해결:** 법인 칸을 개인 정보로 채운다. 기관명에 "None (no legal entity). I apply as an individual: <이름>", 설립 연도에 "Not applicable: no legal entity",
+등록 증명 파일 자리에는 "법인이 없다"는 한 장짜리 진술서(PDF/PNG)를 올리면 통과한다. 성공하면 `/permission-request-form-success/`로 가고
+"Thank you for your submission. You will receive a response shortly via email."이 뜬다. 파일 칸은 plupload라 `#field_64_19 input[type=file]`에 `setInputFiles`하면 된다.
+`networkidle` 대기는 이 페이지에서 끝나지 않으니 `domcontentloaded` 후 `#gform_fields_64`를 기다린다.
+
+## OPS-353 — Workers Free의 D1 읽기 한도(하루 500만 행)는 계정 전체 합계라서, 원본 행을 매번 집계하는 통계 DB 하나가 같은 계정의 모든 D1(로그인 명단 포함)을 00:00 UTC까지 막는다
+
+`측정 2026-10-05 · Cloudflare Workers Free, D1 (ENAM) · wrangler 4.135.0 · kyomincenter-analytics(views 13,588행)`
+
+**증상:** Cloudflare 메일 "D1 일일 작업 한도 초과 · 작업: 읽은 행 · 작업 한도: 5000000 · 재설정 시간: 2026-10-06 at 00:00:00 UTC". 그 계정의 D1 읽기는
+재설정까지 오류를 낸다. 한도는 DB별이 아니라 **계정 합계**라서, 통계 DB 하나가 넘기면 같은 계정의 다른 DB(로그인 허용 명단, 다른 사이트의 DB)도 같이 막힌다.
+쓰기는 별도 한도(10만 행)라 계속 된다. 메일의 "오후 4:32"는 받는 사람의 시간대 기준이다. 재설정 시각은 항상 00:00 UTC(09:00 KST)이므로 남은 시간은 UTC로 계산한다.
+
+**원인 찾기:** DB별 읽은 행 수는 GraphQL `d1AnalyticsAdaptiveGroups`(`sum { rowsRead readQueries }`, `dimensions { databaseId datetimeHour }`)로,
+쿼리별 수치는 `wrangler d1 insights <db> --timePeriod 2d --sort-type sum --sort-by reads --json`으로 본다. wrangler OAuth 토큰(`~/Library/Preferences/.wrangler/config/default.toml`의
+`oauth_token`)으로 GraphQL을 그대로 호출할 수 있다. 이번 실측: 통계 DB 하나가 하루 801만 행(675쿼리, 쿼리당 평균 약 1.2만 행)을 읽었고, 나머지 6개 DB는 합계 15만 행이었다.
+22:00 UTC 한 시간에만 384만 행이었다.
+- 관리 화면이 30초마다 부른 `SELECT COUNT(DISTINCT visitor) FROM views WHERE ts >= ?1 AND bot = 0`(최근 5분)이 호출당 평균 7,981행을 읽었다. `views(ts)` 인덱스가 있어도
+  SQLite는 `COUNT(DISTINCT visitor)` 정렬을 피하려고 `(visitor, ts)` 인덱스를 처음부터 끝까지 훑는다. D1은 훑은 행을 모두 읽은 행으로 센다.
+- 기간 집계(30일 차원별 `GROUP BY` 20개 batch)는 기간 안의 행을 전부 읽는다. 그래서 읽기량은 트래픽 × 조회 기간 × 화면 새로 고침 횟수로 늘어나고, 인덱스로는 줄지 않는다.
+
+**해결:** 원본 행을 읽을 때마다 집계하는 통계는 D1 무료 계정에 두지 않는다. 이번에는 SQLite 파일 하나를 자체 호스트(Dokploy Traefik 뒤 node:sqlite 컨테이너)로 옮겼다.
+Worker 쪽에는 D1의 `prepare/bind/first/all/run/batch`만 HTTPS로 흉내 내는 작은 어댑터를 두어 SQL을 한 줄도 바꾸지 않았다(batch는 서버에서 한 트랜잭션).
+기록은 `waitUntil` 안에서 보내므로 호스트가 느려도 페이지는 늦어지지 않는다. 기존 데이터는 `wrangler d1 export <db> --remote --no-schema`로 옮겼다(1만 4천 행, 3.5 MB).
+위 메일을 받고 약 15분 뒤에도 `wrangler d1 export`와 `d1 execute --remote`(HTTP API)는 정상으로 응답했다. Worker 바인딩 읽기가 그때 실제로 실패했는지는 확인하지 못했다.
+결제가 가능하면 Workers Paid(/월, 월 250억 행)가 즉시 복구하는 유일한 방법이다.
