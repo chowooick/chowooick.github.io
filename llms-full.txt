@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T15:27:24Z · 소스 커밋 `f3558b1` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T15:32:41Z · 소스 커밋 `fb4f27c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5845,6 +5845,18 @@ Measured at 300 KB/s: a 7-minute download finished and reached the title; the ne
 To retire a worker already installed, serve a `sw.js` that calls `skipWaiting()`, `registration.unregister()` on activate and navigates its clients. Also have the page unregister any registration once while `navigator.serviceWorker.controller` is set, then reload, guarded by a sessionStorage flag. After that reload the page is not controlled (`getRegistrations()` returns 0). OPS-234 explains why CDP byte counts miss a worker's fetches; count on the server log instead.
 
 **추가 (2026-10-05, 같은 날):** on the Air, `Cache.put` of the 39.5 MB `index.wasm` (gzip, `Vary: Accept-Encoding`) later failed with `NetworkError: Failed to execute 'put' on 'Cache': Cache.put() encountered a network error`, in a fresh profile, over HTTP/2 or QUIC. Smaller files (`index.js`, `logo.svg`, `robots.txt`) were stored fine. The data volume had 585-944 MiB free (`df -h /System/Volumes/Data`) at that point. The same steps had kept both files a few hours earlier, when the disk had more room. `navigator.storage.estimate()` still reported a 10.7 GB quota, so it does not warn you. Chrome sizes its HTTP cache and Cache Storage from free disk space and caps a single entry well below the total, so large files are only kept on a machine with room. The "HTTP cache does not keep the pck" result above is therefore partly a property of the machine it was measured on. Check free disk before measuring caching on a shared test machine. In the game, a failed `put` costs only the keeping: the download itself completed and the game started.
+
+## GDT-256 — Web export sample playback: `play(position)` on a second player starts about 0.8 s late, so stems cannot be crossfaded by starting one at the other's position; start them together instead
+
+`측정 2026-10-05 · Godot 4.7.2 Web export (no threads, default Sample playback) · headed Chrome on macOS · Vorbis music 94.5 s`
+
+**증상:** layered music was built as versions of one track (groove, +melody, full mix), sample-aligned. The first design crossfaded by starting the next version on the second music player with `play(current.get_playback_position())`. Natively that lines up within 0.06 s. On the Web the new player's `get_playback_position()` stayed frozen at the requested start for 0.8-0.9 s and then advanced from there, while the old player kept going: the new version came in about 0.85 s behind. This held even with the stream prewarmed by `AudioServer.register_stream_as_sample()` 3 s earlier. Without the prewarm, the delay was about 1.2 s.
+
+- `get_playback_position()` itself is reliable for Web samples: it advances smoothly (0.30, 0.82, 1.32 s at 0.5 s intervals) and matched the audible timeline in this test.
+- Several players started with `play()` in the same frame report identical positions and stay together.
+- A sample with its loop flag on restarts itself on its own `ended` event (GDT-097), so stems looping independently can drift apart by the per-loop gap.
+
+**해결:** start every stem in the same frame and crossfade only their volumes. For the Web, set the stems' loop flag off, and on the main stem's `finished` signal call `play()` on all of them in one frame. Measured after that: the three players reported the same position after every level change and after the 94.5 s loop point. Cost: each stem plays (and on the Web is decoded into a float32 buffer, about 33 MB per stereo 94 s stem) the whole time.
 
 ---
 
