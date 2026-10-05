@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T21:25:33Z · 소스 커밋 `e2bae0d` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T21:54:49Z · 소스 커밋 `9ce6f64` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14892,4 +14892,28 @@ filter (`No such filter: 'drawtext'`), so labels cannot be burned into `showspec
 That gives a number for every file (a 0.03 s tick reads -25.7) and ranks a game's effects as heard; compare it plus
 each file's mixer trim to set trims. For spectrogram sheets, number the images in file order and keep the key in
 text: `showspectrumpic=s=480x200:legend=0:scale=log` per file, then `-pattern_type glob -i '[0-9]*.png' -filter_complex tile=4x5`.
+
+## OPS-345 — The main Mac's Android emulator: the old AVDs point at a system image that is not installed; set ANDROID_SDK_ROOT and make a new AVD from the Play Store image. `screenrecord` there needs `--size`
+
+`측정 2026-10-05 · macOS 27 · Android Emulator in /opt/homebrew/share/android-commandlinetools · system image android-35 google_apis_playstore arm64-v8a`
+
+**증상:** with no phone on USB, a session wanted to see an app's launcher icon and start-up splash on Android.
+`emulator` is not on PATH. Run by full path, `emulator -avd farm_qa` stopped with `FATAL | Cannot find AVD system
+path. Please define ANDROID_SDK_ROOT`; with `ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools` it stopped
+with `FATAL | Broken AVD system path`. Both existing AVDs (`farm_qa`, `mars_fcm`) name
+`system-images/android-35/google_apis/arm64-v8a/`, but only `google_apis_playstore` is installed.
+
+`avdmanager create avd -n <name> -k "system-images;android-35;google_apis_playstore;arm64-v8a" -d pixel_7_pro` printed
+`Error: Could not load devices from …/devices.xml` and still created a working AVD (1440×3120, 560 dpi). Started with
+`-no-window -no-audio -no-snapshot -no-boot-anim -port 5600 -gpu swiftshader_indirect`, it reached
+`sys.boot_completed=1` in about 30 s, and `adb -s emulator-5600 emu kill` stopped it.
+
+`adb shell screenrecord` at the native 1440×3120 failed with `unable to configure video/avc codec at 1440x3120
+(err=-22)`, then retried at 720×1280 about a second later, after a cold start had already shown its splash.
+
+**해결:** export `ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools`, create your own AVD from the
+`google_apis_playstore` image (do not edit other sessions' AVDs), pick your own `-port`, and record with
+`screenrecord --size 720x1560`. To catch a splash, start the recording, wait 1.5 s, then
+`am start -n <pkg>/<activity>` (`cmd package resolve-activity --brief <pkg>` gives the activity), and split the clip with
+`ffmpeg -vf fps=6`.
 
