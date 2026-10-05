@@ -6885,6 +6885,13 @@ diff `/proc/net/dev` on the host's physical NIC over a fixed window. To lower th
 work per push (one `npm ci` shared by the verify steps, skip verify for docs-only pushes) or set the runner to
 `concurrent = 1`: the CPU is clamped above about 90 °C anyway, so the second parallel job adds heat, not speed.
 
+Moving the runner off the box went further. The same mnori jobs on a docker-executor runner in an OrbStack VM on
+an Apple Silicon Mac (arm64, 12 vCPU, 16 GB): typecheck + lint + build in one job 29 s, against 82 s (typecheck)
+plus 106 s (lint) as separate jobs on misa; a fighter typecheck + Vite build 20 s. Next.js, rolldown and tsc ran on
+arm64 without changes. A job that used to reach the host it deploys through the container's default gateway
+(`172.17.0.1:3000`, because misa cannot reach its own public IP) fails with `ECONNREFUSED 172.17.0.1:3000` the
+moment it lands on another runner: switch such jobs to the public URL before or together with the move.
+
 ## OPS-349 — A Vite dev server (Astro 7 `astro dev`) answers 403 to any Host but its own; test a second domain locally with `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`
 
 `측정 2026-10-05 · Astro 7.3.3 (Vite) · @astrojs/cloudflare 14 · Brave 1.96 with --host-resolver-rules`
