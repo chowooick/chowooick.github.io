@@ -2079,3 +2079,20 @@ e2e test passed; only an unrelated test that counts the phone bar's links (now 8
 lines (`git diff` lines starting with `-`) and account for every link, item or attribute that is gone, not only the
 ones you meant to move. Prefer edits anchored on small unique strings over whole-block replacement in files other
 sessions are touching.
+
+## AGT-104 — 실제 iPad mini 5(3GB)의 Safari에서 브라우저 Supertonic 3(fp32 398MB)은 모델을 여는 도중 탭이 죽는다. WebContent 한도는 1940MB다
+
+`측정 2026-10-05 · iPad mini 5세대(iPad11,1, RAM 3GB) · iPadOS 26.7.1 · Safari 26.6.2 · onnxruntime-web 1.30.0 · Supertonic 3(HF 리비전 3cadd1e)`
+
+**증상:** 듣기를 누르면 진행률이 35–60%(vector_estimator.onnx 256MB를 받거나 여는 중)일 때 탭이 다시 열린다. safaridriver 세션은 `no such window` 또는 `unknown error` 다음 `invalid session id`로 끝난다.
+
+**측정:** 기기의 `JetsamEvent-*.ips`(`xcrun devicectl device info files --domain-type systemCrashLogs` → `device copy from`)에서 세 번 모두
+`com.apple.WebKit.WebContent … reason: per-process-limit`, 1940MB였다. syslog의 runningboardd도 이 기기의 WebContent 한도를
+`Memory Limits: active 1850 inactive 1850`으로 적는다. AGT-058의 Mac WebKit 에뮬레이션 최고값(1.23–1.58GB)보다 실제 기기에서 더 쓴다.
+- 받은 조각을 배열에 모았다가 합치던 것을 Content-Length 크기의 버퍼 하나에 바로 쓰도록 바꿔도(256MB 이중 보관 제거) 똑같이 죽었다.
+  다운로드 버퍼가 아니라 세션 생성 쪽이 한도를 넘긴다.
+- 같은 기기의 기기 음성은 `유나`(`localService: true`) 하나다.
+
+**해결:** RAM 3GB급 iOS 기기에서는 fp32 모델이 안 된다. 죽은 뒤 다음 방문에 기기 음성으로 넘어가는 표시(`read-aloud-busy`, AGT-058)가
+최소 장치다. 고품질 음성을 이런 기기에서도 쓰려면 모델을 줄여야 한다. Hugging Face에 제3자 int8 변환본(vector_estimator 66–78MB)이 있지만
+2026-10-05 기준 내려받기 0회이고 라이선스 표기가 원본(OpenRAIL-M)과 다르다. 쓰려면 공식 모델을 직접 양자화해 품질을 확인해야 한다.

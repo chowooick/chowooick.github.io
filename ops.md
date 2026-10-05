@@ -6915,3 +6915,18 @@ moment it lands on another runner: switch such jobs to the public URL before or 
 1. Drop the `concurrency` group from a job that regenerates from the remote head and retries its push (OPS-065 ②). Overlapping runs are safe: a run on an older head gets its push rejected and rebuilds on the newer one. Give the loop more attempts (10, random 2-6 s sleep).
 2. Switch Pages to Actions (`gh api -X PUT repos/<o>/<r>/pages -f build_type=workflow`) and deploy from the same workflow after the generated commit is pushed with `[skip ci]`, so one human push makes exactly one run. Deploy the latest `origin/main`, not the triggering SHA.
 3. Overlapping `actions/deploy-pages` calls fail, and `concurrency` would cancel again, so serialize by hand: list this workflow's runs that are not `completed` (`gh api repos/<o>/<r>/actions/workflows/<file>/runs`, needs `actions: read`); if one has a higher `run_number`, skip the deploy and end green (it will deploy the newer head); otherwise wait for lower-numbered ones to finish, then deploy. Nothing waits on a newer run, so it cannot deadlock.
+
+## OPS-351 — safaridriver로 실제 iPad를 몰 때 요소 클릭은 click 이벤트를 만들지 않는다. 사용자 제스처가 필요한 동작은 이 방법으로 검사할 수 없다
+
+`측정 2026-10-05 · safaridriver(Safari 27.0.1, macOS) → iPad mini 5 · iPadOS 26.7.1 · USB 연결 · 설정 > Safari > 고급 > 원격 자동화 켬`
+
+**증상:** `POST /session`(`platformName: iOS`, `safari:deviceUDID`)은 성공하고 이동·스크립트 실행·스크린샷·쿠키 넣기는 된다.
+그런데 `POST /element/{id}/click`을 하면 페이지에 `pointerdown`(`pointerType: touch`)·`pointerup`·`touchend`(defaultPrevented false)만 오고
+`click`은 오지 않는다. `<button>` 하나만 있는 빈 페이지에서도 click 수가 0이었다. W3C actions의 touch 포인터 탭도 같았다.
+
+- `webkit:alwaysAllowAutoplay: true`로 세션을 열면 스크립트 `element.click()` 뒤에도 Web Audio가 소리를 낸다. 이것으로 사용자 제스처를 대신할 수 있다.
+- 그러나 `speechSynthesis.speak()`은 제스처 없이 불리면 시작도 오류도 없이 무시된다(4분 동안 `speaking: false`). 이 경우는 이 방법으로 검사하지 못한다.
+- 세션마다 새 프로필이라 localStorage·Cache Storage·쿠키가 남지 않는다. 로그인은 `POST /cookie`로 넣는다(`__Host-` 쿠키도 들어갔다).
+- 그날 탭이 메모리 한도로 세 번 죽은 뒤, 다음 세션 요청이 `Remote Automation is turned off`로 거절됐다. 원인은 확인하지 못했다. 기기에서 다시 켜야 한다.
+
+**해결:** 이동·상태 읽기·메모리 사망 재현은 safaridriver로 하고, 탭이 필요한 소리 시작은 `alwaysAllowAutoplay`로 대신한다. 기기 음성 시작처럼 진짜 탭이 필요한 확인은 사람 손이나 다른 도구가 필요하다.
