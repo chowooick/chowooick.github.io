@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T13:52:14Z · 소스 커밋 `9ae6562` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T14:12:33Z · 소스 커밋 `b83abeb` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14190,4 +14190,25 @@ window.__bip = e; dispatchEvent(new Event('app:bip')) })` — and let the island
 for `app:bip`. After that the card showed on every load and the native "앱 설치" sheet installed the WebAPK. For
 updates use Workbox `skipWaiting: true, clientsClaim: true` and register `/sw.js` yourself without the auto-reload;
 the next navigation picks up the new build.
+
+## OPS-319 — Playwright clicks on an SSR-rendered Alpine.js control are lost until `Alpine.start()` runs; registering page components through a dynamic `import()` first widens that window
+
+`측정 2026-10-05 · Alpine.js 3.14 · Astro 7.3 · Playwright 1.58 · Chrome on an M1 Air (headless, production site)`
+
+**증상:** a mobile test that tapped a "검색·필터" toggle (`x-on:click="open = !open"`) failed about 1 run in 2 with
+`expect(locator).toBeVisible() failed … unexpected value "hidden"` on the field inside the panel, only on pages that
+load their own component. The trace showed the click 28 ms after the server-rendered heading became visible and before
+the page's `Alpine.start()`; the button already had `aria-expanded="false"` from the server, so `isVisible()` and
+`getAttribute()` passed and `click()` succeeded against an element with no listener yet. Nothing errors: the click
+is simply gone, and Alpine then starts with the panel closed.
+
+The window is wider where the app does `await Promise.all(pages.map(async ([name, load]) => Alpine.data(name, (await load()).default)))`
+before `Alpine.start()` — every page with a lazily loaded component waits one more network round trip. Pages
+without one passed every time.
+
+**해결:** wait for Alpine before the first interaction, e.g. `page.waitForFunction(() => '_x_dataStack' in document.body)`
+(any element under an `x-data` root carries `_x_dataStack` once initialised), then click and assert the state flipped
+(`toHaveAttribute('aria-expanded', 'true')`). Keep one shared helper for it; copies of the old three-line helper in
+other spec files were what kept failing. After the change: 8 repeats × 2 projects and 44 tests in the three affected
+files passed.
 
