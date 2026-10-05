@@ -1,31 +1,41 @@
 name: build llms-full.txt
 
+# 이 워크플로가 llms-full.txt 재생성과 Pages 배포를 함께 맡는다(Pages 소스 = GitHub Actions).
+# 레거시 "pages build and deployment"는 푸시마다 돌며 진행 중 빌드를 취소했고, 사람 푸시 직후
+# 봇의 재생성 커밋이 거의 매번 그 취소를 일으켰다(OPS-350).
 on:
   push:
     branches: [main]
-    paths: ['*.md', 'build.sh']
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+  actions: read
 
-# 여러 프로젝트 세션이 같은 저장소에 짧은 간격으로 푸시한다. 이 워크플로를
-# 직렬화해 두면 자기들끼리 경쟁해서 푸시가 거부되는 일이 대부분 사라진다.
-concurrency:
-  group: build-llms-full
-  cancel-in-progress: false
+# concurrency 그룹은 두지 않는다. 그룹은 대기 중 실행을 하나만 남기고 나머지를
+# 취소해서, 푸시가 몰리면 "All jobs were cancelled" 메일이 온다(OPS-350).
+# 재생성은 아래 루프가 매 시도를 원격 최신에서 다시 시작하므로 겹쳐도 안전하고,
+# 배포는 "배포 순서 정하기" 단계가 직접 직렬화한다.
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: 원격 최신 위에서 재생성하고 푸시
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # 생성물은 병합하는 것이 아니라 재생성하는 것이다. 사람이 먼저 푸시해
           # 원격이 앞서 있으면 매 시도를 원격 최신에서 다시 시작한다.
-          for attempt in 1 2 3 4 5; do
+          for attempt in $(seq 1 10); do
             git fetch origin main
             git checkout -B main origin/main
             ./build.sh
@@ -39,8 +49,46 @@ jobs:
               echo "푸시 성공 (시도 ${attempt})"
               exit 0
             fi
-            echo "푸시 거부 — 원격이 앞서 있다. 원격 최신에서 재생성 후 재시도 (${attempt}/5)"
+            echo "푸시 거부 — 원격이 앞서 있다. 원격 최신에서 재생성 후 재시도 (${attempt}/10)"
             sleep $((RANDOM % 5 + 2))
           done
-          echo "::error::5회 시도 후에도 푸시하지 못했다"
+          echo "::error::10회 시도 후에도 푸시하지 못했다"
           exit 1
+
+      # 취소 없이 직렬화한다: 나보다 나중 실행이 있으면 그쪽이 최신을 배포하므로 나는 성공으로
+      # 끝내고, 없으면 먼저 시작한 실행이 끝나길 기다린 뒤 원격 최신을 배포한다.
+      # 배포가 겹치면 deploy-pages가 "in progress deployment"로 실패하기 때문이다.
+      - name: 배포 순서 정하기
+        id: turn
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs() {
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/runs?per_page=50" \
+              -q ".workflow_runs[] | select(.status != \"completed\") | .run_number"
+          }
+          for i in $(seq 1 120); do
+            active=$(runs)
+            if echo "$active" | awk -v me="$GITHUB_RUN_NUMBER" '$1 > me {f=1} END {exit !f}'; then
+              echo "나중 실행이 최신을 배포한다 — 배포 생략"
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if ! echo "$active" | awk -v me="$GITHUB_RUN_NUMBER" '$1 < me {f=1} END {exit !f}'; then
+              break
+            fi
+            echo "먼저 시작한 실행 대기 중: $(echo $active)"
+            sleep 10
+          done
+          git fetch origin main
+          git checkout -B main origin/main
+          echo "배포 대상 $(git rev-parse --short HEAD)"
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.turn.outputs.deploy == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        if: steps.turn.outputs.deploy == 'true'
+        uses: actions/deploy-pages@v4
