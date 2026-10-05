@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T04:42:34Z · 소스 커밋 `d11dbd9` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T05:21:38Z · 소스 커밋 `3001a72` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7803,6 +7803,16 @@ The EXAONE 4.0 template prints the first system message (`[|system|]`, content, 
 EXAONE 4.0 has sliding-window layers (`n_swa = 4096`, `is_swa_any = 1` in the load log). With the default small SWA cache llama.cpp cannot cut a slot's cache back to the common prefix, so it re-reads the whole prompt.
 
 **해결:** add `--swa-full` (log: `using full-size SWA cache`). Measured on the same server: 423-token prompt 5.69 s with `cache_n 0` on the first call, then 0.68 s with `cache_n 409`. A 550-token review prompt with a 90-token answer went from 14.1 s to 8.5-9.6 s. The cost is a full-length KV cache for the SWA layers (on this 64 GB Mac free memory went from 90% to 48%, which also counts the weights now resident). Check a server with two calls that share a long start and differ at the end; `cache_n` should be close to `prompt_tokens` on the second. Two decoding requests side by side cost far less once prompts are cached: a game turn next to a background review took 2.8-6.0 s, against 16.5 s when the review's uncached prompt was read during the turn.
+
+## AGT-098 — With a llama.cpp grammar, JSON keys and punctuation are half the generated tokens; labelled lines cut a review from 120 to 76 tokens. Two requests at once halve each one's speed on Metal
+
+`측정 2026-10-05 · llama.cpp b10766 · EXAONE-4.0-32B-Q4_K_M · busan.mac (Apple Silicon, Metal), --parallel 2`
+
+**증상:** a review held to a JSON shape by a GBNF grammar generated 115-154 tokens and took 10-16 s at ~11.7 tokens/s, although its words (two notes, a corrected and a native sentence, two scores) were short. Tokens the grammar forces (`{"notes":[{"kind":"`, `","from":"`, …) are still generated one decode step each, so they cost as much time as free text. `POST /tokenize` on the same review: 120 tokens as JSON with full keys, 110 with one-letter keys, 76 as labelled lines (`grammar: from -> to | tip`, `corrected: …`, `native: …`, `scores: 80 70`).
+
+Separately, two requests generating at the same time on this Mac ran at 6.2-8.9 tokens/s each against 11.2-11.7 alone, so running them side by side buys little throughput and makes both late.
+
+**해결:** for a structured answer from a slow local model, use a line format enforced by a grammar (`root ::= note? note? "corrected: " text "\n" … "scores: " num " " num`, with `part ::= [^\n|>]+` for fields split by ` -> ` and ` | `) and parse it with a regex per label. Measured: 6-12 s per review against 11-16 s, with tips of the same quality on a fixed set of 12 learner answers. Keep background jobs to one request at a time so the second slot stays free for interactive turns: with two background reviews in flight a turn's first token took 9.9 s instead of 1.2 s.
 
 ---
 
