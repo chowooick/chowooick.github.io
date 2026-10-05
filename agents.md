@@ -1933,6 +1933,8 @@ With Supertonic-synthesized test sentences: correct sentences scored 88-100; "ru
 
 `측정 2026-10-04 · llama.cpp b10766 · EXAONE-4.0-32B-Q4_K_M · busan.mac 192.168.139.3:8081 (--parallel 2 --cache-reuse 256, no --jinja) · Speak Out`
 
+> **정정 2026-10-05:** the cause in the title is wrong. `--jinja` is on by default in this build; the system message was dropped by a `continue` in the EXAONE template (AGT-096). Since 2026-10-05 the server loads a fixed template and keeps system messages. The `json_object` and `json_schema` findings below still hold.
+
 **증상:** a judge prompt sent as `system` came back as a chatty assistant reply ("Got it! Since you're with Guest Services…"), and `usage.prompt_tokens` was 18-22, the size of the user line alone. `POST /apply-template` with a system and a user message renders only `[|user|]\nhello[|endofturn|]\n[|assistant|]\n<think>\n\n</think>\n\n`: **the system message is not in the prompt at all**, although `/props` shows a GGUF template that handles `system`. Rules that "the model ignores" in a system prompt (length limits, no markdown, see AGT-051 and AGT-054) may simply never have reached it on this server. `response_format: {"type": "json_object"}` is not enforced either: 2 of 2 replies came back as ```` ```json {…} ``` ````.
 
 **해결:** without restarting the shared server (restarting it needs the trpg/samantha owners' agreement):
@@ -1955,3 +1957,13 @@ finished instantly with no output file.
 **해결:** `codex exec --skip-git-repo-check -s workspace-write -C <dir> "<prompt>"`. With that, a one-image request to the
 built-in image tool ("save the PNG in the current directory as x.png") wrote a 1122 × 1402 PNG in about 60 s using
 about 44k tokens. Check the exit code and the log tail of a backgrounded `codex exec`, not only that it finished.
+
+## AGT-096 — llama.cpp drops the EXAONE 4.0 system message because of `{%- continue %}` in the GGUF template; load a copy without it via `--chat-template-file`
+
+`측정 2026-10-05 · llama.cpp b10766 · EXAONE-4.0-32B-Q4_K_M (GGUF template) · busan.mac 192.168.139.3:8081`
+
+**증상:** a system prompt has no effect at all, and `POST /apply-template` with a system and a user message renders only `[|user|]\nhello[|endofturn|]\n[|assistant|]\n<think>\n\n</think>\n\n`. Adding `--jinja` does not help: in b10766 `--jinja` is already the default (`llama-server --help`: "default: enabled"), and the log shows `Using gguf chat template: {%- if not skip_think is defined %}`.
+
+The EXAONE 4.0 template prints the first system message (`[|system|]`, content, tools, `[|endofturn|]`) and then ends that loop pass with `{%- continue %}`. llama.cpp's jinja engine discards everything that pass printed, so the system turn (and any `tools` list attached to it) never reaches the model. Measured with a pirate system prompt ("start every reply with ARRR, one sentence"): the stock template answered a Korean weather question with a long Korean markdown list; the fixed one answered "ARRR, the weather be fine…".
+
+**해결:** save the template from `GET /props` (`chat_template`), delete the `{%- continue %}` line and turn the next `{%- if role == 'assistant' %}` into `{%- if i == 0 and role == 'system' %}` followed by `{%- elif role == 'assistant' %}`, so the skip happens without `continue`. Start the server with `--chat-template-file <file>`. Check with `/apply-template` that `[|system|]` appears; `json_schema` and the GBNF `grammar` field work unchanged. On the Busan Mac the file is `~/samantha-llm/exaone4-fixed.jinja` and the flag is in `~/Library/LaunchAgents/com.samantha.llm.plist`. A changed `ProgramArguments` needs `launchctl bootout` + `launchctl bootstrap`; `launchctl kickstart -k` restarts with the old arguments. To try a template without touching a shared server, a second `llama-server` on another port (`--ctx-size 4096 --parallel 1 --host 127.0.0.1`) was healthy in 2 s next to the production one on a 64 GB M-series Mac.
