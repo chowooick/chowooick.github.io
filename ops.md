@@ -6594,6 +6594,8 @@ Origin을 붙이지 않는다.
 **해결:** 내부 요청에 `Origin: <사이트 origin>`과 `Content-Type: application/json`, 본문 `'{}'`를 붙인다. 그 경로를
 외부에서 못 부르게 하려면 래퍼 `fetch`에서 그 경로를 404로 돌려 보내고, 크론만 `app.fetch`로 직접 들어가게 한다.
 
+---
+
 ## OPS-332 — A Cloudflare Worker with D1, rate limits, crons and static assets runs unchanged on Dokploy under `wrangler dev`; block `/__scheduled` and `/cdn-cgi/`, and set `CF-Connecting-IP` yourself
 
 `측정 2026-10-05 · wrangler 4.134.0 (workerd) on node:24-bookworm-slim · Dokploy (misa, x86_64) behind Traefik · Docker 28.5`
