@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T18:25:52Z · 소스 커밋 `f4cf68d` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T18:38:24Z · 소스 커밋 `00aabeb` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5884,6 +5884,18 @@ The game created its buses in code: `AudioServer.add_bus(AudioServer.bus_count)`
 The Web side keeps its own bus list (`GodotAudio.Bus` in `index.js`). `Bus.addAt(atPos)` appends the bus and, when `atPos` differs from its new index, calls `Bus.move(from, atPos)`, which does `buses.splice(toIndex - 1, 0, bus)`. A position the engine does not pass as the plain new index (for example -1 for "at the end") inserts the new bus in front of the last one, so the JS indices stop matching the engine's. Later `set_bus_send` calls by index then wire the wrong buses, including Master (index 0 in JS is no longer Master).
 
 **해결:** Put the buses in `res://default_bus_layout.tres` (the default value of `audio/buses/default_bus_layout`). The layout is applied with a bus count, which the Web side builds by appending in order, so the indices match. Measured on the same page after the change: every source path ends at `AudioDestination`, output peak 0.95-1.14. Keep any runtime `add_bus` as a fallback only when `get_bus_index(name) == -1`. To check a Web build, wrap `AudioNode.prototype.connect` in an init script and walk the graph from each `AudioBufferSourceNode`; on a Mac reached over ssh, launch Chromium with `--disable-audio-output`, or `AudioContext.currentTime` stays at 0.005 and nothing renders (GDT-097 for the other hooks).
+
+## GDT-259 — Android: `DisplayServer.screen_get_dpi()` is the panel's real density (560 on a Pixel 7 Pro), so `px * 160 / dpi` gives dp; a GL Compatibility farm scene held 60 fps at `scaling_3d_scale` 0.70
+
+`측정 2026-10-05 · Godot 4.7.2-stable · prebuilt release export (gradle_build=false), screen/immersive_mode=true · Pixel 7 Pro (Android 17, 3120 × 1440, wm density 560)`
+
+**증상:** a UI that lays out by the screen's height in dp (phone layout below 700 dp) needs the Android density. GDT-242 found that `DisplayServer.screen_get_scale()` reports 2.40 on this phone where the density is 3.5, so it cannot be used for that.
+
+Printed from the game on the phone: `window (3120.0, 1440.0) dpi 560`. `screen_get_dpi()` matches `wm density` exactly, and the window was the whole panel from the first frame (immersive preset, no `window_set_mode` call; see GDT-201). With `dpr = screen_get_dpi() / 160.0` the short side is 1440 / 3.5 = 411 dp, the same value Chrome reports for this phone. Laying out 480 logical px of height (`content_scale_factor` = 1440 / 480 = 3.0) put 15 px body text at 45 physical px, about 12.9 dp.
+
+Frame rate in the same build, read from `Engine.get_frames_per_second()` every 5 s: with the 3D capped at about 2.2 Mpx (`scaling_3d_scale = sqrt(2.2e6 / (3120 * 1440))` = 0.70; 2D at full resolution) the title, the farmhouse interior (122–130 draw calls) and the outdoor farm map (148 draw calls, MSAA 2×, 4096 shadow atlas) all read 58–60 fps. Changing maps showed one sample of 1 fps (the map build stalls the frame) and one of 40 on the first interior frame.
+
+**해결:** on `OS.has_feature("mobile")` take the density from `screen_get_dpi() / 160.0`, not from `screen_get_scale()`. For a light GL Compatibility scene, a 2.2 Mpx 3D budget is enough for 60 fps on this phone; GDT-242's heavier scene needed about 1.2 Mpx.
 
 ---
 
