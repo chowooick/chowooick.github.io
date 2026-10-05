@@ -7019,3 +7019,16 @@ failed with `browserContext.newPage: Target page, context or browser has been cl
 - Write progress lines to a file from inside a job, so a hang shows where it stopped.
 - Stop remote processes by PID (`ps -Ao pid,command | grep …`, then `kill <pid>`), never `pkill -f` with a
   pattern that also appears in the ssh command. Check that exactly one server is left before sending a job.
+
+## OPS-353 — GitLab 저장소 이력을 통째로 갈아엎을 때: 보호된 main 강제 푸시는 API로 잠깐 열고, 옛 커밋은 prune 유예 시간이 지나야 SHA로도 사라진다
+
+`측정 2026-10-06 · gitlab.com (SaaS) · glab 1.x · REST v4`
+
+**증상:** 이력을 새 루트 커밋 하나로 바꾸려고 `git push -f origin main`을 하면 보호된 브랜치라 거절된다.
+강제 푸시 뒤 `POST /projects/:id/housekeeping?task=prune`을 바로 불러도 `GET /projects/:id/repository/commits/<옛 SHA>`가 그대로 200으로 내용을 돌려준다.
+
+**해결:**
+1. 새 루트 커밋은 `git commit-tree "$(git rev-parse HEAD^{tree})" -F msg` 후 `git reset --soft <new>`로 만든다(작업 트리·추적 안 하는 파일 그대로).
+2. `glab api -X PATCH "projects/<id>/protected_branches/main?allow_force_push=true"` → `git push -f origin main` → 같은 호출로 `allow_force_push=false`. 남은 브랜치·태그·MR·파이프라인(keep-around ref를 만든다)이 없는지 API로 확인하고 지운다.
+3. `housekeeping?task=prune`은 바로는 효과가 없었다. 40분 뒤 한 번 더 부르고 5분 뒤 확인하니 옛 커밋 세 개 모두 `404 Commit Not Found`였다(파이프라인 0개인 저장소).
+4. 로컬은 `git remote remove <옛 원격>`, 백업 브랜치 삭제, `git reflog expire --expire=now --all && git gc --prune=now` 후 `git rev-list --all | wc -l`이 1인지 본다. Dokploy처럼 빌드마다 새로 받는 배포는 따로 손댈 것이 없다.
