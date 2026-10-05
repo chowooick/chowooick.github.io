@@ -2001,3 +2001,26 @@ deploy output: `"previousRelease": "20261005-music"`, a release name A had never
 After a deploy, compare `previousRelease` with the last release you know; an unknown name means someone shipped in between, so
 rebase on their commits and deploy again at once (here 15 minutes of exposure). A session that pushes `main` from a branch should
 also fast-forward the shared checkout's `main` when its tree is clean, so the next session does not start from the old one.
+
+## AGT-100 — 브라우저 Supertonic 3(onnxruntime-web, WebGPU)은 M1에서 첫 듣기 약 53초, 받아 둔 뒤 새 페이지에서 약 17초 걸려 첫 소리가 난다
+
+`측정 2026-10-05 · onnxruntime-web 1.30.0 · Supertonic 3(fp32 ONNX 4개, 398MB, HF 리비전 3cadd1e) · Brave 1.96(Chromium 154) 헤디드 · MacBook Air M1 · 가정 회선`
+
+**증상:** 기기 안에서 합성하는 읽어 주기를 다른 사이트에 붙일 때 "첫 소리까지 얼마나 기다리게 되는지"를 정해야 했다.
+docs의 기존 값(Mac 헤드리스 Chrome, WASM 1스레드, 저장 모델로 첫 소리 약 8초)은 백엔드와 페이지 조건이 다르다.
+
+**측정:** 운영 페이지에서 듣기 버튼을 누른 시점부터 잰 값이다. 백엔드는 두 번 모두 `webgpu`로 열렸다.
+
+| 상황 | 모델 받기 끝 | 엔진 준비(확인 합성 포함) | 첫 문장 소리 |
+| --- | --- | --- | --- |
+| 처음(Cache Storage 비어 있음) | 약 40초 | 46초 | 약 47–53초 |
+| 같은 브라우저, 새 페이지(모델은 Cache Storage에 있음) | — | 약 10초 | 약 11–17초 |
+| 같은 페이지에서 엔진이 이미 열린 뒤 | — | 4.4초 | 5.0초 |
+
+- 저장된 모델이라도 **새 페이지마다 ONNX 세션 4개를 다시 만든다.** 이 비용(약 10초)이 두 번째 방문의 대부분이다.
+- 진행률은 398MB 기준 10초에 13%, 20초에 64%, 35초에 99%였다. 99%에서 확인 합성까지 약 10초가 더 걸리므로,
+  진행 표시를 100%로 끝내지 말고 "곧 읽어 드려요" 같은 다음 단계 문구를 둔다.
+- 헤드리스 Brave에서는 같은 코드가 13분 동안 첫 소리를 내지 않았다(원인 미확인). 이 엔진의 재생 검사는 헤디드로 한다.
+
+**해결:** 첫 듣기는 진행 막대와 크기(398MB)를 보여 주고, 두 번째부터는 "음성 준비 중" 상태를 10초 남짓 보여 준다.
+페이지 이동 없이 이어 듣게 하면(SPA·같은 페이지 큐) 4–5초로 줄어든다.
