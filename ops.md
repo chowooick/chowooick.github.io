@@ -6611,3 +6611,29 @@ Origin을 붙이지 않는다.
 Measured: build with Hugo + `npm install wrangler` 654 MB image (arm64); ready 20 s after start including migrations; 320-380 MiB RSS; the `ratelimits` binding counted per `CF-Connecting-IP` (10 requests from one address → 6 counted, 3 more from a second address → all counted); D1 data survived `docker restart` and Dokploy redeploys; stop-first redeploy leaves about 20 s of 502/503. The Worker's `request.url` origin matches `--local-upstream`, so origin checks against `SITE_ORIGIN` pass.
 
 Two side notes from the same day: a new Cloudflare record was answered by 1.1.1.1, 8.8.8.8 and KT 168.126.63.1 within a minute, but a home router (192.168.0.1) that had looked the name up before kept answering NXDOMAIN for 15+ minutes; test with `curl --resolve host:443:<ip>` or Chromium `--host-resolver-rules="MAP host <ip>"` instead of waiting. In the Google Cloud console (Korean UI, 2026-10), a web OAuth client is created by Playwright as: click the last `mat-select`, pick option `웹 애플리케이션`, fill `input[formcontrolname=displayName]`, click `URI 추가` and type with `page.keyboard` (the new field takes focus), then `만들기`; the client ID and the `GOCSPX-` secret are in the page text right after, so read them there and write them to a 0600 file without printing.
+
+## OPS-333 — MacBook Air 테스트 호스트에서 ssh로 띄운 Chromium 계열은 `AudioContext.currentTime`이 1초에 5 ms만 흐른다
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · Playwright chromium-1243 · macOS · MacBook Air M1 (air.local)`
+
+**증상:** WebAudio 라이브 타이밍 테스트(박자 위치, setRate, resync)가 전부 "0 beats in 2 s"로 실패한다.
+오프라인 렌더(`OfflineAudioContext`) 검사는 정상 통과한다. 같은 코드를 커밋 HEAD 버전으로 돌려도 똑같이 실패해서
+코드 회귀가 아니다.
+
+ssh에서 Playwright로 Brave와 Playwright 번들 Chromium을 각각 headless/headed, `--mute-audio` 유무로 4조합씩 띄워
+`new AudioContext()` → `resume()` → 무음 오실레이터 연결 → 1초 대기를 재면, 8조합 모두 `state: "running"`인데
+`currentTime`은 0.005초만 증가했다. 기본 출력 장치(MacBook Air 스피커)는 존재하고 `coreaudiod`도 떠 있다.
+
+**해결:** 이 호스트에서 오디오 라이브 타이밍 검사는 신호로 쓰지 않는다. 소리 품질·클리핑·길이는 오프라인 렌더로
+검증하고, 라이브 박자 동기화는 실시간 클록이 흐르는 기계에서 확인한다. 원인(ssh 세션의 오디오 출력 권한 등)은 미확인.
+
+## OPS-334 — Brave는 JavaScript로 쓴 쿠키의 만료를 약 6개월로 줄인다 (365일로 써도 181일)
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · Playwright · macOS (air.local)`
+
+**증상:** `document.cookie = 'k=v; max-age=31536000; path=/; SameSite=Lax'`로 1년 쿠키를 쓰고 Playwright
+`context.cookies()`로 읽으면 `expires`가 지금부터 181일 뒤다. Chrome 기준으로 "만료 365일"을 단언하던 테스트가
+Brave로 바꾼 뒤 이 항목 하나만 실패했다(나머지 1,464개 통과).
+
+**해결:** 브라우저 테스트에서 쿠키 수명은 "≥ 180일" 또는 "값·path·SameSite 확인"으로 단언한다. 1년을 정말 보장해야 하면
+서버가 `Set-Cookie` 헤더로 쓴다(이 상한은 스크립트로 쓴 쿠키에 걸린다).
