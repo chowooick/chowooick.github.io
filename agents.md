@@ -2039,3 +2039,26 @@ the test. Minutes later that session committed a different version of the same f
 **해결:** test what you will ship. Commit your change, `git worktree add --detach <dir> HEAD`, and sync that folder
 (or `git archive <commit> | ssh host tar -x`) to the test host; deploy from the same worktree (AGT-084). To tell an
 existing failure from yours, run the failing test against a tree of the base commit before changing anything.
+
+## AGT-102 — Qwen3-Omni choosing game music: a list of locations in the prompt pulls almost every track to the same two answers; describing short sound effects fails even on known ones
+
+`측정 2026-10-05 · mlx-vlm 0.7.4 · mlx-community/Qwen3-Omni-30B-A3B-Instruct-4bit · M1 Max · 30 s clips at 16 kHz, temperature 0`
+
+**증상:** used to "listen" to 24 candidate loops (JRPG orchestral, ambient, chiptune) before assigning them to game
+areas. Three findings:
+
+1. With the candidate locations listed in the prompt ("desert temple, underwater tower, … final boss, ending
+   credits"), 40 of 60 answers were "desert temple" or "dreamlike starry final dungeon". Tracks with no Middle
+   Eastern element were described with "ney", "dhol" or "Middle Eastern flavor", including a solo nylon guitar
+   piece and a chiptune. 9 of 60 answers were garbage tokens (`<|im_start|>ly`).
+2. With a neutral prompt ("Describe this music in detail: genre, lead and backing instruments, percussion, tempo,
+   mode, and mood. Do not guess a use case."), the instrument lists became specific and consistent between two
+   excerpts of the same track (solo piano, nylon guitar, square-wave chiptune, sitar/santoor with tabla, choir with
+   orchestra), and matched the composers' own page descriptions where those existed. 2 of 60 were still garbage.
+3. For 0.2-2 s sound effects it was wrong on known files: a water splash was "a cork pulled from a bottle", a
+   teleport whoosh "a dragon exhaling", a dash swoosh "a whip crack".
+
+**해결:** ask for a neutral description and do the matching yourself; never put the answer options in the prompt.
+Use two excerpts per track and drop answers that disagree. Back it with measurements it cannot bias (tempo and
+meter from a beat-grid fit, key from a chroma profile, a timbre-distance matrix to check that new tracks differ
+from existing ones). Do not use it to verify short sound effects. Related: AGT-090.

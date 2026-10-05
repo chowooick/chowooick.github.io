@@ -6818,3 +6818,38 @@ with `FATAL | Broken AVD system path`. Both existing AVDs (`farm_qa`, `mars_fcm`
 `screenrecord --size 720x1560`. To catch a splash, start the recording, wait 1.5 s, then
 `am start -n <pkg>/<activity>` (`cmd package resolve-activity --brief <pkg>` gives the activity), and split the clip with
 `ffmpeg -vf fps=6`.
+
+## OPS-346 — A looped MP3 with no gapless header decodes 1,105 samples late and a few hundred long: cut the LAME delay and take the length from the tempo
+
+`측정 2026-10-05 · ffmpeg 9.0.1 (Homebrew), an FL Studio 11 "LAME" 320 kbps MP3 tagged TBPM=110 · Godot 4.7.2 Web export`
+
+**증상:** a CC0 music loop offered only as an MP3 ("Looped: yes" on its page) decoded to 5,005,440 samples
+(113.50 s): 23-29 ms of near-silence at the front, 13-18 ms at the end. Looped as is, the seam carries a ~45 ms
+gap and the beat drifts against anything built on a grid of the file length. ffprobe shows `start_time=0`, and a
+byte search finds `LAME` only inside the ID3 `TENC` frame ("LAME in FL Studio 11"): the file has no Xing/Info frame,
+so there is no encoder-delay/padding record for ffmpeg to honour, and it returns the raw decoder output.
+
+- The file is a whole number of bars: (decoded length − delay − tail) / (60/110 × 44100) = 208.02 beats.
+- Cutting LAME's standard 1,105 samples (576 encoder + 529 decoder delay) and keeping exactly
+  208 × 60/110 × 44100 = 5,003,345 samples gave a loop whose cyclic beat grid fitted 208 beats at 110.000 BPM
+  (snap 0.00 BPM; the uncut file fitted 109.989). A percussion stem built on that grid lined up within 0.3 ms by
+  onset cross-correlation, and in Brave the hand-looped pair restarted with 0.00 ms between the two sources.
+
+**해결:** for an MP3 loop without an Info/Xing header, trim 1,105 samples from the front and set the length to
+`round(beats × 60 / BPM × rate)` (the BPM from the ID3 `TBPM` tag or a beat-grid fit), then re-encode to OGG with a
+2 ms / 4 ms edge fade. Check first with a byte search for `Xing`/`Info`: when one is present, ffmpeg already
+skips the delay and the trim must not be applied twice.
+
+## OPS-347 — The main Mac on a different IPv4 subnet than the Air: `192.168.0.123` times out, `ssh air.local` still connects over IPv6 link-local
+
+`측정 2026-10-05 · macOS 27 (main Mac) → MacBook Air test host, same room`
+
+**증상:** mid-session every `ssh 192.168.0.123` failed with `connect to host 192.168.0.123 port 22: Operation timed
+out` (6 tries over 2 minutes; `ping` 100 % loss). The Air was up (load 70-110). The main Mac's `en0` had moved to
+`10.74.243.137`, and `route -n get 192.168.0.123` sent the address to gateway `10.74.243.73`, off the LAN. The Air
+kept `192.168.0.123`. `ssh air.local` worked at once: mDNS resolved `air.local` to an IPv6 link-local address
+(`fe80:…`), which needs only the shared link, not a shared IPv4 subnet.
+
+**해결:** when `192.168.0.123` times out, first run `ipconfig getifaddr en0` on the main Mac. If it is not in
+`192.168.0.x`, use `air.local` (ssh, rsync and scp all accept it) instead of the IP. Unlike OPS-049, no Tailscale
+setting was involved: the route went to the new subnet's gateway, not to a `utun` interface.
