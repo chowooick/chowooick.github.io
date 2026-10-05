@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T08:09:33Z · 소스 커밋 `4fe2fe0` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T08:18:23Z · 소스 커밋 `e7a6959` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5829,6 +5829,20 @@ Search a project for `frame_post_draw` before running its real UI flow headless;
 The CSV importer writes `ui.en.translation`, `ui.ko.translation`, … beside `ui.csv` (projects usually gitignore them). Those files belonged to the dev machine's last import, a day old; rsync saw them differ and overwrote the fresh ones.
 
 **해결:** exclude `*.translation` (with `.godot/`) from any tree sync, or run `godot --headless --path <project> --import --quit` after every sync and before captures or exports. A test that only reads the CSV does not prove the game shows the text; check a capture, or load the `.translation` resources in the test. Separately, on the Web export, `DirAccess.remove_absolute()` on a `user://` file reached IndexedDB at once: the `FILE_DATA` record was gone when read right after, and a reload found no file.
+
+## GDT-255 — Web export: Chrome's HTTP cache does not keep a 117 MB `index.pck` (every visit downloads it again), and a service worker relaying it is stopped after about 5 minutes; keep the file in Cache Storage from the page
+
+`측정 2026-10-05 · Godot 4.7.2 Web export (release) · Chrome headed via Playwright, persistent profile · Air`
+
+**증상:** the server sent `Cache-Control: no-cache` with an ETag, and a conditional GET with curl answered 304. Yet in a normal persistent Chrome profile the second visit downloaded `index.pck` (116.6 MB) in full again, while `index.wasm` (39.5 MB) came back 304 with a 300 B transfer. Chrome does not store an entry that large in its HTTP cache, so revalidation never happens.
+
+A service worker that served the two files from Cache Storage fixed repeat visits on a fast local server, but on a slow line (live site, about 0.2 MB/s) the boot download hung at 52 % (86.4 of 148.9 MB) after about 317 s with `net::ERR_FAILED` / `TypeError: network error`. Chrome stops a service worker that is still busy with one event after about 5 minutes, and the response it relays dies with it. That worker had also used `event.waitUntil(cache.put(...))`.
+
+**해결:** do it in the page. Godot's `index.js` loads files with plain `fetch(file)`, so before `engine.startGame()` replace `window.fetch` with a wrapper that handles only `index.pck` and `index.wasm`. The wrapper opens `caches.open(name)` and sends a `HEAD` with `cache: 'no-store'`. If the kept copy's ETag (or Last-Modified) matches, it returns the copy. Otherwise it fetches the file, starts `cache.put(path, response.clone())` without awaiting it (the engine reads the original, so the progress bar keeps moving) and returns the response. Every other request falls through to the original fetch, and so does the case where `caches` is missing or throws (private mode).
+
+Measured at 300 KB/s: a 7-minute download finished and reached the title; the next visit sent two HEADs and showed the title in 12 s. On the live site over the Air's line: 11.7 min, then 13 s.
+
+To retire a worker already installed, serve a `sw.js` that calls `skipWaiting()`, `registration.unregister()` on activate and navigates its clients. Also have the page unregister any registration once while `navigator.serviceWorker.controller` is set, then reload, guarded by a sessionStorage flag. After that reload the page is not controlled (`getRegistrations()` returns 0). OPS-234 explains why CDP byte counts miss a worker's fetches; count on the server log instead.
 
 ---
 
