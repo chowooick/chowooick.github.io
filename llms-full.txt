@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T22:30:14Z · 소스 커밋 `796b3c6` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T22:34:33Z · 소스 커밋 `b9f400e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6074,6 +6074,13 @@ The first launch on that device still fails with `FBSOpenApplicationErrorDomain 
 
 **해결:** in the iOS preset set `storyboard/custom_image@2x` and `storyboard/custom_image@3x` to a transparent PNG (4×4 is enough), `storyboard/use_custom_bg_color=true` and `storyboard/custom_bg_color` to the first frame's colour. The exported `SplashImage.imageset` then holds that PNG and the launch is white → ident. iOS keeps the old launch screen of an installed app, so `xcrun devicectl device uninstall app` before installing the new build. Related: GDT-244 (the Android side of the same white start).
 
+## GDT-274 — Godot 4.7 on iPadOS: a number pad opened by a LineEdit floats over the UI and is gone for good once code moves focus to the next LineEdit; draw your own keypad
+`측정 2026-10-05 · Godot 4.7.2 · iPad mini 5 (iPadOS 26.3.1) · landscape · LineEdit.virtual_keyboard_type = KEYBOARD_TYPE_NUMBER`
+
+**증상:** a date form of three LineEdits (year, month, day) moved focus with `next.grab_focus()` from `text_changed` once the year had 4 digits. On the iPad the number pad did not dock at the bottom: it floated as a small panel in the top-left corner over the title. After the 4th year digit the pad disappeared and did not come back, so the month could not be typed and the form could not be finished. The same build on Android (Pixel 7 Pro) kept its keyboard across the focus move. Which call loses the keyboard (focus exit hide vs. focus enter show) was not isolated.
+
+**해결:** on touch devices set `LineEdit.virtual_keyboard_enabled = false` and draw a 3 x 4 keypad of Buttons with `focus_mode = FOCUS_NONE` (so a key press does not take focus from the field). Append the digit to the focused field yourself and call your `text_changed` handler, because setting `text` from code does not emit `text_changed`. Make the last key "Next", turning into "Confirm" on the last field. On a Pixel 7 Pro, `adb shell input tap` on the keys typed 1990-07-15, deleted, advanced focus and submitted. The system keyboard no longer appears on iOS or Android.
+
 ---
 
 <!-- source: agents.md -->
@@ -8142,6 +8149,23 @@ areas. Three findings:
 Use two excerpts per track and drop answers that disagree. Back it with measurements it cannot bias (tempo and
 meter from a beat-grid fit, key from a chroma profile, a timbre-distance matrix to check that new tracks differ
 from existing ones). Do not use it to verify short sound effects. Related: AGT-090.
+
+---
+
+## AGT-103 — A scripted rewrite of a whole block in a shared file silently drops what a parallel session added to it minutes earlier
+
+`측정 2026-10-05 · Claude Code, several sessions committing to one repository`
+
+**증상:** a session read a layout file, planned a refactor (two hand-written menus → one list rendered in a loop), and
+applied it with a script that replaced each `<nav>…</nav>` block from its start tag to its end tag. Between the read
+and the script, another session had committed a new menu entry inside those blocks. The script ran on the new file,
+the replacement was built from the old reading, and the entry vanished. Unit tests, type checks and the session's own
+e2e test passed; only an unrelated test that counts the phone bar's links (now 8 instead of 9) hinted at it.
+
+**해결:** right before a block replacement, `git log -1 -- <file>` and re-read the block; after it, read the removed
+lines (`git diff` lines starting with `-`) and account for every link, item or attribute that is gone, not only the
+ones you meant to move. Prefer edits anchored on small unique strings over whole-block replacement in files other
+sessions are touching.
 
 ---
 
