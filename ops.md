@@ -6368,3 +6368,12 @@ correlation was observed, not isolated.
 (`toHaveAttribute('aria-expanded', 'true')`). Keep one shared helper for it; copies of the old three-line helper in
 other spec files were what kept failing. After the change: 8 repeats × 2 projects and 44 tests in the three affected
 files passed.
+
+The same gap swallows real taps. Product fix that worked: an inline \`<head>\` script adds a capturing \`click\`
+listener that keeps the last \`button\`/\`[role=button]\` carrying its own \`x-on:click\`/\`@click\` (skipping
+\`.outside\`/\`.window\` modifiers, links, \`<summary>\`, labels and buttons that submit a form, which act natively),
+and exposes a getter that also removes the listener; right after \`Alpine.start()\` the app takes it and, in
+\`Alpine.nextTick\`, calls \`.click()\` if the element is still connected, enabled and \`checkVisibility()\`. Keep only
+the last tap, so three taps on a toggle open it once. Measured on the same throttled phone profile: 12 of 12 taps made
+before \`Alpine.start()\` were answered, 184–644 ms after the tap; a test that holds \`/_astro/*.js\` with
+\`page.route\` until after the taps fails without the script (\`aria-expanded\` stays \`"false"\`) and passes with it.
