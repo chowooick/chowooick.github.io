@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T19:45:04Z · 소스 커밋 `251f6ac` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T20:56:20Z · 소스 커밋 `d6ec764` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5977,6 +5977,39 @@ Also measured in the same run: under the headless Dummy driver the positions do 
 
 **해결:** Wrap the two reads in `AudioServer.lock()` / `AudioServer.unlock()`. With the lock the same check read 0.0 ms over 285 frames. One check per second is cheap enough.
 
+## GDT-266 — GDScript 4: `bool(null)` is a runtime error ("Nonexistent 'bool' constructor"), so `bool(settings.get(key))` on a key that was never written breaks the function; a method named `_set` is a parse error because it overrides `Object._set`
+
+`측정 2026-10-05 · Godot 4.7.2 · headless and windowed`
+
+**증상:** `if not bool(Settings.get_value("ui/seen_" + id)):` for a key with no default returned `null`, and every call printed `SCRIPT ERROR: Invalid call. Nonexistent 'bool' constructor.` and abandoned the rest of the function. Here that was the duel screen's `open()`, so the screen opened half set up. In a separate case, a preview script declared `func _set(fields: Dictionary) -> void:` and failed to parse with `The function signature doesn't match the parent. Parent signature is "_set(StringName, Variant) -> bool"`.
+
+**해결:** compare instead of converting: `get(key) != true`, or give the key a default. Do not name a helper `_set`, `_get`, `_init`, `_notification`, `_get_property_list` or another `Object` virtual. Separately, in a draw callback, draw only on the canvas item that is drawing: a helper that draws on a sibling `Control` while the HUD's `draw` signal runs prints `ERROR: Drawing is only allowed inside this node's _draw()...`, and a test gate that greps `^ERROR:` fails while every check passes. Pass the target canvas item into shared draw helpers.
+
+## GDT-267 — Balance a timing-based combat system with bots on a hand-driven clock: a game-time override plus `advance(ms)` runs a minute-long duel in milliseconds, and bot archetypes (skilled, average, masher) turn "too easy" into numbers a test can fail on
+
+`측정 2026-10-05 · Godot 4.7.2 headless · Air (M1)`
+
+**증상:** a parry/timing duel felt too easy, and nobody could say by how much. Real-time end-to-end runs take minutes per fight, and their timing depends on frame jitter.
+
+**해결:** route every game-time read through one `now_ms()` that returns `base + manual_ms` when a test sets `manual_ms >= 0`. Add `advance(ms)`: drain the queued actions, then step the clock in tick-sized increments, calling `_process(0)` and draining again each step. Add a `debug_duel(kind, case)` that skips range and story checks. Give each fight a fresh state node with gear and level set directly; 12 runs × 3 bots × 34 enemies finished in about a minute.
+
+Bots read the state's true blow time (that stands in for the player reading the telegraph) and add N(0, σ) timing error: skilled σ = 50 ms, average σ = 120 ms. The masher presses attack whenever ready and never guards. Assert targets: how many enemy attacks a fight lasts for the skilled bot, the average bot's win rate, the masher's win rate on late bosses, and HP lost by mashing against timing.
+
+The first table exposed three exploits that play-testing had hidden:
+- a masher randomly lands one strike per cycle in the "red" window, so penalising only early strikes is not enough; spoil the whole cycle after an early strike;
+- a "slow" part effect applied on every jab froze the enemy's meter;
+- "pull the meter forward on a jab" capped at 97 % moved an already-due blow later, so rapid jabs held it off for ever.
+
+## GDT-268 — A logo drawn from SVG at run time: `Image.load_svg_from_string` works in the Web (nothreads) template; size it from `get_screen_transform()`, which warns inside a SubViewport
+
+`측정 2026-10-05 · Godot 4.7.2-stable · Web export (nothreads, debug) in Brave 1.96 at DPR 2 and 3.5 · native macOS (Android not yet looked at on a device)`
+
+**증상:** a studio logo shipped as a PNG looked soft on a 3.5x phone and stair-stepped on a desktop that drew it at a quarter of its size. An imported `.svg` is a fixed-size texture too, and the raw `.svg` file is not exported for loading at run time.
+
+Keeping the SVG as a GDScript string constant and rasterising it on layout gives a texture of exactly the pixels it covers: `image.load_svg_from_string(svg, pixels / view_width)`, then `image.generate_mipmaps()` (for a scale-in entrance) and `ImageTexture.create_from_image(image)`. It returned `OK` and drew sharp at 547 px in the Web export at DPR 3.5 and at 300 px at DPR 2, so the official web template carries ThorVG. A 20 KB SVG with clip paths, an even-odd frame and a linear gradient rendered the same as in the editor. The pixel count is `size.x * get_viewport().get_screen_transform().get_scale().x` under `canvas_items` stretch; inside a `SubViewport` used for a capture, that call prints *SubViewport is not a child of a SubViewportContainer. get_screen_transform doesn't return the actual screen position*, so use 1.0 there (`viewport is Window`).
+
+**해결:** store the art as a generated constant (a build script writes both the `.svg` files and the `.gd`), rasterise on `resized`, and only re-rasterise when the pixel count changes. For per-letter animation of a wordmark, rasterise the whole word once and draw each letter with `draw_texture_rect_region` from its own horizontal slice; the letters' ink spans do not overlap, so no slice takes a neighbour's edge. Related: GDT-246.
+
 ---
 
 <!-- source: agents.md -->
@@ -7984,6 +8017,29 @@ deploy output: `"previousRelease": "20261005-music"`, a release name A had never
 After a deploy, compare `previousRelease` with the last release you know; an unknown name means someone shipped in between, so
 rebase on their commits and deploy again at once (here 15 minutes of exposure). A session that pushes `main` from a branch should
 also fast-forward the shared checkout's `main` when its tree is clean, so the next session does not start from the old one.
+
+## AGT-100 — 브라우저 Supertonic 3(onnxruntime-web, WebGPU)은 M1에서 첫 듣기 약 53초, 받아 둔 뒤 새 페이지에서 약 17초 걸려 첫 소리가 난다
+
+`측정 2026-10-05 · onnxruntime-web 1.30.0 · Supertonic 3(fp32 ONNX 4개, 398MB, HF 리비전 3cadd1e) · Brave 1.96(Chromium 154) 헤디드 · MacBook Air M1 · 가정 회선`
+
+**증상:** 기기 안에서 합성하는 읽어 주기를 다른 사이트에 붙일 때 "첫 소리까지 얼마나 기다리게 되는지"를 정해야 했다.
+docs의 기존 값(Mac 헤드리스 Chrome, WASM 1스레드, 저장 모델로 첫 소리 약 8초)은 백엔드와 페이지 조건이 다르다.
+
+**측정:** 운영 페이지에서 듣기 버튼을 누른 시점부터 잰 값이다. 백엔드는 두 번 모두 `webgpu`로 열렸다.
+
+| 상황 | 모델 받기 끝 | 엔진 준비(확인 합성 포함) | 첫 문장 소리 |
+| --- | --- | --- | --- |
+| 처음(Cache Storage 비어 있음) | 약 40초 | 46초 | 약 47–53초 |
+| 같은 브라우저, 새 페이지(모델은 Cache Storage에 있음) | — | 약 10초 | 약 11–17초 |
+| 같은 페이지에서 엔진이 이미 열린 뒤 | — | 4.4초 | 5.0초 |
+
+- 저장된 모델이라도 **새 페이지마다 ONNX 세션 4개를 다시 만든다.** 이 비용(약 10초)이 두 번째 방문의 대부분이다.
+- 진행률은 398MB 기준 10초에 13%, 20초에 64%, 35초에 99%였다. 99%에서 확인 합성까지 약 10초가 더 걸리므로,
+  진행 표시를 100%로 끝내지 말고 "곧 읽어 드려요" 같은 다음 단계 문구를 둔다.
+- 헤드리스 Brave에서는 같은 코드가 13분 동안 첫 소리를 내지 않았다(원인 미확인). 이 엔진의 재생 검사는 헤디드로 한다.
+
+**해결:** 첫 듣기는 진행 막대와 크기(398MB)를 보여 주고, 두 번째부터는 "음성 준비 중" 상태를 10초 남짓 보여 준다.
+페이지 이동 없이 이어 듣게 하면(SPA·같은 페이지 큐) 4–5초로 줄어든다.
 
 ---
 
@@ -14616,7 +14672,12 @@ ssh에서 Playwright로 Brave와 Playwright 번들 Chromium을 각각 headless/h
 `currentTime`은 0.005초만 증가했다. 기본 출력 장치(MacBook Air 스피커)는 존재하고 `coreaudiod`도 떠 있다.
 
 **해결:** 이 호스트에서 오디오 라이브 타이밍 검사는 신호로 쓰지 않는다. 소리 품질·클리핑·길이는 오프라인 렌더로
-검증하고, 라이브 박자 동기화는 실시간 클록이 흐르는 기계에서 확인한다. 원인(ssh 세션의 오디오 출력 권한 등)은 미확인.
+검증하고, 라이브 박자 동기화는 실시간 클록이 흐르는 기계에서 확인한다.
+
+**원인 (2026-10-05 대표님 확인):** Air에 설치된 방화벽 LuLu(Objective-See, \`/Applications/LuLu.app\`, 시스템 확장
+\`com.objective-see.lulu.extension\`)였다. 허용 여부를 묻는 창이 Air 화면에 뜨고, 응답하기 전까지 막힌다. ssh로는 그 창을
+볼 수 없다 — ssh 세션의 \`screencapture -x\`는 \`could not create image from display\`로 실패한다. 라이브 오디오가
+멈추면 Air 화면의 LuLu 알림부터 확인한다.
 
 ## OPS-334 — Brave는 JavaScript로 쓴 쿠키의 만료를 약 6개월로 줄인다 (365일로 써도 181일)
 
@@ -14661,4 +14722,68 @@ The client splits every `BsatnRowList` into one byte slice per row before decodi
 Measured: the old client's code (the commit the store build came from) was run headless against a local database that had been updated to the new module (`spacetime publish ... -y`, automatic migration). It connected, opened a room, set training, dealt 48 tiles, and played a whole match to `phase 3` against its bot with 0 failures. The new client against the same database read the new columns.
 
 **해결:** When the client decodes per row slice, an append-only schema change (new columns at the end with typed defaults, new tables) does not need a client release at the same moment. Check two things before relying on it: that row decoding is per slice, not a running reader across rows, and that delete matching does not compare the old client's re-encoded bytes with the new ones. Then run the store build's code against the migrated database before the production publish. The publish still disconnects every client once (OPS-170).
+
+## OPS-337 — Dokploy `compose.one` still says `composeStatus: "done"` right after `compose.deploy`: polling it reports the old deployment's success
+
+`측정 2026-10-05 · Dokploy on misa · raw compose, release images built on the host`
+
+**증상:** a deploy script called `compose.deploy`, slept 5 s, read `compose.one` and stopped at the first `composeStatus == "done"`. It printed "deployment completed" and its health checks passed, but `docker ps` still showed the previous release's image tags and the public files kept the old `last-modified`. The queued deployment started about a minute later (its log file `/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log` appeared then) and only then were the containers replaced. `composeStatus` is the state of the last deployment that ran, not of the one just queued, so the first poll read the previous release's "done".
+
+**해결:** give each deployment a unique `title` in `compose.deploy` and poll `GET deployment.allByCompose?composeId=<id>` for the record with that title; finish on its `status` (`done` / `error`). After any deploy, check the running image tag (`docker ps --format '{{.Image}}'`) or the public file's `last-modified` before calling it live. Related: OPS-249 (the queue can also delay the start by minutes).
+
+## OPS-338 — A slow download from misa measured on the office Macs is the office's path to Korea: busan and oregon pull the same file at 10.3 and 3.7 MB/s
+
+`측정 2026-10-05 · farm.mnori.com (nginx on misa, Korea, cubic congestion control) · developer Mac and test Mac (Air) on 192.168.0.x, egress 71.211.129.31 (US) · busan, oregon`
+
+**증상:** production browser tests timed out waiting for a 22 MB web game. `curl` of the 11 MB `index.pck` from the developer Mac read 0.11-0.15 MB/s in three runs; from the Air 0.16-0.36 MB/s. On misa itself (`--resolve` to 127.0.0.1) the same file came at 22.9 MB/s, and misa's NIC was idle.
+
+The same `curl` from other hosts:
+
+| From | Throughput | RTT to misa |
+|---|---|---|
+| busan (Korea) | 10.3 MB/s (1.1 s) | — |
+| oregon (US West) | 3.7 MB/s (3.1 s) | 133 ms, 0.6 ms jitter |
+| office Macs (US) | 0.11-0.36 MB/s | 160-235 ms, 24 ms jitter |
+
+It is not misa: `ssh busan 'head -c 8000000 /dev/urandom' > /dev/null` from the developer Mac took 141 s (57 KB/s), so the office's path to Korea is slow for any host, while the same Mac pulled a jsDelivr file at 1.7 MB/s. The traceroute leaves through 207.225.112.3 / 63.225.124.17 (Lumen) and reaches Korea Telecom (112.174.x) at hop 7.
+
+**해결:** judge a Korean origin's speed from `busan` (or `oregon` for a far client), not from the office Macs. Give production browser tests run from the office a load timeout of minutes (the farm tests use 6 minutes for 22 MB). OPS-301 measured an origin "sending 0.1-0.2 MB/s to the internet" with a client in the same situation; check its origin from busan before relying on that number.
+
+## OPS-339 — Cloudflare free-plan zone settings through the dashboard session API: the endpoints and bodies that worked, and the two that do not look like the rest
+
+`측정 2026-10-05 · Cloudflare free plan, new zone registered at Cloudflare Registrar · API calls made with fetch('/api/v4…', {headers: {'x-cross-site-security': 'dash'}}) from a signed-in dashboard page in Brave (Playwright)`
+
+**증상:** setting up a new zone by hand is a dozen dashboard screens; the API is faster, but two of the calls do not follow the usual `PATCH /zones/:id/settings/<name>` shape and failed on the first try.
+
+All of these answered 200 on a free zone:
+
+| Setting | Call |
+|---|---|
+| DNSSEC | `PATCH /zones/:id/dnssec {"status":"active"}` (status `pending` at once; Registrar adds the DS itself) |
+| HTTPS, TLS, SSL | `PATCH /zones/:id/settings/always_use_https {"value":"on"}`, `…/min_tls_version {"value":"1.2"}`, `…/ssl {"value":"strict"}` |
+| HSTS | `PATCH /zones/:id/settings/security_header {"value":{"strict_transport_security":{"enabled":true,"max_age":31536000,"include_subdomains":true,"preload":false,"nosniff":true}}}` |
+| www to apex | proxied `AAAA www 100::`, then `PUT /zones/:id/rulesets/phases/http_request_dynamic_redirect/entrypoint` with a `redirect` rule, `target_url.expression: concat("https://apex", http.request.uri.path)`, `preserve_query_string: true` |
+| **Crawler Hints** | **`POST`** `/zones/:id/flags/products/cache/changes {"feature":"crawlhints_enabled","value":true}` (`PATCH` answers 405) |
+| AI training crawlers | `PUT /zones/:id/bot_management {"ai_training":"block","is_robots_txt_managed":true}` |
+| Free managed WAF | `PUT /zones/:id/rulesets/phases/http_request_firewall_managed/entrypoint` with one `execute` rule, `action_parameters.id: 77454fe2d30c4220b5701f6fdfb893ba` (Cloudflare Managed Free Ruleset); the entrypoint did not exist before (404 on GET) |
+| Rate limiting (the one free rule) | `PUT /zones/:id/rulesets/phases/http_ratelimit/entrypoint`, `characteristics: ["cf.colo.id","ip.src"]`, `period: 10`, `mitigation_timeout: 10` |
+| Email Routing | `POST /zones/:id/email/routing/enable {}` adds the MX and SPF records itself; then `POST …/email/routing/rules` with a `literal` `to` matcher and a `forward` action to an already verified address |
+| **DMARC Management** | **`PATCH /zones/:id/email/auth/dmarc-reports {"enabled":true}`** (the dashboard's call); it adds `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:<hash>@dmarc-reports.cloudflare.net` |
+| Web Analytics | `POST /accounts/:acct/rum/site_info {"host":"<zone>","zone_tag":"<id>","auto_install":true}` |
+
+After the `bot_management` call the response showed `ai_training: "block"` with `ai_bots_protection` still `"disabled"`, and the zone's `/robots.txt` (served by the Worker) came back with Cloudflare's text in front: `Content-Signal: search=yes,ai-train=no,use=reference` plus `Disallow: /` blocks for Amazonbot, Applebot-Extended, Bytespider and others. Search crawlers are not blocked.
+
+A deep link such as `dash.cloudflare.com/<acct>/<zone>/email/dmarc-management` opened in **headless** Brave stopped on "보안 확인 수행 중" with a Turnstile checkbox. Headed, waiting a few seconds and clicking `input[type=checkbox]` in each frame passed it; the API calls above made from the account home page did not meet the check.
+
+**해결:** use the table as is. Make the Crawler Hints call a `POST` and DMARC Management the `dmarc-reports` `PATCH`; enable Email Routing before adding rules so the MX records exist. Open dashboard pages headed when a script has to click in them.
+
+## OPS-340 — Cloudflare Email Sending (open beta) answered 401 Unauthorized, code 2036, for an account where Email Routing works
+
+`측정 2026-10-05 · wrangler 4.135.0 (OAuth login) and the dashboard session · Cloudflare free plan account, Workers Free`
+
+**증상:** `wrangler email sending settings <zone>` failed with `A request to the Cloudflare API (/zones/<id>/email/sending/subdomains) failed. Unauthorized [code: 2036]`. The same `GET` from the signed-in dashboard session also answered 401 with code 2036. Email Routing calls on the same zone answered 200, and `wrangler turnstile widget create` and `wrangler d1 create` worked with the same wrangler login.
+
+So the 401 is not a missing wrangler OAuth scope alone: the account itself is not let into Email Sending yet. The dashboard's "이메일 전송 (베타)" menu item exists on the zone; its page rendered empty.
+
+**해결:** do not plan a launch mail on Email Sending without first getting a 200 from `GET /zones/:id/email/sending/subdomains`. Keep a sender that works today as the fallback (Resend free plan, OPS-104) and set SPF, DKIM and DMARC for whichever one sends.
 
