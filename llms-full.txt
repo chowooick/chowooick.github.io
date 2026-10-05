@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T01:08:48Z · 소스 커밋 `47a555f` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T01:38:25Z · 소스 커밋 `19cad4e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13827,4 +13827,14 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 - Measured with `requestAnimationFrame` from `pagereveal`: 77 frames, one 50 ms first frame, one 33 ms frame at most (390 px and 1440 px viewports).
 - When the path is only zoom out → slide → zoom in, no script is needed and the phases can still overlap exactly: put the zoom (`scale` keyframes) on `::view-transition-image-pair(root)` and the slide (`translate: calc(-100% - <gap>) 0`) on `::view-transition-old/new(root)`. The nested transforms compose like a camera, `100%` is one card width, and `border-radius` + `overflow: clip` + `box-shadow` on old/new give rounded, shadowed cards; the canvas colour goes on `::view-transition-group(root)`.
 - To capture frames: `const cdp = await context.newCDPSession(page); await cdp.send('Animation.enable'); await cdp.send('Animation.setPlaybackRate', { playbackRate: 0.1 })` before clicking the link. The rate survives the cross-document navigation and slows the view transition 10x, so screenshots every 1-1.5 s show each phase.
+
+## OPS-305 — Gradle on JDK 25 fails with nothing but the version string ("What went wrong: 25.0.1"); a re-uploaded App Bundle is not attached to the Play release
+
+`측정 2026-10-04 · Gradle wrapper of an AGP 8.x Android project · Temurin 25.0.1 as the only system JDK · macOS 27 · Google Play Console (web, Korean UI)`
+
+**증상:** `./gradlew :app:bundleRelease` on a Mac whose only JDK is Temurin 25 printed `* What went wrong:` followed by a single line, `25.0.1`, with no stack trace. With Android Studio's bundled JDK it went one step further: `SDK location not found` (the git-ignored `local.properties` was gone).
+
+**해결:** `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:bundleRelease -P...`. Both variables are needed; neither needs a file in the repo.
+
+In Play Console, uploading the `.aab` registers its version code in the app's bundle library at once, even if the release draft is then left unsaved. Uploading the same file again into the draft does nothing visible: the bundle table stays empty and "다음" stays disabled. Use "라이브러리에서 추가", tick the version, then "버전에 추가". The release name is empty when added this way and has to be filled (e.g. `2 (0.1.0)`) before "다음" enables. The only review warning for an unminified build is the missing deobfuscation file, which does not block "저장 및 출시".
 
