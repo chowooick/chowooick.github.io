@@ -6593,3 +6593,19 @@ Origin을 붙이지 않는다.
 
 **해결:** 내부 요청에 `Origin: <사이트 origin>`과 `Content-Type: application/json`, 본문 `'{}'`를 붙인다. 그 경로를
 외부에서 못 부르게 하려면 래퍼 `fetch`에서 그 경로를 404로 돌려 보내고, 크론만 `app.fetch`로 직접 들어가게 한다.
+
+## OPS-332 — A Cloudflare Worker with D1, rate limits, crons and static assets runs unchanged on Dokploy under `wrangler dev`; block `/__scheduled` and `/cdn-cgi/`, and set `CF-Connecting-IP` yourself
+
+`측정 2026-10-05 · wrangler 4.134.0 (workerd) on node:24-bookworm-slim · Dokploy (misa, x86_64) behind Traefik · Docker 28.5`
+
+**증상:** a Worker (`assets` with `run_worker_first`, one D1 database, two `ratelimits` bindings, two crons, Google OAuth) had to be served from a Dokploy box instead of Cloudflare. There is no D1 or rate-limit binding in plain workerd, and `wrangler dev` is documented as a development server. Three things go wrong if it is exposed directly:
+
+- `--test-scheduled` (needed to fire crons at all) answers **anyone** on `/__scheduled?cron=...` and `/cdn-cgi/handler/scheduled` with `200 Ran scheduled event`.
+- Nothing sets `CF-Connecting-IP`. A Worker that keys its rate limits on that header and allows requests without it lets every request through; a client can also send the header itself.
+- `--var` puts secrets on the process command line.
+
+**해결:** run `wrangler dev --ip 127.0.0.1 --port 8788 --persist-to /data --test-scheduled --local-upstream <host> --show-interactive-dev-session=false` behind a ~100-line Node proxy on the public port that answers 404 for `^/(__scheduled|cdn-cgi/)`, drops any incoming `CF-Connecting-IP` and sets it from Traefik's `X-Real-Ip`, and fires each cron from `wrangler.jsonc` once a minute in UTC with a GET to `127.0.0.1:8788/__scheduled?cron=<urlencoded>`. Write secrets to `.dev.vars` next to the config (mode 0600) at start instead of `--var`. Before starting, `wrangler d1 execute <db> --local --persist-to /data --file schema.sql` and `wrangler d1 migrations apply <db> --local --persist-to /data` are idempotent on every restart (`CI=1` skips the confirmation). Set the Dokploy app to stop-first (OPS-073): two containers must not open the same SQLite files.
+
+Measured: build with Hugo + `npm install wrangler` 654 MB image (arm64); ready 20 s after start including migrations; 320-380 MiB RSS; the `ratelimits` binding counted per `CF-Connecting-IP` (10 requests from one address → 6 counted, 3 more from a second address → all counted); D1 data survived `docker restart` and Dokploy redeploys; stop-first redeploy leaves about 20 s of 502/503. The Worker's `request.url` origin matches `--local-upstream`, so origin checks against `SITE_ORIGIN` pass.
+
+Two side notes from the same day: a new Cloudflare record was answered by 1.1.1.1, 8.8.8.8 and KT 168.126.63.1 within a minute, but a home router (192.168.0.1) that had looked the name up before kept answering NXDOMAIN for 15+ minutes; test with `curl --resolve host:443:<ip>` or Chromium `--host-resolver-rules="MAP host <ip>"` instead of waiting. In the Google Cloud console (Korean UI, 2026-10), a web OAuth client is created by Playwright as: click the last `mat-select`, pick option `웹 애플리케이션`, fill `input[formcontrolname=displayName]`, click `URI 추가` and type with `page.keyboard` (the new field takes focus), then `만들기`; the client ID and the `GOCSPX-` secret are in the page text right after, so read them there and write them to a 0600 file without printing.
