@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T21:58:14Z · 소스 커밋 `5e121eb` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T22:01:53Z · 소스 커밋 `162e601` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6045,6 +6045,14 @@ Keeping the SVG as a GDScript string constant and rasterising it on layout gives
 The `Input` singleton's action state is updated before the event is dispatched to the viewport, so marking the event handled does not touch it. In a test, `Input.parse_input_event()` of an E press plus `Input.flush_buffered_events()` (GDT-089) kept `Input.is_action_pressed("interact")` true in the screen's `_process` while the UI root consumed the event; the roll moved more than 3× as far in 0.5 s as without the hold, and dropped back to normal speed within 0.4 s of the release event.
 
 **해결:** start the hold from the UI's own press command (so a key still held from before the modal opened does not count), then poll `Input.is_action_pressed()` for every action that means confirm each frame and end the hold when none is down. Touch holds need their own flag from `gui_input` (both the touch and its emulated mouse event arrive, GDT-030; setting the same flag from both is harmless).
+
+## GDT-271 — Windowed `--script` capture on a heavily loaded host saves the same stale frame for several shots in a row, with no error in the log
+
+`측정 2026-10-05 · Godot 4.7.2-stable · GL Compatibility (OpenGL 4.1 Metal, Apple M1 Air) · load average 60–125 from other sessions`
+
+**증상:** a capture harness that switches maps, waits 50–120 frames and saves `root.get_texture().get_image()` produced byte-identical PNGs for the first four shots of a batch (`md5` equal): all four showed the title screen with the map half-drawn behind it, although each shot had entered a different map and the log printed `CAPTURED` for each with no `SCRIPT ERROR`. In another batch the last shot was an exact copy of the one before it (wrong room, wrong boss name). The same shots captured one at a time a few minutes later were correct. Frame counting in `_process` keeps going while the window's presented image does not change, so "wait N frames" is not proof that a new frame was drawn.
+
+**해결:** after a batch, compare the hashes of consecutive shots (`md5 -q *.png`) and recapture any duplicates on their own, or run fewer shots per process when the host is busy. Do not trust a capture batch from a loaded machine without that check. Related: GDT-262.
 
 ---
 
