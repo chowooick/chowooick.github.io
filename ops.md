@@ -6257,3 +6257,19 @@ with `000` (connection refused) and every Playwright test with `E2E_BASE_URL=htt
 **해결:** do not pass `--host` again when the npm script already sets one; use the URL the server prints
 (`http://localhost:<port>`) for the readiness check and the test base URL, or call `npx astro dev --port <p> --host
 127.0.0.1` directly instead of through the npm script.
+
+## OPS-314 — `@vite-pwa/astro` precaches the 404 page as `404/`; behind nginx that URL answers 404, the service worker never installs, and the PWA silently has no offline copy
+
+`측정 2026-10-05 · astro 5.18 (static, build.format directory) · @vite-pwa/astro 1.2.0 · vite-plugin-pwa 1.2 (generateSW, Workbox 7.4) · nginx 1.30 · Chrome (Playwright, channel chrome)`
+
+**증상:** a static Astro PWA worked offline under `astro preview`, but on production `navigator.serviceWorker.ready`
+never resolved, `caches` held 2 precache entries out of 83, and every offline reload failed with
+`ERR_INTERNET_DISCONNECTED`. No console error. The generated `sw.js` lists `{url:"404/"}`: the integration rewrites
+`404.html` to a directory URL like every other page. nginx serves `404.html` only as an `error_page`, so `GET /404/`
+returns status 404 and Workbox's precache aborts the whole install (one failed entry fails the install event).
+`astro preview` answered that URL differently, so the local offline test passed.
+
+**해결:** add `globIgnores: ['404.html', '404/**']` to `workbox`, then check every precache URL against the real
+server after each deploy: fetch `/sw.js`, extract `url:"..."`, and require 200 for all of them (a 15-line script).
+Here that check reported `82 urls, 0 failing` and the precache filled to 74 entries within 5 s. Test offline against
+the production server, not the preview server (same lesson as OPS-281).
