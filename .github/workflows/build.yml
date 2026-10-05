@@ -26,7 +26,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: 원격 최신 위에서 재생성하고 푸시
@@ -86,9 +86,9 @@ jobs:
           echo "deploy=true" >> "$GITHUB_OUTPUT"
 
       - if: steps.turn.outputs.deploy == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: .
       - id: deploy
         if: steps.turn.outputs.deploy == 'true'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
