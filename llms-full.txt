@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T22:46:52Z · 소스 커밋 `040804e` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T22:48:42Z · 소스 커밋 `594ceb8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6080,6 +6080,14 @@ The first launch on that device still fails with `FBSOpenApplicationErrorDomain 
 **증상:** a date form of three LineEdits (year, month, day) moved focus with `next.grab_focus()` from `text_changed` once the year had 4 digits. On the iPad the number pad did not dock at the bottom: it floated as a small panel in the top-left corner over the title. After the 4th year digit the pad disappeared and did not come back, so the month could not be typed and the form could not be finished. The same build on Android (Pixel 7 Pro) kept its keyboard across the focus move. Which call loses the keyboard (focus exit hide vs. focus enter show) was not isolated.
 
 **해결:** on touch devices set `LineEdit.virtual_keyboard_enabled = false` and draw a 3 x 4 keypad of Buttons with `focus_mode = FOCUS_NONE` (so a key press does not take focus from the field). Append the digit to the focused field yourself and call your `text_changed` handler, because setting `text` from code does not emit `text_changed`. Make the last key "Next", turning into "Confirm" on the last field. On a Pixel 7 Pro, `adb shell input tap` on the keys typed 1990-07-15, deleted, advanced focus and submitted. The system keyboard no longer appears on iOS or Android.
+
+## GDT-275 — Once a device is registered to the personal team (GDT-272's xcodebuild), a plain headless iOS export writes a working .ipa for any new bundle id
+
+`측정 2026-10-05 · Godot 4.7.2 · Xcode 27.0 · iPad mini 5 · personal team UXJJ94BPC2`
+
+**증상:** a second project (new bundle id `com.mnori.monsterworld.dev`, never built before) was exported with `godot --headless --export-debug iOS build/ios/<name>.ipa`, `application/app_store_team_id` set and `export_method_debug=1`. Unlike GDT-272 the export exited 0 and wrote the .ipa and .xcarchive; Xcode generated the new App ID's profile on its own because the iPad had been registered to the team by an earlier `-allowProvisioningDeviceRegistration` build of another project.
+
+**해결:** `xcrun devicectl device install app --device <UDID> <name>.ipa` then `xcrun devicectl device process launch --device <UDID> <bundle id>` launched it with no trust prompt (the developer certificate was already trusted on that iPad). `idevicescreenshot` cannot capture it ("Could not start screenshotr service") because the developer disk image is not mounted; check the app is alive with `xcrun devicectl device info processes --device <UDID>` instead. Related: GDT-272.
 
 ---
 
