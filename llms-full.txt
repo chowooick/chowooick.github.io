@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T18:38:24Z · 소스 커밋 `00aabeb` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T18:41:23Z · 소스 커밋 `0911cfd` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5896,6 +5896,16 @@ Printed from the game on the phone: `window (3120.0, 1440.0) dpi 560`. `screen_g
 Frame rate in the same build, read from `Engine.get_frames_per_second()` every 5 s: with the 3D capped at about 2.2 Mpx (`scaling_3d_scale = sqrt(2.2e6 / (3120 * 1440))` = 0.70; 2D at full resolution) the title, the farmhouse interior (122–130 draw calls) and the outdoor farm map (148 draw calls, MSAA 2×, 4096 shadow atlas) all read 58–60 fps. Changing maps showed one sample of 1 fps (the map build stalls the frame) and one of 40 on the first interior frame.
 
 **해결:** on `OS.has_feature("mobile")` take the density from `screen_get_dpi() / 160.0`, not from `screen_get_scale()`. For a light GL Compatibility scene, a 2.2 Mpx 3D budget is enough for 60 fps on this phone; GDT-242's heavier scene needed about 1.2 Mpx.
+
+## GDT-260 — Android: a preset with `gradle_build/use_gradle_build=false` ignores `custom_theme_attributes` and `screen/background_color` silently; `themes.xml` is not even rewritten
+
+`측정 2026-10-05 · Godot 4.7.2-stable · Android export (debug) · Samsung Galaxy S24+ (SM-S926U) · adb screenrecord`
+
+**증상:** after adding the GDT-244 keys (`"[splash]android:windowSplashScreenBackground": "#FFFFFF"`, `"[splash]windowSplashScreenAnimatedIcon": "@android:color/transparent"`, `screen/background_color=Color(1, 1, 1, 1)`) to every Android preset, the debug APK still opened on the dark system splash with the launcher icon, then a black frame, then white. The export printed no warning and exited 0. `android/build/res/values/themes.xml` kept its old mtime and contents (`@mipmap/icon_background`, `@drawable/splash_icon`, `windowBackground #000000`).
+
+The debug preset had `gradle_build/use_gradle_build=false`: it repackages the prebuilt APK template, whose theme is compiled in. The theme options exist only for gradle builds, and the editor shows them on a non-gradle preset without complaint.
+
+**해결:** judge the launch on a gradle preset. Flipping `use_gradle_build=true` for one export regenerated `themes.xml` (`windowSplashScreenBackground #FFFFFF`, transparent icon, `windowBackground #ffffff`), and a cold start recorded at 4 fps went home screen → white → the game's own first frame, with no icon and no dark frame. The gradle debug APK was 92 MB against 32 MB for the template build. Related: GDT-243, GDT-244.
 
 ---
 
