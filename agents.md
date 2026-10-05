@@ -2096,3 +2096,11 @@ sessions are touching.
 **해결:** RAM 3GB급 iOS 기기에서는 fp32 모델이 안 된다. 죽은 뒤 다음 방문에 기기 음성으로 넘어가는 표시(`read-aloud-busy`, AGT-058)가
 최소 장치다. 고품질 음성을 이런 기기에서도 쓰려면 모델을 줄여야 한다. Hugging Face에 제3자 int8 변환본(vector_estimator 66–78MB)이 있지만
 2026-10-05 기준 내려받기 0회이고 라이선스 표기가 원본(OpenRAIL-M)과 다르다. 쓰려면 공식 모델을 직접 양자화해 품질을 확인해야 한다.
+
+**추가 측정(같은 날, 공식 모델을 직접 변환):** 같은 노이즈 시드로 fp32와 비교한 평균 log-mel 차이다. 기준으로, fp32끼리 시드만 바꾸면 10.7dB 차이가 난다.
+- float16(\`onnxruntime.transformers\` \`OnnxModel.convert_float_to_float16(keep_io_types=True)\`, 세 모델): 0.19dB, 합계 201MB.
+  \`onnxconverter_common.float16\`로 바꾼 파일은 Cast 노드 타입 오류로 열리지 않았다.
+- int8 동적 양자화(Conv 포함): vector_estimator·text_encoder만 바꾸면 5.9dB, vocoder를 바꾸면 25dB(사실상 망가짐). MatMul·Gemm만 양자화하면 크기가 거의 줄지 않는다. 가중치의 92%가 Conv에 있다.
+- float16은 Brave(M1)의 WebGPU와 WASM 둘 다에서 열리고 읽는다. WASM은 첫 소리 15.7초, WebGPU는 3.9초다(Cache Storage 적재 기준).
+- Mac Playwright WebKit(iPhone 15 에뮬레이션)에서 적재 중 WebContent footprint 최고값: fp32 1535MB, float16 1328MB. 13% 차이다.
+  실제 iPad는 이 에뮬레이션보다 400MB 이상 더 썼으므로, float16이 1940MB 한도 안에 드는지는 실기기로 확인해야 한다(미확인).
