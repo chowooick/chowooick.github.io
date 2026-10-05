@@ -4987,3 +4987,39 @@ clip, but bones the clip has no track for (here scale) keep the manual value: re
 
 **해결:** Use the manual step + `PROCESS_MODE_DISABLED` recipe for any pose-specific capture; reset
 manual bone poses before reactivating an AnimationPlayer.
+
+---
+
+## GDT-263 — Web export Sample playback: `get_playback_position()` trails the audible position by about 1 s for the whole life of a playback, and two players' reports can differ by 75 ms under load; players started in the same frame start at the same AudioContext time
+
+`측정 2026-10-05 · Godot 4.7.2-stable Web export (no threads, default Sample playback) · headless Brave 1.96 (SwiftShader, --disable-audio-output) on the M1 Air under load average 50-95`
+
+**증상:** layered music on the Web (a percussion stem that must stay within 30 ms of its track). Starting the stem mid-track at the music's `get_playback_position()` puts it about a second behind (GDT-256 saw 0.85 s). Re-aligning from the reported positions made it worse: a stem placed from the game clock landed 85 ms off, and a "correction" computed from the two players' reported positions moved it to +40 ms.
+
+Read from the exported `index.js` and `index.audio.position.worklet.js`, and measured by wrapping `AudioBufferSourceNode.prototype.start` in an init script (it records `ctx.currentTime` and the offset of every start):
+
+- Every `play()` creates a `SampleNode` whose position worklet gets `reset.setValueAtTime(1, now)` and `setValueAtTime(0, now + 1)`. For that first second the reported position is the start offset; afterwards it counts from zero. So the report trails the audible position by about 1 s until the next `play()`/`seek()`. Two players started together both trail by the same amount, so their difference is still meaningful.
+- Reports arrive by `postMessage` from the audio thread. Two players started in the same frame (identical start time and offset) read 3.392 s and 3.467 s at the same moment once, under load. A drift check built on reported positions on the Web needs a tolerance above 75 ms.
+- `start()` is called in a microtask after `await audioPositionWorkletPromise`, which runs at the end of the frame's JS task. Players that `play()` in the same frame start at the same `ctx.currentTime` (recorded 4.21333 s and 4.21333 s, same offset). Audible error: 0.00 ms in every one of 5 runs.
+- `register_stream_as_sample()` always builds a 2-channel buffer (`numberOfChannels = 2` is hard-coded in `godot_audio_sample_register_stream`). A mono OGG costs the same Web memory as stereo. Shipping a stem as mono only shrinks the download.
+- Hand looping per GDT-256 (loop off; on `finished`, `play()` the music and its stems in one frame) worked: restarts at the same context time and offset, with gaps of 69-141 ms between the end and the restart (6 loops). The engine's own loop restart on an unlayered track measured 32-123 ms (3 loops) under the same load.
+
+**해결:** On the Web, start a stem only in the frame its music starts or restarts (`play()` both, same offset), and never place it from a reported position or from the game clock. If the stem arrives late (download), let it join at the next hand-looped restart. Natively, positions are exact, and `seek(music.get_playback_position())` re-aligns a stem (GDT-265). Related: GDT-097, GDT-256.
+
+## GDT-264 — Web export Sample playback: a looping sample that was started with `play(from)` or `seek()` loops back to that offset, not to 0
+
+`측정 2026-10-05 · Godot 4.7.2-stable Web export (no threads, default Sample playback) · headless Brave 1.96`
+
+**증상:** `SampleNode._restart()` (the `ended` handler for `loopMode` `forward`) calls `this._source.start(this.startTime, this.offset + pauseTime)`. `this.offset` is the offset the node was created with, meaning the `from` of `play(from)` or the target of `seek()`. A 60 s looping track that was `seek(58.0)`'d restarted at 58.0 s: the recorded `start()` calls show offset 58.0 twice, 2.04 s apart. It then loops the last 2 s forever. Natively the same stream loops back to `loop_offset`.
+
+**해결:** On the Web, do not `seek()` or `play(from > 0)` a stream that relies on its own loop flag. Either always start loops from 0, or loop by hand: loop flag off, and `play()` again on `finished` (GDT-256).
+
+## GDT-265 — Comparing two `AudioStreamPlayer` positions natively shows one mix buffer (11.6 ms) of phantom drift unless read under `AudioServer.lock()`
+
+`측정 2026-10-05 · Godot 4.7.2-stable, --headless (Dummy audio driver, 44.1 kHz) on the M1 Air`
+
+**증상:** a music track and its stem were started in the same frame and kept in step by a drift check, `layer.get_playback_position() - music.get_playback_position()`. Read every frame, it reported up to 11.6 ms of drift (512 frames, one mix buffer) in 290 samples, although both play from the same mixer. The mixer thread had updated one playback and not yet the other.
+
+Also measured in the same run: under the headless Dummy driver the positions do advance in real time (0.003 s to 1.025 s in 1.2 s). Natively, `seek(music.get_playback_position())` on the stem re-aligned an injected 203 ms offset to 2.9 ms. Two OGGs with the same sample count, both `loop = true`, stayed at 0.0 ms across the loop point.
+
+**해결:** Wrap the two reads in `AudioServer.lock()` / `AudioServer.unlock()`. With the lock the same check read 0.0 ms over 285 frames. One check per second is cheap enough.
