@@ -6406,3 +6406,31 @@ gradient reference paints nothing.
 **해결:** give the component an id prefix prop (`ids="gate"` → `id={`${ids}-r1`}` and `fill={`url(#${ids}-r1)`}`)
 so every instance on a page has unique ids. Look for this whenever a reused SVG component suddenly loses fills,
 masks, clip paths or filters after another copy appears on the page.
+
+## OPS-322 — `wrangler deploy` fails at `assets-upload-session` with code 10013; running the same deploy again succeeds
+
+`측정 2026-10-05 · wrangler 4.125 · Astro 7 + @astrojs/cloudflare 14 (Workers with static assets)`
+
+**증상:** `npm run deploy` (data Worker, then build, then `wrangler deploy --config dist/server/wrangler.json`) stopped
+at the site Worker with `A request to the Cloudflare API (/accounts/…/workers/scripts/<name>/assets-upload-session)
+failed. An unknown error has occurred … [code: 10013]`. The step before it (another Worker's deploy) had succeeded,
+so the release was half done.
+
+**해결:** do not rebuild or touch credentials. Run only the failed step again from the same tree,
+`npx wrangler deploy --config dist/server/wrangler.json`; it uploaded and printed a new `Current Version ID` on the
+first retry. Treat 10013 on the asset upload session as transient, like D1's 7403 (OPS-210).
+
+## OPS-323 — Astro 7 Cloudflare dev server answers every page with `Cannot read properties of undefined (reading 'get')` after a whole-tree sync
+
+`측정 2026-10-05 · astro 7.3.3 · @astrojs/cloudflare 14.3 · `astro dev` on macOS (MacBook Air test host)`
+
+**증상:** after `rsync -az --delete ./ host:copy/` of the whole project into the folder a running `astro dev` serves,
+the server logged `Configuration file updated. Restarting...` and then every request failed with
+`[ERROR] [vite] Internal server error: Cannot read properties of undefined (reading 'get')` at
+`getComponentByRoute (astro/dist/core/environment/dev-nonrunnable.js)`. Pages that loaded fine a minute earlier
+returned 500 (a Playwright script saw only missing elements). Editing single files did not cause it; the sync touched
+`tsconfig.json` and `.env`, which force a full restart. Syncing a `.claude/worktrees/*` folder along with the tree
+made it worse: Vite also watched those copies' tsconfig files.
+
+**해결:** after a whole-tree sync, stop the dev server and start it again (`pkill -f "port <n>"; npm run dev -- --port
+<n>`), then wait for a 200 before testing. Exclude `.claude` from the sync.
