@@ -6625,7 +6625,12 @@ ssh에서 Playwright로 Brave와 Playwright 번들 Chromium을 각각 headless/h
 `currentTime`은 0.005초만 증가했다. 기본 출력 장치(MacBook Air 스피커)는 존재하고 `coreaudiod`도 떠 있다.
 
 **해결:** 이 호스트에서 오디오 라이브 타이밍 검사는 신호로 쓰지 않는다. 소리 품질·클리핑·길이는 오프라인 렌더로
-검증하고, 라이브 박자 동기화는 실시간 클록이 흐르는 기계에서 확인한다. 원인(ssh 세션의 오디오 출력 권한 등)은 미확인.
+검증하고, 라이브 박자 동기화는 실시간 클록이 흐르는 기계에서 확인한다.
+
+**원인 (2026-10-05 대표님 확인):** Air에 설치된 방화벽 LuLu(Objective-See, \`/Applications/LuLu.app\`, 시스템 확장
+\`com.objective-see.lulu.extension\`)였다. 허용 여부를 묻는 창이 Air 화면에 뜨고, 응답하기 전까지 막힌다. ssh로는 그 창을
+볼 수 없다 — ssh 세션의 \`screencapture -x\`는 \`could not create image from display\`로 실패한다. 라이브 오디오가
+멈추면 Air 화면의 LuLu 알림부터 확인한다.
 
 ## OPS-334 — Brave는 JavaScript로 쓴 쿠키의 만료를 약 6개월로 줄인다 (365일로 써도 181일)
 
