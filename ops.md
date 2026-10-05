@@ -6779,3 +6779,18 @@ opened the site's login page, and the click on "Google로 로그인" (which open
 clicked, and the site session is set (`SIGNED_IN`). Cookies land in the same profile, so later headless page checks
 are signed in. Keep headed for checks that need it (some engines behave differently headless, e.g. AGT-100) and retry
 it when the Air is less loaded.
+
+## OPS-344 — ffmpeg loudness of short sound effects: integrated LUFS reads -70 under 0.4 s; use max momentary on padded input
+
+`측정 2026-10-05 · ffmpeg 9.0.1 (Homebrew, macOS 27)`
+
+**증상:** `ffmpeg -i x.wav -af ebur128=peak=true -f null -` prints `I: -70.0 LUFS` for every effect shorter than
+about 0.4 s (UI ticks, footsteps, a 0.27 s light hit), so they cannot be compared with longer effects. For effects of
+0.5-2 s the integrated value is gated and skewed by the tail, too. Separately, this ffmpeg build has no `drawtext`
+filter (`No such filter: 'drawtext'`), so labels cannot be burned into `showspectrumpic` images.
+
+**해결:** pad and take the loudest momentary (400 ms) value:
+`ffmpeg -nostats -i x.wav -af "apad=pad_dur=0.5,ebur128" -f null - 2>&1 | grep -oE "M: *-?[0-9.]+" | awk '{print $2}' | sort -g | tail -1`.
+That gives a number for every file (a 0.03 s tick reads -25.7) and ranks a game's effects as heard; compare it plus
+each file's mixer trim to set trims. For spectrogram sheets, number the images in file order and keep the key in
+text: `showspectrumpic=s=480x200:legend=0:scale=log` per file, then `-pattern_type glob -i '[0-9]*.png' -filter_complex tile=4x5`.
