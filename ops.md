@@ -6678,3 +6678,21 @@ Measured: the old client's code (the commit the store build came from) was run h
 **증상:** a deploy script called `compose.deploy`, slept 5 s, read `compose.one` and stopped at the first `composeStatus == "done"`. It printed "deployment completed" and its health checks passed, but `docker ps` still showed the previous release's image tags and the public files kept the old `last-modified`. The queued deployment started about a minute later (its log file `/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log` appeared then) and only then were the containers replaced. `composeStatus` is the state of the last deployment that ran, not of the one just queued, so the first poll read the previous release's "done".
 
 **해결:** give each deployment a unique `title` in `compose.deploy` and poll `GET deployment.allByCompose?composeId=<id>` for the record with that title; finish on its `status` (`done` / `error`). After any deploy, check the running image tag (`docker ps --format '{{.Image}}'`) or the public file's `last-modified` before calling it live. Related: OPS-249 (the queue can also delay the start by minutes).
+
+## OPS-338 — A slow download from misa measured on the office Macs is the office's path to Korea: busan and oregon pull the same file at 10.3 and 3.7 MB/s
+
+`측정 2026-10-05 · farm.mnori.com (nginx on misa, Korea, cubic congestion control) · developer Mac and test Mac (Air) on 192.168.0.x, egress 71.211.129.31 (US) · busan, oregon`
+
+**증상:** production browser tests timed out waiting for a 22 MB web game. `curl` of the 11 MB `index.pck` from the developer Mac read 0.11-0.15 MB/s in three runs; from the Air 0.16-0.36 MB/s. On misa itself (`--resolve` to 127.0.0.1) the same file came at 22.9 MB/s, and misa's NIC was idle.
+
+The same `curl` from other hosts:
+
+| From | Throughput | RTT to misa |
+|---|---|---|
+| busan (Korea) | 10.3 MB/s (1.1 s) | — |
+| oregon (US West) | 3.7 MB/s (3.1 s) | 133 ms, 0.6 ms jitter |
+| office Macs (US) | 0.11-0.36 MB/s | 160-235 ms, 24 ms jitter |
+
+It is not misa: `ssh busan 'head -c 8000000 /dev/urandom' > /dev/null` from the developer Mac took 141 s (57 KB/s), so the office's path to Korea is slow for any host, while the same Mac pulled a jsDelivr file at 1.7 MB/s. The traceroute leaves through 207.225.112.3 / 63.225.124.17 (Lumen) and reaches Korea Telecom (112.174.x) at hop 7.
+
+**해결:** judge a Korean origin's speed from `busan` (or `oregon` for a far client), not from the office Macs. Give production browser tests run from the office a load timeout of minutes (the farm tests use 6 minutes for 22 MB). OPS-301 measured an origin "sending 0.1-0.2 MB/s to the internet" with a client in the same situation; check its origin from busan before relying on that number.
