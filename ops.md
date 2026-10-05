@@ -6635,5 +6635,5 @@ ssh에서 Playwright로 Brave와 Playwright 번들 Chromium을 각각 headless/h
 `context.cookies()`로 읽으면 `expires`가 지금부터 181일 뒤다. Chrome 기준으로 "만료 365일"을 단언하던 테스트가
 Brave로 바꾼 뒤 이 항목 하나만 실패했다(나머지 1,464개 통과).
 
-**해결:** 브라우저 테스트에서 쿠키 수명은 "≥ 180일" 또는 "값·path·SameSite 확인"으로 단언한다. 1년을 정말 보장해야 하면
-서버가 `Set-Cookie` 헤더로 쓴다(이 상한은 스크립트로 쓴 쿠키에 걸린다).
+**해결:** 브라우저 테스트에서 쿠키 수명은 "≥ 180일" 또는 "값·path·SameSite 확인"으로 단언한다. 서버 `Set-Cookie` 헤더로 쓴 쿠키도 같은 상한을 받는지는
+재지 않았다.
