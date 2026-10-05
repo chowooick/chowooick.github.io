@@ -6968,3 +6968,30 @@ Worker 쪽에는 D1의 `prepare/bind/first/all/run/batch`만 HTTPS로 흉내 내
 기록은 `waitUntil` 안에서 보내므로 호스트가 느려도 페이지는 늦어지지 않는다. 기존 데이터는 `wrangler d1 export <db> --remote --no-schema`로 옮겼다(1만 4천 행, 3.5 MB).
 위 메일을 받고 약 15분 뒤에도 `wrangler d1 export`와 `d1 execute --remote`(HTTP API)는 정상으로 응답했다. Worker 바인딩 읽기가 그때 실제로 실패했는지는 확인하지 못했다.
 결제가 가능하면 Workers Paid(/월, 월 250억 행)가 즉시 복구하는 유일한 방법이다.
+
+## OPS-354 — Workers AI neurons per day and per model come from GraphQL `aiInferenceAdaptiveGroups` with the wrangler login token; a 2,000-token Korean report costs 200-240 neurons on gpt-oss-120b
+
+`측정 2026-10-05 · Cloudflare GraphQL Analytics API · wrangler 4.135 OAuth token (`npx wrangler auth token`) · Workers Free`
+
+**증상:** planning a new Workers AI job on the free plan (10,000 neurons a day, 4006 when spent) needs the account's real daily use, which the dashboard shows only as a chart.
+
+```
+POST https://api.cloudflare.com/client/v4/graphql   (Authorization: Bearer <wrangler auth token>)
+{ viewer { accounts(filter:{accountTag:"<acct>"}) {
+    aiInferenceAdaptiveGroups(limit:100, filter:{datetime_geq:"2026-09-28T00:00:00Z"}, orderBy:[date_ASC]) {
+      sum { totalNeurons } count dimensions { date modelId } } } } }
+```
+
+It answered per UTC day and model (calls and neurons). The kyomincenter account used 2,505-11,635 neurons a day in the week measured. A Workers AI REST call's result carries `usage.neurons` for gpt-oss-120b; for one report-style JSON article (1,300-2,050 prompt tokens, 2,200-2,950 completion tokens, `reasoning.effort: low`) it was 196-241 neurons, which matches $0.35 and $0.75 per million tokens at $0.011 per 1,000 neurons. 215 bge-m3 embeddings in batches of 50 cost 18 neurons.
+
+**해결:** read the last week from GraphQL before giving a new job a budget, and schedule a job that may only spend the leftovers after the day's last fixed run (the quota resets at 00:00 UTC). When `usage.neurons` is missing from a binding result, the token formula above gives the same number.
+
+## OPS-355 — Resend: a second sending domain was accepted on the free plan; the API key dialog's Add stays disabled when the name is set with `fill()`
+
+`측정 2026-10-05 · resend.com dashboard (Google sign-in) · free plan (3,000 transactional emails a month) · Playwright in Brave`
+
+**증상:** the account already had one verified domain (withthebible.com) and no payment method. Adding kyomincenter.com through 도메인 추가 succeeded (`trpc/domains.create` → `status: created`, region us-east-1); after its DKIM TXT and the `send`/`rsend` DNS-only CNAMEs went into Cloudflare (OPS-110), it showed **Verified** about 30 minutes later, and a send from `contact@kyomincenter.com` through the batch API showed **Delivered** to Gmail. The zone's existing `_dmarc` (p=quarantine) and Email Routing MX records were left as they were.
+
+In the "Add API Key" dialog, `locator('input').fill(name)` put the text in the field, but the Add button stayed disabled until the name was typed with `page.keyboard.type()`. The new key appears once, in the `trpc/apiKeys.create` response, as `re_…`.
+
+**해결:** add the domain to the existing account instead of making a new one. Type the key name with the keyboard, choose Permission → Sending access, and read the key from the create response straight into a 0600 file, then into `wrangler secret put`, without printing it.
