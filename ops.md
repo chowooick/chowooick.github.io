@@ -6637,3 +6637,24 @@ Brave로 바꾼 뒤 이 항목 하나만 실패했다(나머지 1,464개 통과)
 
 **해결:** 브라우저 테스트에서 쿠키 수명은 "≥ 180일" 또는 "값·path·SameSite 확인"으로 단언한다. 서버 `Set-Cookie` 헤더로 쓴 쿠키도 같은 상한을 받는지는
 재지 않았다.
+
+## OPS-335 — Playwright `page.clock.runFor(ms)` stops after about 1000 timers: a `requestAnimationFrame` loop advances only ~16 s per call
+
+`측정 2026-10-05 · @playwright/test 1.63 · Brave 1.96 (Chromium 154) · macOS`
+
+**증상:** A page counts down with a `requestAnimationFrame` loop (adds `now - last` each frame and acts at 34 s). In a test, `await page.clock.install()` then `await page.clock.runFor(61_000)` returned without error, but the page had only advanced about 15 s (its own label read "19초" left of 34). Five-second calls (`runFor(5000)`) each advanced exactly 5 s.
+
+Fake rAF fires every 16 ms, so one long `runFor` hits the fake-timers loop limit (about 1000 timer callbacks) and silently stops early. Short notices pass (they finish inside ~16 s), so the bug shows only for longer waits.
+
+**해결:** Advance in steps of a few seconds. When the countdown navigates, stop stepping once the URL changes; a `runFor` in progress during navigation throws `Target page, context or browser has been closed`:
+
+```ts
+async function advance(page, ms) {
+  const from = page.url();
+  for (let left = ms; left > 0 && page.url() === from; left -= 5000) {
+    try { await page.clock.runFor(Math.min(5000, left)); } catch (e) { if (page.url() === from) throw e; }
+  }
+}
+```
+
+Running a minute of fake time frame by frame also takes real time (about 20–40 s per minute on an M1 Air), so raise that test's timeout (`test.setTimeout(150_000)`).
