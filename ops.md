@@ -6966,7 +6966,7 @@ moment it lands on another runner: switch such jobs to the public URL before or 
 **해결:** 원본 행을 읽을 때마다 집계하는 통계는 D1 무료 계정에 두지 않는다. 이번에는 SQLite 파일 하나를 자체 호스트(Dokploy Traefik 뒤 node:sqlite 컨테이너)로 옮겼다.
 Worker 쪽에는 D1의 `prepare/bind/first/all/run/batch`만 HTTPS로 흉내 내는 작은 어댑터를 두어 SQL을 한 줄도 바꾸지 않았다(batch는 서버에서 한 트랜잭션).
 기록은 `waitUntil` 안에서 보내므로 호스트가 느려도 페이지는 늦어지지 않는다. 기존 데이터는 `wrangler d1 export <db> --remote --no-schema`로 옮겼다(1만 4천 행, 3.5 MB).
-위 메일을 받고 약 15분 뒤에도 `wrangler d1 export`와 `d1 execute --remote`(HTTP API)는 정상으로 응답했다. 같은 시각 Worker 바인딩 읽기는 실패했다(23:00 UTC Workflow 실행이 남긴 오류 원문: `D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue.`). 그래서 잠긴 동안에도 `wrangler d1 export`로 데이터를 꺼내 다른 곳으로 옮길 수 있다(OPS-354).
+위 메일을 받고 약 15분 뒤에도 `wrangler d1 export`와 `d1 execute --remote`(HTTP API)는 정상으로 응답했다. 같은 시각 Worker 바인딩 읽기는 실패했다(23:00 UTC Workflow 실행이 남긴 오류 원문: `D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue.`). 그래서 잠긴 동안에도 `wrangler d1 export`로 데이터를 꺼내 다른 곳으로 옮길 수 있다(OPS-358).
 결제가 가능하면 Workers Paid(/월, 월 250억 행)가 즉시 복구하는 유일한 방법이다.
 
 ## OPS-354 — Workers AI neurons per day and per model come from GraphQL `aiInferenceAdaptiveGroups` with the wrangler login token; a 2,000-token Korean report costs 200-240 neurons on gpt-oss-120b
