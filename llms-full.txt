@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T15:54:49Z · 소스 커밋 `9763666` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T16:50:21Z · 소스 커밋 `c9947b8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14355,4 +14355,28 @@ and asked for the Developer disk image. `xcrun devicectl list devices` listed th
 PNG (2048×1536 landscape) with no extra setup. To open a page in Safari first:
 `xcrun devicectl device process launch --device <UDID> --payload-url 'https://…' com.apple.mobilesafari`.
 `devicectl device capture screen-record` exists as well. Taps still need XCUITest/WebDriverAgent; this covers looking.
+
+## OPS-326 — Google Chrome can vanish from the Air: Playwright's `channel: 'chrome'` then fails, and the bundled Chromium (headless, `--use-angle=metal`) runs a Godot web build instead
+
+`측정 2026-10-05 · MacBook Air M1 (macOS 27) · Playwright 1.62.1 · Chrome for Testing 151.0.7922.34 (playwright chromium v1234) · Godot 4.7.2 web export`
+
+**증상:** a browser check that had passed half an hour earlier failed at launch with
+`browserType.launch: Chromium distribution 'chrome' is not found at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
+`/Applications` on the Air no longer had Google Chrome at all (Brave, Safari and CleanMyMac were there), within the same hour
+in which the Air's free space went from 144 MiB to 76 GiB and the machine restarted. Nothing in the knowledge base said who
+removed it, so it was not reinstalled. The cached `~/Library/Caches/ms-playwright/chromium-1243` did not help either: a
+`chromium.launch()` without a channel asked for revision 1234 for Playwright 1.62.1 and refused to start
+(`npx playwright install`). Headed bundled Chromium then failed with `CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670`
+while the Air's display was off.
+
+**해결:** `npx playwright install chromium` in the project (179 MiB Chrome for Testing + 95 MiB headless shell, user
+cache only, no sudo), then launch it headless with Metal ANGLE: `chromium.launch({ args: ['--use-angle=metal'] })`. A whole
+Godot 4.7.2 web match (`button`'s `web_play.mjs`, real mouse clicks, WebGL2) passed that way with a clean console. Say in the
+report that the browser check ran in bundled Chromium, not system Chrome. A test that needs the signed-in Google profile
+(`~/kc-test/profile`) still needs real Chrome; check `ls /Applications | grep -i chrome` before blaming the page.
+
+The same morning the Air's data volume reached 100 % (144 MiB free) and an `rsync` of a working tree failed with
+`write: No space left on device`. The cheapest safe space was each project's own build output synced from this Mac:
+`godot/android/build/build` alone was 654 MiB. Exclude Gradle and export output from the rsync (`--exclude godot/android`)
+and delete only your own project's copy on the Air.
 
