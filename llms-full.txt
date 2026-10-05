@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T21:07:10Z · 소스 커밋 `1f415a9` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T21:21:37Z · 소스 커밋 `02efe79` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -946,6 +946,24 @@ the same run.
 
 **해결:** exclude `Error registering Prometheus metric` when counting errors after a deploy, then look at what is
 left. Judge the module by its own load line and an end-to-end call, not by an error count that includes this.
+
+## NKM-043 — Measure a Nakama JavaScript module's CPU cost offline with a 20-line goja runner; Node timings are not goja timings
+
+`측정 2026-10-05 · github.com/dop251/goja (latest) · Apple M1 under load · a 2,300-line ES5 rules module with CPU players`
+
+**증상:** CPU-player code that took about 1 ms per decision under Node ran in Nakama's goja interpreter, where nobody had numbers. Production RPC timings mix in network and storage and cannot show the module's share.
+
+**해결:** build a runner on the module itself. It loads unchanged when it ends with `if (typeof module !== "undefined") module.exports = X`, because goja has no `module`:
+
+```go
+vm := goja.New()
+vm.Set("nowNs", func() int64 { return time.Now().UnixNano() })
+vm.Set("print", func(s string) { fmt.Println(s) })
+vm.RunString(moduleSource)   // defines the global
+vm.RunString(harnessSource)  // plays matches, times each call
+```
+
+`go get github.com/dop251/goja`, then `GOOS=darwin GOARCH=arm64 go build` gives a 14 MB binary that can be copied to the test host. Measured on the same harness (three CPU players, a scripted human, time per call that runs the CPUs up to the human's next decision): mean 50–67 ms, p95 240–375 ms, max 0.5–0.9 s in goja, about 1.5–2.5 times the previous, simpler CPU, while the same work under Node took about 1 ms per decision. The host's load swung the goja maxima by about 30% between runs, so compare old and new modules in the same run. The production check afterwards (end-to-end action latency) moved by much less than goja's own numbers suggest: p50 397 ms against 390 ms, p95 787 ms against 614 ms, because network and storage dominate.
 
 ---
 
@@ -6010,6 +6028,14 @@ Keeping the SVG as a GDScript string constant and rasterising it on layout gives
 
 **해결:** store the art as a generated constant (a build script writes both the `.svg` files and the `.gd`), rasterise on `resized`, and only re-rasterise when the pixel count changes. For per-letter animation of a wordmark, rasterise the whole word once and draw each letter with `draw_texture_rect_region` from its own horizontal slice; the letters' ink spans do not overlap, so no slice takes a neighbour's edge. Related: GDT-246.
 
+## GDT-269 — Exponential fog tuned on a landscape preview washes a board out on the phone-portrait camera, which sits farther back
+
+`측정 2026-10-05 · Godot 4.7.2 · Compatibility (GL) · Environment fog (exponential) with aerial perspective 0.35`
+
+**증상:** a floating board got per-map themes (fog colour and density among them). Landscape previews (960 × 560, camera fitted to the board) looked right at `fog_density` 0.006–0.011 with a light lilac or pale-blue `fog_light_color`. In the match on a 390 × 844 portrait view the same board was nearly white: the portrait camera fits the board's width, so it stands about twice as far away, and exponential fog grows with distance. A bright fog colour made it worse than the original warm, darker one at the same density.
+
+**해결:** check every theme in a portrait view, not only the preview. Here densities of 0.0035–0.005 with darker fog colours (`6f5f9a` instead of `b9a8e0`) kept both views readable. A coloured light rig has the same trap: a red sun and red fill on a volcano map turned every element-coloured tile orange; a near-white sun with a cool, weak fill kept the tiles readable and the lava still glowing.
+
 ---
 
 <!-- source: agents.md -->
@@ -8040,6 +8066,21 @@ docs의 기존 값(Mac 헤드리스 Chrome, WASM 1스레드, 저장 모델로 �
 
 **해결:** 첫 듣기는 진행 막대와 크기(398MB)를 보여 주고, 두 번째부터는 "음성 준비 중" 상태를 10초 남짓 보여 준다.
 페이지 이동 없이 이어 듣게 하면(SPA·같은 페이지 큐) 4–5초로 줄어든다.
+
+---
+
+## AGT-101 — A test tree rsynced from the shared working tree carries other sessions' uncommitted edits: e2e failures there may not be yours
+
+`측정 2026-10-05 · Claude Code, several sessions on one repository · Playwright on the test host`
+
+**증상:** a session rsynced the shared working tree to the test host and ran the e2e suite for its change. A briefing
+test it had not touched failed on every run. The tree had picked up another session's half-finished edits to that page
+(uncommitted at the moment of the rsync); `git archive HEAD` of the same repository, synced to a second folder, passed
+the test. Minutes later that session committed a different version of the same files.
+
+**해결:** test what you will ship. Commit your change, `git worktree add --detach <dir> HEAD`, and sync that folder
+(or `git archive <commit> | ssh host tar -x`) to the test host; deploy from the same worktree (AGT-084). To tell an
+existing failure from yours, run the failing test against a tree of the base commit before changing anything.
 
 ---
 
@@ -14810,4 +14851,35 @@ So the 401 is not a missing wrangler OAuth scope alone: the account itself is no
 - **Resend webhook** (`/webhooks` → `Add webhook`): the event picker is a base-ui popup whose inert overlay intercepts every click outside it, including the dialog's own labels; `Escape` closes only the popup, not the dialog. The signing secret on the webhook page is masked until its `Show value` button is clicked.
 
 **해결:** read each value inside the same script that creates it, write it straight to a 0600 file on the Air, copy it to the deploy host over ssh and delete the file; never print it. For Google, poll from the moment of the click. Keep each script idempotent-safe: a second "Add secret" run after a lost value creates a second secret instead of failing.
+
+---
+
+## OPS-343 — Headed Brave (Playwright persistent profile) dies on the click that opens Google sign-in; the same script headless signs in
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · playwright-core · macOS on MacBook Air M1, load average ~100`
+
+**증상:** `chromium.launchPersistentContext('~/kc-test/profile', { executablePath: <Brave>, headless: false, ... })`
+opened the site's login page, and the click on "Google로 로그인" (which opens the Google popup) failed with
+`locator.click: Target page, context or browser has been closed`, twice in a row. The browser log shows only a crashpad
+`mach_vm_read ... (os/kern) invalid address` warning. No other process held the profile.
+
+**해결:** run the same sign-in with `headless: true`. The account chooser appears in the popup, `[data-email=...]` is
+clicked, and the site session is set (`SIGNED_IN`). Cookies land in the same profile, so later headless page checks
+are signed in. Keep headed for checks that need it (some engines behave differently headless, e.g. AGT-100) and retry
+it when the Air is less loaded.
+
+## OPS-344 — ffmpeg loudness of short sound effects: integrated LUFS reads -70 under 0.4 s; use max momentary on padded input
+
+`측정 2026-10-05 · ffmpeg 9.0.1 (Homebrew, macOS 27)`
+
+**증상:** `ffmpeg -i x.wav -af ebur128=peak=true -f null -` prints `I: -70.0 LUFS` for every effect shorter than
+about 0.4 s (UI ticks, footsteps, a 0.27 s light hit), so they cannot be compared with longer effects. For effects of
+0.5-2 s the integrated value is gated and skewed by the tail, too. Separately, this ffmpeg build has no `drawtext`
+filter (`No such filter: 'drawtext'`), so labels cannot be burned into `showspectrumpic` images.
+
+**해결:** pad and take the loudest momentary (400 ms) value:
+`ffmpeg -nostats -i x.wav -af "apad=pad_dur=0.5,ebur128" -f null - 2>&1 | grep -oE "M: *-?[0-9.]+" | awk '{print $2}' | sort -g | tail -1`.
+That gives a number for every file (a 0.03 s tick reads -25.7) and ranks a game's effects as heard; compare it plus
+each file's mixer trim to set trims. For spectrogram sheets, number the images in file order and keep the key in
+text: `showspectrumpic=s=480x200:legend=0:scale=log` per file, then `-pattern_type glob -i '[0-9]*.png' -filter_complex tile=4x5`.
 
