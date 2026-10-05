@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T06:43:22Z · 소스 커밋 `0ba9e2a` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T06:57:38Z · 소스 커밋 `fb5d3ab` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5819,6 +5819,16 @@ Search a project for `frame_post_draw` before running its real UI flow headless;
 **증상:** a game built on SpacetimeDB (reducers + subscribed tables + row signals) had to become single player with no server. The world, duel screen and UI were written against the client cache's semantics: a reducer's effect arrives frames later, all at once, `row_updated(old, new)` per row, `callback(ok, err)` after, and a `warp` counter in the pose row to tell "snap" from "smooth". Applying writes immediately and synchronously would reorder these flows (zone-change loading sign, dialogue → story action → end card) and re-enter world code mid-write.
 
 **해결:** keep the same shape locally. `act(name, args, callback)` queues the call and runs it with `call_deferred` (end of the frame); the action writes rows through `_put/_insert/_delete`, which log `[table, key, old, new]` and never mutate a stored row in place (always `duplicate()`, so the old row handed to a signal stays intact). On a returned error string the log is rolled back in reverse (a reducer `Err`); on success the log is collapsed to the first old and last new row per key and emitted as insert/update/delete, then `transaction_applied`, then the callback. Ticks (`combat 50 ms`, `enemy 200 ms`, `world 1 s`) are the same functions driven from `_process` and committed the same way. Keep the facade's API (accessors, signals, wire codes) so gameplay code only needs `Net.` → `Game.`. Result: the existing 7-case end-to-end test, adapted only for removed online checks plus a save/reload, passed 468 PASS / 0 FAIL on the first full run (about 19 min). Saves: `JSON.stringify(JSON.from_native(data))` / `JSON.to_native(JSON.parse_string(text))` keep ints as ints (plain JSON turns every id into a float). Use a game clock (`base + ticks - origin`, frozen while paused) for every `*_ms` field instead of unix time, so meters, deadlines and the save survive pauses and restarts.
+
+## GDT-254 — CSV translations are imported next to the CSV (`*.<lang>.translation`), not into `.godot/`: syncing a tree that skips only `.godot` ships stale tables, and the game shows raw keys while a CSV-reading test passes
+
+`측정 2026-10-05 · Godot 4.7.2 · rsync from a dev Mac to a test Mac`
+
+**증상:** new keys added to `client/i18n/ui.csv`, the project imported on the test machine, then the tree was rsynced again from the dev machine (excluding `.godot`). Windowed captures showed `MENU_CONTINUE` and `CONFIRM_NEW_TITLE` as literal text. A string-table test that parses the CSV itself passed (15,849 checks, 0 failures), so nothing failed.
+
+The CSV importer writes `ui.en.translation`, `ui.ko.translation`, … beside `ui.csv` (projects usually gitignore them). Those files belonged to the dev machine's last import, a day old; rsync saw them differ and overwrote the fresh ones.
+
+**해결:** exclude `*.translation` (with `.godot/`) from any tree sync, or run `godot --headless --path <project> --import --quit` after every sync and before captures or exports. A test that only reads the CSV does not prove the game shows the text; check a capture, or load the `.translation` resources in the test. Separately, on the Web export, `DirAccess.remove_absolute()` on a `user://` file reached IndexedDB at once: the `FILE_DATA` record was gone when read right after, and a reload found no file.
 
 ---
 
