@@ -6739,3 +6739,27 @@ A deep link such as `dash.cloudflare.com/<acct>/<zone>/email/dmarc-management` o
 So the 401 is not a missing wrangler OAuth scope alone: the account itself is not let into Email Sending yet. The dashboard's "이메일 전송 (베타)" menu item exists on the zone; its page rendered empty.
 
 **해결:** do not plan a launch mail on Email Sending without first getting a 200 from `GET /zones/:id/email/sending/subdomains`. Keep a sender that works today as the fallback (Resend free plan, OPS-104) and set SPF, DKIM and DMARC for whichever one sends.
+
+---
+
+## OPS-341 — `hugo --minify` drops the space next to a `<br>`: a desktop-hidden `<br class="mobile-break">` glues two words together
+
+`측정 2026-10-05 · Hugo 0.166.0 (`--minify`) · i18n string with an inline `<br>`, `.mobile-break { display: none }` above the mobile breakpoint`
+
+**증상:** an i18n string written as `"성경 속 한 사람을<br class=\"mobile-break\"> 역사·종교…"` (space after the `<br>`) rendered on desktop as `한 사람을역사·종교…`. Moving the space before the tag (`사람을 <br …>역사`) gave the same result. The built HTML was `사람을<br class=mobile-break>역사`: the minifier removes whitespace on both sides of `<br>`, and once CSS hides the `<br>` nothing separates the words. Any site that uses this pattern has the bug on desktop without noticing it on a phone, where the `<br>` is visible.
+
+**해결:** do not rely on a space next to a hideable `<br>`. Let the line wrap on its own (with `word-break: keep-all` for Korean), or put the second part in a `<span>` that becomes `display: block` on small screens and keep the space inside the span's text. Check the built HTML (`grep -o '...<br[^>]*>...' public/index.html`), not the template.
+
+---
+
+## OPS-342 — Taking secrets out of Google Cloud and Resend dashboards with Playwright: where each value is readable, and the clicks that block
+
+`측정 2026-10-05 · Google Cloud console (Korean UI) · Resend dashboard · Brave 154 via Playwright persistent profile on the Air`
+
+**증상:** three dashboard values were needed for a deploy (a Google OAuth client secret, a Resend API key, a Resend webhook signing secret) without printing them. Each one is readable at a different moment, and missing it costs a rotation.
+
+- **Google OAuth client, "Add secret"** (client page → 클라이언트 보안 비밀번호 → `Add secret`, aria-label `클라이언트 보안 비밀번호 추가`): the new value is visible only right after the click. A script that waited 6 s and then read the page text found only the masked `****eD5C` row; the value was gone for good ("더 이상 보거나 다운로드할 수 없습니다"). Polling the page text every 500 ms from the click, with a fallback to the row's copy button plus `navigator.clipboard.readText()` (grant `clipboard-read` for `https://console.cloud.google.com`), captured it on the next try. A client holds at most two secrets, so a lost one has to be deleted before retrying: `사용 중지` (aria-label `클라이언트 보안 비밀번호 사용 중지`, confirm dialog), then an **unlabeled** trash icon button on the same line as the masked value (find it by its vertical position), then a confirm dialog with `삭제`. Setting changes can take minutes; a fresh sign-in with the new secret worked within 1 minute of switching.
+- **Resend API key** (`/api-keys` → `Create API key`): the dialog has a name input and two comboboxes (permission, domain). After `Add`, the full `re_…` value is in the page text and can be read at once.
+- **Resend webhook** (`/webhooks` → `Add webhook`): the event picker is a base-ui popup whose inert overlay intercepts every click outside it, including the dialog's own labels; `Escape` closes only the popup, not the dialog. The signing secret on the webhook page is masked until its `Show value` button is clicked.
+
+**해결:** read each value inside the same script that creates it, write it straight to a 0600 file on the Air, copy it to the deploy host over ssh and delete the file; never print it. For Google, poll from the moment of the click. Keep each script idempotent-safe: a second "Add secret" run after a lost value creates a second secret instead of failing.
