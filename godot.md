@@ -5023,3 +5023,26 @@ Read from the exported `index.js` and `index.audio.position.worklet.js`, and mea
 Also measured in the same run: under the headless Dummy driver the positions do advance in real time (0.003 s to 1.025 s in 1.2 s). Natively, `seek(music.get_playback_position())` on the stem re-aligned an injected 203 ms offset to 2.9 ms. Two OGGs with the same sample count, both `loop = true`, stayed at 0.0 ms across the loop point.
 
 **해결:** Wrap the two reads in `AudioServer.lock()` / `AudioServer.unlock()`. With the lock the same check read 0.0 ms over 285 frames. One check per second is cheap enough.
+
+## GDT-266 — GDScript 4: `bool(null)` is a runtime error ("Nonexistent 'bool' constructor"), so `bool(settings.get(key))` on a key that was never written breaks the function; a method named `_set` is a parse error because it overrides `Object._set`
+
+`측정 2026-10-05 · Godot 4.7.2 · headless and windowed`
+
+**증상:** `if not bool(Settings.get_value("ui/seen_" + id)):` for a key with no default returned `null`, and every call printed `SCRIPT ERROR: Invalid call. Nonexistent 'bool' constructor.` and abandoned the rest of the function. Here that was the duel screen's `open()`, so the screen opened half set up. In a separate case, a preview script declared `func _set(fields: Dictionary) -> void:` and failed to parse with `The function signature doesn't match the parent. Parent signature is "_set(StringName, Variant) -> bool"`.
+
+**해결:** compare instead of converting: `get(key) != true`, or give the key a default. Do not name a helper `_set`, `_get`, `_init`, `_notification`, `_get_property_list` or another `Object` virtual. Separately, in a draw callback, draw only on the canvas item that is drawing: a helper that draws on a sibling `Control` while the HUD's `draw` signal runs prints `ERROR: Drawing is only allowed inside this node's _draw()...`, and a test gate that greps `^ERROR:` fails while every check passes. Pass the target canvas item into shared draw helpers.
+
+## GDT-267 — Balance a timing-based combat system with bots on a hand-driven clock: a game-time override plus `advance(ms)` runs a minute-long duel in milliseconds, and bot archetypes (skilled, average, masher) turn "too easy" into numbers a test can fail on
+
+`측정 2026-10-05 · Godot 4.7.2 headless · Air (M1)`
+
+**증상:** a parry/timing duel felt too easy, and nobody could say by how much. Real-time end-to-end runs take minutes per fight, and their timing depends on frame jitter.
+
+**해결:** route every game-time read through one `now_ms()` that returns `base + manual_ms` when a test sets `manual_ms >= 0`. Add `advance(ms)`: drain the queued actions, then step the clock in tick-sized increments, calling `_process(0)` and draining again each step. Add a `debug_duel(kind, case)` that skips range and story checks. Give each fight a fresh state node with gear and level set directly; 12 runs × 3 bots × 34 enemies finished in about a minute.
+
+Bots read the state's true blow time (that stands in for the player reading the telegraph) and add N(0, σ) timing error: skilled σ = 50 ms, average σ = 120 ms. The masher presses attack whenever ready and never guards. Assert targets: how many enemy attacks a fight lasts for the skilled bot, the average bot's win rate, the masher's win rate on late bosses, and HP lost by mashing against timing.
+
+The first table exposed three exploits that play-testing had hidden:
+- a masher randomly lands one strike per cycle in the "red" window, so penalising only early strikes is not enough; spoil the whole cycle after an early strike;
+- a "slow" part effect applied on every jab froze the enemy's meter;
+- "pull the meter forward on a jab" capped at 97 % moved an already-due blow later, so rapid jabs held it off for ever.
