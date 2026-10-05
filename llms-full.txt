@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T01:38:25Z · 소스 커밋 `19cad4e` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T02:24:48Z · 소스 커밋 `cb4c79f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7746,6 +7746,21 @@ take, splice in the other half from another take at matched speech loudness (12 
 3. Word score = mean log posterior of its pieces at their best frames, mapped to 0-100.
 
 With Supertonic-synthesized test sentences: correct sentences scored 88-100; "rum" for "room" 1-6, "frog" for "front" 21-27, "cat" for "car" 0; an unrelated word gave 0 on every word. About 0.06 s per sentence on an M1 including the model run. Leave digits unscored: the model writes spoken numbers as Chinese numerals (`二百零`) as often as English words.
+
+## AGT-094 — The Busan llama-server (EXAONE 4.0 32B, no `--jinja`) drops the system message and ignores `json_object`; put instructions in the user turn and send a `json_schema`
+
+`측정 2026-10-04 · llama.cpp b10766 · EXAONE-4.0-32B-Q4_K_M · busan.mac 192.168.139.3:8081 (--parallel 2 --cache-reuse 256, no --jinja) · Speak Out`
+
+**증상:** a judge prompt sent as `system` came back as a chatty assistant reply ("Got it! Since you're with Guest Services…"), and `usage.prompt_tokens` was 18-22, the size of the user line alone. `POST /apply-template` with a system and a user message renders only `[|user|]\nhello[|endofturn|]\n[|assistant|]\n<think>\n\n</think>\n\n`: **the system message is not in the prompt at all**, although `/props` shows a GGUF template that handles `system`. Rules that "the model ignores" in a system prompt (length limits, no markdown, see AGT-051 and AGT-054) may simply never have reached it on this server. `response_format: {"type": "json_object"}` is not enforced either: 2 of 2 replies came back as ```` ```json {…} ``` ````.
+
+**해결:** without restarting the shared server (restarting it needs the trpg/samantha owners' agreement):
+
+1. Put the instructions at the top of the user message (`{system}\n\n---\n\n{user}`). Check with `/apply-template` that they appear.
+2. Use `response_format: {"type": "json_schema", "json_schema": {"name": …, "schema": …}}` (or the top-level llama.cpp field `json_schema`). Both became a grammar and returned bare JSON in 4 of 4 calls.
+3. The grammar also fixes the order the fields are written in. Putting the notes before the corrected sentence and the items before the scores made a review's grammar score track its own corrections (80 in 3 of 3 runs, against 100 in 1 of 3 with scores first).
+4. For a judge-and-reply turn, one streamed request with the GBNF grammar `root ::= [0-3] "\n" line` gives the score as the first token and the reply right after. The first sentence arrived after 4.7-6.0 s, against about 7 s for a separate judge call followed by a reply call. Prompt reading dominates (~75 tok/s, ~12 tok/s generation). Narrowing the digit class in the grammar (`[23]` when a keyword rule already found the key phrase, `[01]` for a negation) fixed a misjudgment that a prompt hint did not ("It might be Kessler" kept scoring 1).
+
+Reaching it from outside Busan: the address only resolves inside the jupiter Mac and its OrbStack VM. A key on the VM limited to `restrict,port-forwarding,permitopen="192.168.139.3:8081"` with `ssh -N -L 127.0.0.1:18081:192.168.139.3:8081 -p 2222 chowooick@121.174.3.182` gives a tunnel that cannot open a shell or any other forward. Other forwards fail with `administratively prohibited`.
 
 ---
 
