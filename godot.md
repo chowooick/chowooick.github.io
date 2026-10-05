@@ -5082,3 +5082,15 @@ The `Input` singleton's action state is updated before the event is dispatched t
 **증상:** a capture harness that switches maps, waits 50–120 frames and saves `root.get_texture().get_image()` produced byte-identical PNGs for the first four shots of a batch (`md5` equal): all four showed the title screen with the map half-drawn behind it, although each shot had entered a different map and the log printed `CAPTURED` for each with no `SCRIPT ERROR`. In another batch the last shot was an exact copy of the one before it (wrong room, wrong boss name). The same shots captured one at a time a few minutes later were correct. Frame counting in `_process` keeps going while the window's presented image does not change, so "wait N frames" is not proof that a new frame was drawn.
 
 **해결:** after a batch, compare the hashes of consecutive shots (`md5 -q *.png`) and recapture any duplicates on their own, or run fewer shots per process when the host is busy. Do not trust a capture batch from a loaded machine without that check. Related: GDT-262.
+
+## GDT-272 — Godot 4.7 iOS export on a personal (free) Apple team fails with "Your team has no devices"; build the Xcode project it leaves behind against the USB device instead
+`측정 2026-10-05 · Godot 4.7.2 · Xcode 27.0 · iPad mini 5 (iPadOS 26.3.1) · personal team, 7-day profiles`
+
+**증상:** `godot --headless --export-debug iOS out.ipa` with `application/app_store_team_id` and `export_method_debug=1` writes the Xcode project, then its archive step stops with
+`error: Communication with Apple failed: Your team has no devices from which to generate a provisioning profile.` and
+`No profiles for '<bundle id>' were found`, then `ERROR: Project export for preset "iOS" failed.` The iPad was plugged in and `devicectl list devices` showed it `available (paired)`. Godot archives for a generic destination, so Xcode never registers the connected device to the team.
+
+**해결:** keep the `<name>.xcodeproj` the failed export wrote next to the .ipa path and build it yourself for the device:
+`xcodebuild -project <name>.xcodeproj -scheme <name> -configuration Debug -destination id=<UDID> -allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=<team> CODE_SIGN_STYLE=Automatic build`
+→ `BUILD SUCCEEDED`, the device is registered, and `xcrun devicectl device install app --device <UDID> <derivedData>/Build/Products/Debug-iphoneos/<name>.app` installs it.
+The first launch on that device still fails with `FBSOpenApplicationErrorDomain error 3`, "profile has not been explicitly trusted by the user", and the iPad shows "신뢰하지 않는 개발자". Trust is a tap on the device (Settings > General > VPN & Device Management > the Apple Development certificate > Trust); no `devicectl` command does it, and launching Settings with `--payload-url 'prefs:root=General&path=ManagedConfigurationList'` only lands under the untrusted-developer alert. Trust is per developer certificate, so one tap covers every app signed with it on that device.
