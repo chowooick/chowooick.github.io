@@ -6243,3 +6243,17 @@ the district's own media account on `news.qq.com/rain/a/...`, `m.thepaper.cn/bai
 WeChat accounts mirrored to The Paper), `rujiazg.com`, `chinanews.com`. Search the article title and
 cite the mirror with its date. A plain `curl` also needs `--compressed`: several of these hosts send
 gzip regardless of `Accept-Encoding`, and the body otherwise looks like binary garbage.
+
+## OPS-313 — `npm run dev -- --host 127.0.0.1` on top of a script that already says `astro dev --host 0.0.0.0` leaves the server on `localhost` only: `127.0.0.1` is refused
+
+`측정 2026-10-05 · astro 7.3 dev server · macOS 26 (MacBook Air) · curl 8 · Playwright with Chrome`
+
+**증상:** with `"dev": "astro dev --host 0.0.0.0"` in `package.json`, `npm run dev -- --port 4451 --host 127.0.0.1` started
+and printed `Local http://localhost:4451/` and `Network use --host to expose`. `curl http://127.0.0.1:4451/` failed
+with `000` (connection refused) and every Playwright test with `E2E_BASE_URL=http://127.0.0.1:4451` failed with
+`ECONNREFUSED 127.0.0.1:4451`, while `curl http://localhost:4451/` answered at once. A readiness loop that polled
+`127.0.0.1` never saw the server come up. Two `--host` flags do not combine; the result was neither of them.
+
+**해결:** do not pass `--host` again when the npm script already sets one; use the URL the server prints
+(`http://localhost:<port>`) for the readiness check and the test base URL, or call `npx astro dev --port <p> --host
+127.0.0.1` directly instead of through the npm script.
