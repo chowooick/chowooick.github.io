@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T18:41:23Z · 소스 커밋 `0911cfd` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T19:12:31Z · 소스 커밋 `b50b0da` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14463,4 +14463,21 @@ On a host whose default address pools are used up the first deploy of the new se
 `failed to create network <appName>_game: ... all predefined address pools have been fully subnetted` even though the old
 service's networks are about to be freed; pin `ipam` subnets in the new file before step 2 (see the subnet entry above with
 the `172.16.x.0/24` list; `172.16.70–71.0/24` are now taken by monsterworld).
+
+## OPS-329 — `ssh host 'zsh -lc "… echo == …"'` dies with `zsh:1: = not found`: zsh treats any word that starts with `=` as a command-path lookup
+
+`측정 2026-10-05 · zsh 5.9 (MacBook Air test host, login shell over ssh)`
+
+**증상:** a test loop sent as `ssh 192.168.0.123 'zsh -lc "cd ~/work/x && for f in a b; do echo == $f; godot … ; done"'`
+printed nothing from the loop and exited 1 with only `zsh:1: = not found`. A separator `echo ===` gives
+`zsh:1: == not found`. The commands before the bad word still run; the rest of the line is abandoned:
+`zsh -lc "echo before; echo == x; echo after"` prints `before`, then the error, never `after`, exit 1.
+
+zsh's `EQUALS` option (on by default) expands a word beginning with `=` to the path of the command named after it
+(`=ls` → `/bin/ls`); `==` asks for a command named `=`, which does not exist, and that is a hard error, not an empty word.
+bash, which most remote-command recipes assume, prints `==` literally, so the same line works under `bash -lc`.
+
+**해결:** quote the word (`echo "==" x` runs), use a separator that does not start with `=` (`echo --- $f`), or put
+multi-step remote jobs in a small script on the host (`~/work/mw-tools/check.sh`, called as one command) instead of a
+long `zsh -lc "…"` string — that also removes the triple quoting.
 
