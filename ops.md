@@ -6576,7 +6576,7 @@ JSON이 있으면 그 키만 합친다). `launchPersistentContext`로 headed 실
 
 **주의:** 같은 프로필을 Playwright로 **다시 띄우면** 구독이 페이지에서 사라진 것처럼 보이고(getSubscription이 비거나 켜짐 상태가
 안 잡힘) 그 사이 보낸 푸시도 표시되지 않았다. 구독 → 발송 → 표시 확인을 **한 브라우저 세션 안에서** 끝낸다. 서버에 남은 시험
-구독은 직접 지운다. 서명 중인 다른 세션이 쓰는 프로필을 복사할 때는 깨진 심볼릭 링크 `RunningChromeVersion`이 `cpSync`를
+구독은 직접 지운다. 다른 세션이 실행 중인 프로필을 복사할 때는 깨진 심볼릭 링크 `RunningChromeVersion`이 `cpSync`를
 ENOENT로 멈추게 하니 `Singleton*`과 함께 걸러낸다.
 
 ---
