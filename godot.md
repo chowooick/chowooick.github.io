@@ -5046,3 +5046,13 @@ The first table exposed three exploits that play-testing had hidden:
 - a masher randomly lands one strike per cycle in the "red" window, so penalising only early strikes is not enough; spoil the whole cycle after an early strike;
 - a "slow" part effect applied on every jab froze the enemy's meter;
 - "pull the meter forward on a jab" capped at 97 % moved an already-due blow later, so rapid jabs held it off for ever.
+
+## GDT-268 — A logo drawn from SVG at run time: `Image.load_svg_from_string` works in the Web (nothreads) and Android templates; size it from `get_screen_transform()`, which warns inside a SubViewport
+
+`측정 2026-10-05 · Godot 4.7.2-stable · Web export (nothreads, debug) in Brave 1.96 at DPR 2 and 3.5 · Android gradle debug APK · native macOS`
+
+**증상:** a studio logo shipped as a PNG looked soft on a 3.5x phone and stair-stepped on a desktop that drew it at a quarter of its size. An imported `.svg` is a fixed-size texture too, and the raw `.svg` file is not exported for loading at run time.
+
+Keeping the SVG as a GDScript string constant and rasterising it on layout gives a texture of exactly the pixels it covers: `image.load_svg_from_string(svg, pixels / view_width)`, then `image.generate_mipmaps()` (for a scale-in entrance) and `ImageTexture.create_from_image(image)`. It returned `OK` and drew sharp at 547 px in the Web export at DPR 3.5 and at 300 px at DPR 2, so the official web template carries ThorVG. A 20 KB SVG with clip paths, an even-odd frame and a linear gradient rendered the same as in the editor. The pixel count is `size.x * get_viewport().get_screen_transform().get_scale().x` under `canvas_items` stretch; inside a `SubViewport` used for a capture, that call prints *SubViewport is not a child of a SubViewportContainer. get_screen_transform doesn't return the actual screen position*, so use 1.0 there (`viewport is Window`).
+
+**해결:** store the art as a generated constant (a build script writes both the `.svg` files and the `.gd`), rasterise on `resized`, and only re-rasterise when the pixel count changes. For per-letter animation of a wordmark, rasterise the whole word once and draw each letter with `draw_texture_rect_region` from its own horizontal slice; the letters' ink spans do not overlap, so no slice takes a neighbour's edge. Related: GDT-246.
