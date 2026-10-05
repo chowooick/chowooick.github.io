@@ -6435,14 +6435,19 @@ made it worse: Vite also watched those copies' tsconfig files.
 **해결:** after a whole-tree sync, stop the dev server and start it again (`pkill -f "port <n>"; npm run dev -- --port
 <n>`), then wait for a 200 before testing. Exclude `.claude` from the sync.
 
-## OPS-324 — Android Chrome fires `beforeinstallprompt` on a first visit only after the service worker has finished its precache (10–14 s for 1.9 MB); a "no prompt after N s → show manual steps" timer must start at `serviceWorker.ready`
+## OPS-324 — Android Chrome's `beforeinstallprompt` on a first visit comes 3–16 s in; a big service-worker precache running alongside delays it, so defer the registration on an install screen and time any fallback from load, not from `serviceWorker.ready`
 
-`측정 2026-10-05 · Chrome 154 · Pixel 7 Pro (Android 17) · Workbox 7.4 generateSW, 78 precache entries / 1.9 MB · CDP over adb forward`
+`측정 2026-10-05 · Chrome 154 · Pixel 7 Pro (Android 17) · Workbox 7.4 generateSW, 78 precache entries / 1.9 MB · CDP over adb forward (Storage.clearDataForOrigin + SW unregister before each run)`
 
-**증상:** a page that installs its PWA from a full-screen "앱 설치하기" button fell back to browser-menu steps when no
-`beforeinstallprompt` had arrived 9 s after load. On a clean first visit to a new origin the event came 10–14 s after
-the tab opened (polled through CDP), so the menu steps would flash up just before the real prompt became available.
-On return visits the worker already controls the page and the event comes within about 1 s.
+**증상:** a full-screen "앱 설치하기" page fell back to browser-menu steps when no `beforeinstallprompt` had come 9 s
+after load. Timed in the page (`performance.now()` from an init script) on a cleared origin:
+
+- service worker registered at load (precache running): the event came at 3.9 s, 14.7 s and 16.2 s;
+  `serviceWorker.ready` resolved only at 50.8 s, so the event does **not** wait for the worker
+- registration blocked: 8.4 s, 3.3 s, 5.0 s
+- registration deferred until the event (or 20 s): 6.6 s, 11.1 s
+
+On return visits the event comes within about 1 s.
 
 Also measured on the same phone, end to end with the real install sheet: 「설치」 → `appinstalled` → poll
 `getInstalledRelatedApps()` → +3 s → `intent://<host>/?open-app=1#Intent;scheme=https;action=android.intent.action.VIEW;end`
@@ -6451,10 +6456,13 @@ When the tab had itself been opened by another app's VIEW intent (e.g. `adb shel
 Chrome finished that tab (`wm_finish_activity … app-request`) when it handed off; add
 `--es com.android.browser.application_id com.android.chrome` to open a test tab that behaves like one the user opened.
 With the WebAPK installed, a VIEW intent for a URL in its scope goes straight to the app.
+CDP `Page.addScriptToEvaluateOnNewDocument` lasts only while that CDP connection is open: keep the socket open across
+the navigation you want to instrument.
 
-**해결:** start the fallback timer from `navigator.serviceWorker.ready` (8 s after it, plus a long absolute cap for pages
-with no worker), and let any later `beforeinstallprompt` switch the screen back to the install button. Chrome's
-transient user activation lasts about 5 s, so a tap made earlier than that before the event cannot be turned into
+**해결:** on the install screen, register the worker when the event arrives (or after a cap), and register at once
+everywhere else. Show the manual menu steps at once where `'onbeforeinstallprompt' in window` is false (Firefox), and
+otherwise only after a fixed wait from load (20 s here). Let any later event switch the screen back to the install button.
+Chrome's transient user activation lasts about 5 s, so a tap made earlier than that before the event cannot become
 `prompt()`; keep the button armed and pulse it when the event arrives.
 
 ## OPS-325 — Screenshot a real iPhone/iPad from the Mac with `xcrun devicectl device capture screenshot`; `idevicescreenshot` fails on iPadOS 26 without a developer disk image
