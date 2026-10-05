@@ -6377,3 +6377,32 @@ and exposes a getter that also removes the listener; right after `Alpine.start()
 the last tap, so three taps on a toggle open it once. Measured on the same throttled phone profile: 12 of 12 taps made
 before `Alpine.start()` were answered, 184–644 ms after the tap; a test that holds `/_astro/*.js` with
 `page.route` until after the taps fails without the script (`aria-expanded` stays `"false"`) and passes with it.
+
+## OPS-320 — A styled QR (modules drawn as round-capped strokes) stops decoding in jsQR when the stroke is thinner than 0.92 of a module
+
+`측정 2026-10-05 · qrcode 1.5.4 (QRCode.create, level H) · jsqr 1.4.0 · sharp 0.35 rasterising the SVG · Chrome (Playwright) screenshots`
+
+**증상:** a page drew its QR as one SVG path: each horizontal run of dark modules became `M{c+.5} {r+.5}h{len-1}`
+with `stroke-linecap: round` (single modules become dots), finder eyes as rounded rects, and an 11×11-module hole
+in the centre for a logo. With `stroke-width: 0.84` every one of 31 URLs failed to decode in jsQR, from the
+rendered SVG and from a browser screenshot alike, with or without the centre hole. Nothing looks wrong to the eye.
+
+**해결:** keep the stroke at 0.92 of a module or more (1.0 = classic dots that touch). At 0.92 all 31 URLs (41×41,
+level H, centre hole ≈ 7 % of modules) decoded at 400 px, at 160 px, and after a 1.6 px Gaussian blur. Before you
+ship any styled QR, decode it back in a test: screenshot the element, pad it with white, run jsQR on the pixels,
+and compare with the URL you meant. Keep the logo overlay (with its halo) inside the cleared hole; percentage
+widths on an absolutely positioned logo resolve against the padding box, so a "21 %" logo can be wider than the hole.
+
+## OPS-321 — Two copies of an inline SVG with the same gradient `id`: when the first copy is `display: none`, the visible copy's `url(#id)` fills do not paint
+
+`측정 2026-10-05 · Chrome (Playwright, channel chrome) · Astro 5 component rendered twice on one page`
+
+**증상:** an Astro illustration component (mountain ridges filled with `url(#ca-r1)` linear gradients) was added a
+second time to the same page, inside an overlay that is `display: none` for most visitors. The visible copy lost
+its ridges: only the shapes with plain colours (snow caps, moon, a dotted path) still drew. No console error.
+`getElementById` resolves to the first element with the id, which sits in an unrendered subtree, so the
+gradient reference paints nothing.
+
+**해결:** give the component an id prefix prop (`ids="gate"` → `id={`${ids}-r1`}` and `fill={`url(#${ids}-r1)`}`)
+so every instance on a page has unique ids. Look for this whenever a reused SVG component suddenly loses fills,
+masks, clip paths or filters after another copy appears on the page.
