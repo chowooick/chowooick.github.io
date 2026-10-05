@@ -6853,3 +6853,34 @@ kept `192.168.0.123`. `ssh air.local` worked at once: mDNS resolved `air.local` 
 **해결:** when `192.168.0.123` times out, first run `ipconfig getifaddr en0` on the main Mac. If it is not in
 `192.168.0.x`, use `air.local` (ssh, rsync and scp all accept it) instead of the IP. Unlike OPS-049, no Tailscale
 setting was involved: the route went to the new subnet's gateway, not to a `utun` interface.
+
+## OPS-348 — Dokploy's server Monitoring page misleads: "Network I/O" is a running total of the Dokploy container's own interface, and "CPU" counts intel_powerclamp's forced idle as busy
+
+`측정 2026-10-05 · Dokploy v0.30.7/v0.30.8 (misa, i7-2635QM 4C/8T, 8 GB) · thermald --adaptive · Prometheus node-exporter 1.12`
+
+**증상:** the Web Server → Monitoring page showed CPU at 22-74 % and a Network chart climbing to "In 3.8 GB",
+which read as a server under heavy load and heavy traffic. Neither was what it looked like.
+
+- **Network:** `@dokploy/server/dist/monitoring/utils.js` `getHostSystemStats()` takes `node-os-utils`
+  `network.overview()` totals, but the Dokploy container runs in `bridge` mode, so that is the container's own
+  `/proc/net/dev`, not the host's. The UI component is literally named `accumulativeData`: it plots the counter as
+  it is, never a rate, so the line only goes up. The 3.8 GB had grown from 1.4 GB over 5.6 days (about 5 KB/s). The
+  host NIC at the same time: 4.9 KB/s in, 32 KB/s out over a 15 s sample; 170 GB in / 83 GB out over 46.9 days of
+  uptime (about 42 / 21 KB/s average).
+- **CPU:** it is host `/proc/stat`, sampled only while someone has the page open (288-sample ring in
+  `/etc/dokploy/monitoring/dokploy/cpu.json`). When the CPU reaches 92-94 °C, thermald turns on intel_powerclamp
+  (`cooling_device0` `cur_state` 25-49 of 50) and eight `idle_inject/N` kernel threads ran at 41 % each. That
+  forced idle is booked as **system** time: `system` went from a 3.6-4 % baseline to 16-22 % in every hot window,
+  so the chart shows the box busier exactly when it is being slowed down.
+- What actually heated it: a GitLab CI runner on the same host (docker executor, `concurrent = 2`). One pipeline
+  ran 6 jobs, 4 of them a fresh `npm ci` (about 1.2 GB RSS, 100 % of a core each) plus a `next build` and a
+  Dokploy image build. 63 jobs in 24 h, in bursts; each burst matched a CPU peak (Prometheus 30-min average
+  48-64 % against an 11 % idle baseline) and a 90-94 °C reading. Swap was 3.5 of 3.8 GB used, so `kswapd0`
+  also showed up.
+
+**해결:** read host load from Prometheus node-exporter (`rate(node_cpu_seconds_total[10m])` by mode, with
+`node_cooling_device_cur_state` beside it) or from `/proc/stat` deltas, not from this page. If `system` rises
+together with `cooling_device cur_state > 0`, the extra load is the thermal clamp, not a process. For traffic,
+diff `/proc/net/dev` on the host's physical NIC over a fixed window. To lower the peaks themselves, cut the CI
+work per push (one `npm ci` shared by the verify steps, skip verify for docs-only pushes) or set the runner to
+`concurrent = 1`: the CPU is clamped above about 90 °C anyway, so the second parallel job adds heat, not speed.
