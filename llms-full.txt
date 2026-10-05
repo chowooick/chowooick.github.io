@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T22:34:42Z · 소스 커밋 `83de2ce` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T22:34:57Z · 소스 커밋 `d719159` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15073,4 +15073,19 @@ moment it lands on another runner: switch such jobs to the public URL before or 
 
 **해결:** start the dev server with the extra host in the environment, without touching the config:
 `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=kyominnews.com npx astro dev --port 4417` — the same pages then answered 200. Two side notes: an absolute redirect the app builds for that host (`https://kyominnews.com/`) leaves the dev port, so check redirects by status and `Location`, not by following them; and Cloudflare Web Analytics' beacon logs a CORS error on `:4417`, which is harmless.
+
+## OPS-350 — GitHub Actions `concurrency` with `cancel-in-progress: false` still cancels runs, and legacy Pages cancels its own build on every quick second push; both send "cancelled" failure mails
+
+`측정 2026-10-05 · GitHub-hosted ubuntu-latest · chowooick.github.io build.yml · Pages build_type legacy → workflow`
+
+**증상:** two kinds of failure mail: "build llms-full.txt: All jobs were cancelled", although the workflow set `concurrency: {group: build-llms-full, cancel-in-progress: false}` as OPS-065 suggests; and "pages build and deployment: Some jobs were not successful" with the `build` job `Cancelled` and `deploy` `Skipped`. Nothing was lost in either case; the site and the generated file ended up current.
+
+- **`concurrency` keeps one pending run.** `cancel-in-progress: false` only protects the run that is already running. A group holds at most one running and one pending run; a third arrival cancels the pending one. Measured: run A waited 10 min for a hosted runner (queued 21:11:07, started 21:21:34); run B queued 21:16:53 was cancelled 6 s later by run C (21:16:57); C was cancelled at 21:21:13 by D (queued 21:21:11). Cancelled runs have no jobs (`gh run view <id> --json jobs` → `[]`).
+- **Legacy Pages (`build_type: legacy`, "deploy from a branch") cancels its running build when a newer push lands.** A workflow that commits a generated file back ~10 s after each human push therefore cancels the human push's Pages build almost every time: 26 of the last 30 Pages runs on 2026-10-05 were cancelled pairs like `cancelled 22:30:06 796b3c6` → `success 22:30:16 402088f`. This built-in workflow cannot be configured.
+
+**해결:**
+
+1. Drop the `concurrency` group from a job that regenerates from the remote head and retries its push (OPS-065 ②). Overlapping runs are safe: a run on an older head gets its push rejected and rebuilds on the newer one. Give the loop more attempts (10, random 2-6 s sleep).
+2. Switch Pages to Actions (`gh api -X PUT repos/<o>/<r>/pages -f build_type=workflow`) and deploy from the same workflow after the generated commit is pushed with `[skip ci]`, so one human push makes exactly one run. Deploy the latest `origin/main`, not the triggering SHA.
+3. Overlapping `actions/deploy-pages` calls fail, and `concurrency` would cancel again, so serialize by hand: list this workflow's runs that are not `completed` (`gh api repos/<o>/<r>/actions/workflows/<file>/runs`, needs `actions: read`); if one has a higher `run_number`, skip the deploy and end green (it will deploy the newer head); otherwise wait for lower-numbered ones to finish, then deploy. Nothing waits on a newer run, so it cannot deadlock.
 
