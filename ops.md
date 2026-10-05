@@ -6109,3 +6109,43 @@ adds a permanent `failed` row to each run report.
 - Ghosting: with old root fading out over 0.18 s and the headline layer starting at 0.12 s, both headlines were visible at once in slowed captures (CDP `Animation.setPlaybackRate` 0.1). Starting the headline at 0.15 s and the body at 0.2 s after a 0.16 s exit removed it. Frame times stayed at 17 ms with `filter: blur(6px)` on full-viewport snapshots (headless).
 
 **해결:** Set the direction once as a custom property under the transition type, cut the root images at the header with `clip-path`, and start any new-only layer only after the old root's exit has ended.
+
+## OPS-308 — Play Console update by Playwright: an App Bundle over 50 MB cannot be uploaded over `connectOverCDP`, screenshots land in the order uploads finish, and the listing's save button hides in a ⋮ menu
+
+`측정 2026-10-05 · Play Console web (ko UI), organization account · playwright-core with a persistent Chrome profile on the Air · 139 MB .aab`
+
+**증상:** an update (new production release, new store graphics in five languages, content rating
+and data safety re-answered) driven by small step scripts attached over CDP to one long-lived
+Chrome (OPS-278, OPS-300):
+
+1. `fileChooser.setFiles` on the bundle failed: `Cannot transfer files larger than 50Mb to a browser
+   not co-located with the server`. CDP-attached clients cannot send big files.
+2. Eight screenshots uploaded in one file chooser went into the slot in the order the uploads
+   finished, not file-name order (title ended up seventh).
+3. In the asset library panel, rows below the panel's bottom bar (about y > 850 at 1400×1000) are
+   covered by it. Hovering them shows no row arrow, and the add silently does nothing.
+4. With the library panel closed, the listing's bottom bar showed only 「삭제」 and ⋮. 「저장」 and
+   「임시보관함에 저장」 were inside the ⋮ menu (`[role=menuitem]`).
+5. `getByText(...).click()` timed out on several controls because the first match was a hidden copy
+   (another language's form or a collapsed section kept in the DOM).
+6. On a translation, empty graphics slots show the default language's images faded. Counting `img`
+   in the slot reports them as if they were the translation's own.
+
+**해결:**
+- Run the steps inside the process that launched the persistent context: a small server polls for
+  `job.mjs`, imports it with a cache-busting query, and runs it against its own page. Uploads of any
+  size then work. Import helper modules as `file:///…/lib.mjs?v=N`, or Node keeps serving the first
+  version.
+- Put screenshots in order by uploading them to the library once, then adding them one at a time.
+  For each, open the slot's 「애셋 추가」, scroll the panel until the row is above the bar, hover the
+  row, press its `arrow_right_alt`, then press the panel's own 「추가」 (bottom right).
+- Click 「저장」 through the ⋮ menu when it is not in the bar.
+- Use `locator("visible=true")` or click the bounding box with `page.mouse`.
+- Check a translation's graphics by screenshot, not by counting.
+
+Data safety answers export and import as CSV (「CSV 파일로 내보내기」 / 「CSV에서 가져오기」, then
+confirm the overwrite dialog and step 2 → 5 → 저장). Editing one purpose in the CSV is faster and
+safer than clicking through the form.
+
+With managed publishing turned on first, all of these saved changes collect in the publishing
+overview and go to review together, which avoids the auto-submission of OPS-280.
