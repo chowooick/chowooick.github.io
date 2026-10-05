@@ -6212,7 +6212,7 @@ branch, then take prices and full address from that branch's Apple Maps page. Co
 coordinates GCJ-02→WGS84 before use. Branch names differ between platforms (Dianping
 `思茅小馆(昆明站店)` = Apple `思茅小馆(双龙商场店)`, same Dianping id), so match on the Dianping id, not the name.
 
-## OPS-310 — Python 3.9 rejects a valid UTF-8 script with "SyntaxError: Non-UTF-8 code" when a line holds a long run of multibyte text
+## OPS-312 — Python 3.9 rejects a valid UTF-8 script with "SyntaxError: Non-UTF-8 code" when a line holds a long run of multibyte text
 
 `측정 2026-10-05 · macOS system /usr/bin/python3 3.9.6`
 

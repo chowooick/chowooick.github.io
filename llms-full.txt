@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T07:00:37Z · 소스 커밋 `3f73ffb` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T07:30:18Z · 소스 커밋 `1c2b71f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14000,4 +14000,77 @@ the copy:
 The Google account came across in the copy: the account chooser offered it and a site sign-in
 through it completed (`SIGNED_IN`). Check the sign-in line before running the suite, so a missing
 session fails one step instead of the whole run.
+
+## OPS-310 — China restaurant data without login: Dianping shop pages open with `?msource=applemaps`; Apple Maps place pages carry Dianping menu prices; 360 map POI search needs no key; China map coordinates are GCJ-02
+
+`측정 2026-10-05 · curl 8 from macOS · m.dianping.com · maps.apple.com · restapi.map.so.com · Chrome 154 headless on the Air`
+
+**증상:** researching Chinese restaurants (address, hours, average spend, dishes, coordinates) from
+outside China: `m.dianping.com/search/...` and dish pages return only a phone-login wall
+(`手机号快捷登录`); Amap web endpoints (`amap.com/service/poiInfo`) return an Alibaba captcha page;
+Bing via curl returns unrelated results; DuckDuckGo lite returns a bot challenge; WebSearch rarely
+finds the branch page.
+
+What works without login or key:
+
+- **Dianping shop page:** `http://m.dianping.com/shop/<id>?msource=applemaps` returns the full
+  server-rendered page (≈230 KB). Its embedded JSON has `"name"`, `"branchName"`, `"avgPrice"`
+  (人均), `"regionName"`, `"categoryName"`, the hours as `"value":"周一至周日\n10:00-22:00","name":"营业时间"`,
+  recommended dishes as `"dishName":…,"recommendCount":N`, `"hasQueue"`, and
+  `"branchIds":"id1,id2,…"` listing the brand's other branches in the same city. Fetch each branch id
+  the same way to find a named branch. The address is masked after a few characters (`钱王街67******`)
+  and `lat`/`lng` are 0. The same URL without `msource=applemaps`, and `/dish…` pages, hit the login wall.
+- **Apple Maps place page:** `https://maps.apple.com/place?place-id=<H…>` or `?auid=<n>&lsp=57879`
+  via curl returns server-rendered HTML with the Chinese name, full address, phone, hours, AVG. COST,
+  **recommended dishes with prices** (`野生菌过桥米线 ¥99`), recent review text, a
+  `dianping.com/shop/<id>` link (the bridge to the Dianping page above), and
+  `<meta property="place:location:latitude/longitude">`.
+  `maps.apple.com/search?query=…` is client-rendered (empty via curl); run it in headless Chrome
+  (`page.goto('https://maps.apple.com/search?query=<kw>&center=<lat,lng>&span=0.03,0.03')`, wait ~9 s,
+  read `a[href*="place"]`) to get place ids and the full address of the top hit.
+- **360 map POI search:** `https://restapi.map.so.com/newapi?keyword=<kw>&cityname=<城市>&batch=1&number=15&sid=1000`
+  returns JSON (`name`, `address`, `x`, `y`, `tel`, `pguid`) with no key. Data can be years old
+  (closed or renamed branches still listed).
+
+Coordinates from Apple Maps in China and from 360 map are **GCJ-02**, not WGS84. Kunming offset is
+about +0.003° lat / +0.0015° lng. Converted with the standard iterative GCJ-02→WGS84 inverse, two
+malls landed 10–25 m from their OpenStreetMap buildings (Nominatim); unconverted they are ~300 m off.
+
+**해결:** seed one Dianping id from any Apple Maps page of the brand (WebSearch with
+`allowed_domains: ["maps.apple.com"]` and the English brand name finds them), walk `branchIds` to the
+branch, then take prices and full address from that branch's Apple Maps page. Convert all China map
+coordinates GCJ-02→WGS84 before use. Branch names differ between platforms (Dianping
+`思茅小馆(昆明站店)` = Apple `思茅小馆(双龙商场店)`, same Dianping id), so match on the Dianping id, not the name.
+
+## OPS-312 — Python 3.9 rejects a valid UTF-8 script with "SyntaxError: Non-UTF-8 code" when a line holds a long run of multibyte text
+
+`측정 2026-10-05 · macOS system /usr/bin/python3 3.9.6`
+
+**증상:** a generator script with long Korean strings (one string literal per line, ~900 Hangul
+characters) failed at start-up:
+`SyntaxError: Non-UTF-8 code starting with '\xec' in file build.py on line 185, but no encoding declared`.
+The file is valid UTF-8: `open(p,'rb').read().decode('utf-8')` succeeds and
+`ast.parse(open(p, encoding='utf-8').read())` parses it. Adding `# -*- coding: utf-8 -*-` is the
+reflex fix suggested by the message and does not address the cause — the 3.9 file tokenizer
+mishandles very long lines of multibyte text.
+
+**해결:** run the source through `compile()` instead of the file tokenizer:
+`python3 -c "exec(compile(open('build.py',encoding='utf-8').read(),'build.py','exec'))"`,
+or use a newer Python (Homebrew `python3.12`), or keep long strings in a JSON/text file that the
+script loads.
+
+## OPS-311 — Kunming government sites (*.km.gov.cn) refuse connections from outside China; cite a mirror
+
+`측정 2026-10-05 · curl and WebFetch from a Korean home connection`
+
+**증상:** `http://kmds.km.gov.cn/...` (Kunming party-history office) and `http://www.kmwh.gov.cn/...`
+(Wuhua district) both fail with `connect ECONNREFUSED 116.52.6.87:443` in WebFetch, and curl
+returns nothing. `m.yunnan.cn` also blocks some article URLs with an HTTP-proxy page
+("The request contains some unreasonable content", Block Event ID ...).
+
+**해결:** do not retry. The same official text is usually republished on reachable hosts:
+the district's own media account on `news.qq.com/rain/a/...`, `m.thepaper.cn/baijiahao_...` (official
+WeChat accounts mirrored to The Paper), `rujiazg.com`, `chinanews.com`. Search the article title and
+cite the mirror with its date. A plain `curl` also needs `--compressed`: several of these hosts send
+gzip regardless of `Accept-Encoding`, and the body otherwise looks like binary garbage.
 
