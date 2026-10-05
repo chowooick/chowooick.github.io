@@ -1987,3 +1987,17 @@ EXAONE 4.0 has sliding-window layers (`n_swa = 4096`, `is_swa_any = 1` in the lo
 Separately, two requests generating at the same time on this Mac ran at 6.2-8.9 tokens/s each against 11.2-11.7 alone, so running them side by side buys little throughput and makes both late.
 
 **해결:** for a structured answer from a slow local model, use a line format enforced by a grammar (`root ::= note? note? "corrected: " text "\n" … "scores: " num " " num`, with `part ::= [^\n|>]+` for fields split by ` -> ` and ` | `) and parse it with a regex per label. Measured: 6-12 s per review against 11-16 s, with tips of the same quality on a fixed set of 12 learner answers. Keep background jobs to one request at a time so the second slot stays free for interactive turns: with two background reviews in flight a turn's first token took 9.9 s instead of 1.2 s.
+
+## AGT-99 — A parallel session that deploys from a stale local `main` silently replaces the release another session shipped minutes earlier; read `previousRelease` and `git fetch` before deploying
+
+`측정 2026-10-05 · git 2.x · Dokploy release deploy (deploy-misa.sh) · several Claude Code sessions on one checkout`
+
+**증상:** session A worked in a worktree branched from the shared checkout's `main`. Session B had meanwhile pushed two commits
+to `origin/main` from its own branch and deployed them as release `...-music`, without updating the shared checkout's local
+`main`. A's build and deploy succeeded and its health checks passed, but production lost B's feature. The only trace was in the
+deploy output: `"previousRelease": "20261005-music"`, a release name A had never made.
+
+**해결:** right before building a release, `git fetch` and check `git log HEAD..origin/main`; rebase if it is not empty.
+After a deploy, compare `previousRelease` with the last release you know; an unknown name means someone shipped in between, so
+rebase on their commits and deploy again at once (here 15 minutes of exposure). A session that pushes `main` from a branch should
+also fast-forward the shared checkout's `main` when its tree is clean, so the next session does not start from the old one.

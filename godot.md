@@ -4904,3 +4904,18 @@ To retire a worker already installed, serve a `sw.js` that calls `skipWaiting()`
 - A sample with its loop flag on restarts itself on its own `ended` event (GDT-097), so stems looping independently can drift apart by the per-loop gap.
 
 **해결:** start every stem in the same frame and crossfade only their volumes. For the Web, set the stems' loop flag off, and on the main stem's `finished` signal call `play()` on all of them in one frame. Measured after that: the three players reported the same position after every level change and after the 94.5 s loop point. Cost: each stem plays (and on the Web is decoded into a float32 buffer, about 33 MB per stereo 94 s stem) the whole time.
+
+## GDT-257 — A sidecar `.png.import` without `path`/`dest_files` loads only after `--import` rewrites it; syncing the sidecar back over the rewritten one gives "Failed loading resource"
+
+`측정 2026-10-05 · Godot 4.7.2-stable · texture importer · tree synced to a test Mac with rsync --exclude .godot`
+
+**증상:** new sprites showed the fallback art and the log printed `ERROR: Failed loading resource: res://assets/sprites/boss_mio.png.`
+although `.godot/imported/` held their `.ctex` files and `ResourceLoader.exists()` was true.
+
+The `.import` sidecars had been written by hand (copied from an older sprite, with `uid`, `path` and `dest_files` deleted, as in
+GDT-120). `godot --import` on the test Mac filled those lines in, but every later `rsync -az --exclude .godot client ...` from the
+dev Mac pushed the hand-written sidecar back, so the remap had no `path` again and loading failed at run time. The import step
+does not rewrite a sidecar whose source and params did not change.
+
+**해결:** do not keep hand-written sidecars in the tree. Import once, take the `.import` files Godot wrote (with `uid`, `path`,
+`dest_files`), replace only their `[params]` block with the one from a similar asset, commit those, and import again.
