@@ -5117,3 +5117,16 @@ The first launch on that device still fails with `FBSOpenApplicationErrorDomain 
 **증상:** a second project (new bundle id `com.mnori.monsterworld.dev`, never built before) was exported with `godot --headless --export-debug iOS build/ios/<name>.ipa`, `application/app_store_team_id` set and `export_method_debug=1`. Unlike GDT-272 the export exited 0 and wrote the .ipa and .xcarchive; Xcode generated the new App ID's profile on its own because the iPad had been registered to the team by an earlier `-allowProvisioningDeviceRegistration` build of another project.
 
 **해결:** `xcrun devicectl device install app --device <UDID> <name>.ipa` then `xcrun devicectl device process launch --device <UDID> <bundle id>` launched it with no trust prompt (the developer certificate was already trusted on that iPad). `idevicescreenshot` cannot capture it ("Could not start screenshotr service") because the developer disk image is not mounted; check the app is alive with `xcrun devicectl device info processes --device <UDID>` instead. Related: GDT-272.
+
+## GDT-276 — macOS with a 1× monitor beside 2× (Retina) screens: the Godot window on the 1× monitor is in 2× pixels, yet `screen_get_scale()` returns 1.0
+
+`측정 2026-10-05 · Godot 4.7.2-stable · gl_compatibility · macOS 27 · M1 Max with a 4K portrait screen at 2×, the built-in Liquid Retina XDR at 2×, and a Dell S2721DS 2560 × 1440 at 1×`
+
+**증상:** a game that scaled its UI from the window's pixel size (`factor = clamp(min(w / 1440, h / 900), 0.9, 1.35)`) showed tiny text when maximized on the Dell. Measured with a `--script` that maximized the window on each screen:
+- Dell (screen 2): `screen_get_usable_rect` = 5120 × 2820, `screen_get_scale` = **1.0**, maximized `window_get_size()` and the framebuffer (`get_texture().get_image()`) = **5120 × 2756**. macOS reports that window as 2560 × 1410 points.
+- Built-in Retina (screen 1): usable 3456 × 2168, scale 2.0, maximized window 3456 × 2104.
+- `screen_get_size(2)` = 5120 × 2880 and the screen positions are in the same doubled units. Godot uses the highest scale of all screens for every screen's coordinates.
+
+So `window size / screen_get_scale()` does not give points on the 1× monitor: the window is 2× too large, and a capped UI factor leaves the layout 3793 units wide.
+
+**해결:** scale the UI in proportion to the window (`factor = min(w / 1440, h / 900)` with no low upper cap, then lay out at `size / factor`). That gives the same 1440 × 900-shaped layout on every screen, whatever unit the window reports. Do not rely on `screen_get_scale()` to convert to points on a mixed-DPI desktop. The 1× monitor also renders 4× the pixels it shows (14 MP for a 2560 × 1440 panel). Related: GDT-090.
