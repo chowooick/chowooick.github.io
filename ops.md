@@ -6273,3 +6273,17 @@ returns status 404 and Workbox's precache aborts the whole install (one failed e
 server after each deploy: fetch `/sw.js`, extract `url:"..."`, and require 200 for all of them (a 15-line script).
 Here that check reported `82 urls, 0 failing` and the precache filled to 74 entries within 5 s. Test offline against
 the production server, not the preview server (same lesson as OPS-281).
+
+## OPS-315 — SpacetimeDB 2.8 HTTP reducer call: a reducer's `Err` comes back as HTTP 530 with the message as the body; a missing route through a proxy looks different (403/404)
+
+`측정 2026-10-05 · SpacetimeDB standalone 2.8.0 · Rust module · POST /v1/database/<db>/call/<reducer> behind nginx and Cloudflare`
+
+**증상:** after adding a reducer and an nginx `location` for it, a call with a deliberately bad argument
+(`report_daily` with a row id that does not exist) answered **530**, which reads like a Cloudflare origin error.
+It is not: the body was the reducer's own `Err` text ("No such board entry."). A reducer returning
+`Err("That callsign is not allowed. Choose another one.")` from `join` answered 530 with that text the same way.
+A call the proxy does not route answers the proxy's 403/404 instead, and success is 200 with an empty body.
+
+**해결:** use a call that must fail as the cheapest end-to-end check of a new reducer route: 530 plus the
+reducer's message proves the proxy route, the published module and the reducer are all live, without
+writing anything. Clients should treat any non-2xx as "refused" and show the body text, not only 4xx.
