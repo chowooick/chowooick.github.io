@@ -1914,3 +1914,17 @@ of a native listener and make flagging cheap. What can be fixed without an ear: 
 line to about 0.4 s (0.6 s where the script asks for a beat with "…"), clone from expressive
 references (bright, soft, urgent) instead of a neutral read, and when a listener keeps one half of a
 take, splice in the other half from another take at matched speech loudness (12 ms crossfades).
+
+## AGT-093 — Word-level pronunciation scores from SenseVoice: sherpa-onnx gives no token probabilities, so run the ONNX file yourself and force-align the reference to its CTC posteriors
+
+`측정 2026-10-04 · sherpa-onnx 1.13.8 · SenseVoice small int8 (ASLP-lab WSYue build, 25055 tokens) · onnxruntime CPU · MacBook Air M1`
+
+**증상:** `OfflineRecognizer.from_sense_voice(...)` returns `ys_log_probs == []` and `durations == []`, so there is no per-word confidence to grade pronunciation with. The English output is not lowercase BPE either, although `tokens.txt` starts with `▁the`: the model writes English in capital-letter pieces of its own choosing (`CO U L D`, `▁CA R`, `▁ST A Y`, the first word of an utterance often without `▁`). Splitting a reference word into single letters, or into a longest match, gave 0-20 for correctly spoken words ("car", "access", "could").
+
+**해결:** load the same `model.int8.onnx` with onnxruntime and rebuild sherpa's front end in numpy: Kaldi fbank (25 ms / 10 ms, 80 mel bins from 20 Hz, Hamming, pre-emphasis 0.97, samples scaled by 32768), LFR stack of 7 frames every 6 (no padding), then `(x + neg_mean) * inv_stddev` from the model metadata. Inputs: `x`, `x_length`, `language = lang_en (4)`, `text_norm = without_itn (15)`; drop the first 4 output frames. Greedy decoding of these logits matched sherpa's transcript almost word for word, which checks the front end. Then:
+
+1. Force-align the reference with CTC Viterbi, using for each word the pieces the model itself emitted when its greedy output contains that word, otherwise a longest match.
+2. Re-score each word only inside its own frames (between the neighbouring words' frames; a wider window lets a neighbour's letter spike pull the alignment and drops a correct word to ~0) and keep the best of several segmentations (heard pieces, longest match with and without `▁`, single letters).
+3. Word score = mean log posterior of its pieces at their best frames, mapped to 0-100.
+
+With Supertonic-synthesized test sentences: correct sentences scored 88-100; "rum" for "room" 1-6, "frog" for "front" 21-27, "cat" for "car" 0; an unrelated word gave 0 on every word. About 0.06 s per sentence on an M1 including the model run. Leave digits unscored: the model writes spoken numbers as Chinese numerals (`二百零`) as often as English words.
