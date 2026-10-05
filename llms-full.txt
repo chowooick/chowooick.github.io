@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T14:12:33Z · 소스 커밋 `b83abeb` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T14:13:09Z · 소스 커밋 `d569fcf` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14191,7 +14191,7 @@ for `app:bip`. After that the card showed on every load and the native "앱 설�
 updates use Workbox `skipWaiting: true, clientsClaim: true` and register `/sw.js` yourself without the auto-reload;
 the next navigation picks up the new build.
 
-## OPS-319 — Playwright clicks on an SSR-rendered Alpine.js control are lost until `Alpine.start()` runs; registering page components through a dynamic `import()` first widens that window
+## OPS-319 — Playwright clicks on an SSR-rendered Alpine.js control are lost until `Alpine.start()` runs
 
 `측정 2026-10-05 · Alpine.js 3.14 · Astro 7.3 · Playwright 1.58 · Chrome on an M1 Air (headless, production site)`
 
@@ -14202,9 +14202,10 @@ the page's `Alpine.start()`; the button already had `aria-expanded="false"` from
 `getAttribute()` passed and `click()` succeeded against an element with no listener yet. Nothing errors: the click
 is simply gone, and Alpine then starts with the panel closed.
 
-The window is wider where the app does `await Promise.all(pages.map(async ([name, load]) => Alpine.data(name, (await load()).default)))`
-before `Alpine.start()` — every page with a lazily loaded component waits one more network round trip. Pages
-without one passed every time.
+The gap is not small on a phone connection: from the `<h1>` appearing to `_x_dataStack` on `document.body`,
+mobile Chrome with 9 Mbps / 60 ms and the cache off measured 440–600 ms on five pages (one cold run 1,337 ms). In the
+failing suite only the pages that `await import()` their own component before `Alpine.start()` failed; that
+correlation was observed, not isolated.
 
 **해결:** wait for Alpine before the first interaction, e.g. `page.waitForFunction(() => '_x_dataStack' in document.body)`
 (any element under an `x-data` root carries `_x_dataStack` once initialised), then click and assert the state flipped
