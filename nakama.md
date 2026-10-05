@@ -930,3 +930,21 @@ the same run.
 
 **해결:** exclude `Error registering Prometheus metric` when counting errors after a deploy, then look at what is
 left. Judge the module by its own load line and an end-to-end call, not by an error count that includes this.
+
+## NKM-43 — Measure a Nakama JavaScript module's CPU cost offline with a 20-line goja runner; Node timings are not goja timings
+
+`측정 2026-10-05 · github.com/dop251/goja (latest) · Apple M1 under load · a 2,300-line ES5 rules module with CPU players`
+
+**증상:** CPU-player code that took about 1 ms per decision under Node ran in Nakama's goja interpreter, where nobody had numbers. Production RPC timings mix in network and storage and cannot show the module's share.
+
+**해결:** build a runner on the module itself. It loads unchanged when it ends with `if (typeof module !== "undefined") module.exports = X`, because goja has no `module`:
+
+```go
+vm := goja.New()
+vm.Set("nowNs", func() int64 { return time.Now().UnixNano() })
+vm.Set("print", func(s string) { fmt.Println(s) })
+vm.RunString(moduleSource)   // defines the global
+vm.RunString(harnessSource)  // plays matches, times each call
+```
+
+`go get github.com/dop251/goja`, then `GOOS=darwin GOARCH=arm64 go build` gives a 14 MB binary that can be copied to the test host. Measured on the same harness (three CPU players, a scripted human, time per call that runs the CPUs up to the human's next decision): mean 50–67 ms, p95 240–375 ms, max 0.5–0.9 s in goja, about 1.5–2.5 times the previous, simpler CPU, while the same work under Node took about 1 ms per decision. The host's load swung the goja maxima by about 30% between runs, so compare old and new modules in the same run. The production check afterwards (end-to-end action latency) moved by much less than goja's own numbers suggest: p50 397 ms against 390 ms, p95 787 ms against 614 ms, because network and storage dominate.
