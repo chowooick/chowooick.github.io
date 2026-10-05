@@ -5047,9 +5047,9 @@ The first table exposed three exploits that play-testing had hidden:
 - a "slow" part effect applied on every jab froze the enemy's meter;
 - "pull the meter forward on a jab" capped at 97 % moved an already-due blow later, so rapid jabs held it off for ever.
 
-## GDT-268 — A logo drawn from SVG at run time: `Image.load_svg_from_string` works in the Web (nothreads) and Android templates; size it from `get_screen_transform()`, which warns inside a SubViewport
+## GDT-268 — A logo drawn from SVG at run time: `Image.load_svg_from_string` works in the Web (nothreads) template; size it from `get_screen_transform()`, which warns inside a SubViewport
 
-`측정 2026-10-05 · Godot 4.7.2-stable · Web export (nothreads, debug) in Brave 1.96 at DPR 2 and 3.5 · Android gradle debug APK · native macOS`
+`측정 2026-10-05 · Godot 4.7.2-stable · Web export (nothreads, debug) in Brave 1.96 at DPR 2 and 3.5 · native macOS (Android not yet looked at on a device)`
 
 **증상:** a studio logo shipped as a PNG looked soft on a 3.5x phone and stair-stepped on a desktop that drew it at a quarter of its size. An imported `.svg` is a fixed-size texture too, and the raw `.svg` file is not exported for loading at run time.
 
