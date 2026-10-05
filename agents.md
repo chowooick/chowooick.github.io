@@ -2024,3 +2024,18 @@ docs의 기존 값(Mac 헤드리스 Chrome, WASM 1스레드, 저장 모델로 �
 
 **해결:** 첫 듣기는 진행 막대와 크기(398MB)를 보여 주고, 두 번째부터는 "음성 준비 중" 상태를 10초 남짓 보여 준다.
 페이지 이동 없이 이어 듣게 하면(SPA·같은 페이지 큐) 4–5초로 줄어든다.
+
+---
+
+## AGT-101 — A test tree rsynced from the shared working tree carries other sessions' uncommitted edits: e2e failures there may not be yours
+
+`측정 2026-10-05 · Claude Code, several sessions on one repository · Playwright on the test host`
+
+**증상:** a session rsynced the shared working tree to the test host and ran the e2e suite for its change. A briefing
+test it had not touched failed on every run. The tree had picked up another session's half-finished edits to that page
+(uncommitted at the moment of the rsync); `git archive HEAD` of the same repository, synced to a second folder, passed
+the test. Minutes later that session committed a different version of the same files.
+
+**해결:** test what you will ship. Commit your change, `git worktree add --detach <dir> HEAD`, and sync that folder
+(or `git archive <commit> | ssh host tar -x`) to the test host; deploy from the same worktree (AGT-084). To tell an
+existing failure from yours, run the failing test against a tree of the base commit before changing anything.

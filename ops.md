@@ -6763,3 +6763,19 @@ So the 401 is not a missing wrangler OAuth scope alone: the account itself is no
 - **Resend webhook** (`/webhooks` → `Add webhook`): the event picker is a base-ui popup whose inert overlay intercepts every click outside it, including the dialog's own labels; `Escape` closes only the popup, not the dialog. The signing secret on the webhook page is masked until its `Show value` button is clicked.
 
 **해결:** read each value inside the same script that creates it, write it straight to a 0600 file on the Air, copy it to the deploy host over ssh and delete the file; never print it. For Google, poll from the moment of the click. Keep each script idempotent-safe: a second "Add secret" run after a lost value creates a second secret instead of failing.
+
+---
+
+## OPS-343 — Headed Brave (Playwright persistent profile) dies on the click that opens Google sign-in; the same script headless signs in
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · playwright-core · macOS on MacBook Air M1, load average ~100`
+
+**증상:** `chromium.launchPersistentContext('~/kc-test/profile', { executablePath: <Brave>, headless: false, ... })`
+opened the site's login page, and the click on "Google로 로그인" (which opens the Google popup) failed with
+`locator.click: Target page, context or browser has been closed`, twice in a row. The browser log shows only a crashpad
+`mach_vm_read ... (os/kern) invalid address` warning. No other process held the profile.
+
+**해결:** run the same sign-in with `headless: true`. The account chooser appears in the popup, `[data-email=...]` is
+clicked, and the site session is set (`SIGNED_IN`). Cookies land in the same profile, so later headless page checks
+are signed in. Keep headed for checks that need it (some engines behave differently headless, e.g. AGT-100) and retry
+it when the Air is less loaded.
