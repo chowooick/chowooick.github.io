@@ -6966,7 +6966,7 @@ moment it lands on another runner: switch such jobs to the public URL before or 
 **해결:** 원본 행을 읽을 때마다 집계하는 통계는 D1 무료 계정에 두지 않는다. 이번에는 SQLite 파일 하나를 자체 호스트(Dokploy Traefik 뒤 node:sqlite 컨테이너)로 옮겼다.
 Worker 쪽에는 D1의 `prepare/bind/first/all/run/batch`만 HTTPS로 흉내 내는 작은 어댑터를 두어 SQL을 한 줄도 바꾸지 않았다(batch는 서버에서 한 트랜잭션).
 기록은 `waitUntil` 안에서 보내므로 호스트가 느려도 페이지는 늦어지지 않는다. 기존 데이터는 `wrangler d1 export <db> --remote --no-schema`로 옮겼다(1만 4천 행, 3.5 MB).
-위 메일을 받고 약 15분 뒤에도 `wrangler d1 export`와 `d1 execute --remote`(HTTP API)는 정상으로 응답했다. Worker 바인딩 읽기가 그때 실제로 실패했는지는 확인하지 못했다.
+위 메일을 받고 약 15분 뒤에도 `wrangler d1 export`와 `d1 execute --remote`(HTTP API)는 정상으로 응답했다. 같은 시각 Worker 바인딩 읽기는 실패했다(23:00 UTC Workflow 실행이 남긴 오류 원문: `D1_ERROR: Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue.`). 그래서 잠긴 동안에도 `wrangler d1 export`로 데이터를 꺼내 다른 곳으로 옮길 수 있다(OPS-354).
 결제가 가능하면 Workers Paid(/월, 월 250억 행)가 즉시 복구하는 유일한 방법이다.
 
 ## OPS-354 — Workers AI neurons per day and per model come from GraphQL `aiInferenceAdaptiveGroups` with the wrangler login token; a 2,000-token Korean report costs 200-240 neurons on gpt-oss-120b
@@ -7032,3 +7032,23 @@ failed with `browserContext.newPage: Target page, context or browser has been cl
 2. `glab api -X PATCH "projects/<id>/protected_branches/main?allow_force_push=true"` → `git push -f origin main` → 같은 호출로 `allow_force_push=false`. 남은 브랜치·태그·MR·파이프라인(keep-around ref를 만든다)이 없는지 API로 확인하고 지운다.
 3. `housekeeping?task=prune`은 바로는 효과가 없었다. 40분 뒤 한 번 더 부르고 5분 뒤 확인하니 옛 커밋 세 개 모두 `404 Commit Not Found`였다(파이프라인 0개인 저장소).
 4. 로컬은 `git remote remove <옛 원격>`, 백업 브랜치 삭제, `git reflog expire --expire=now --all && git gc --prune=now` 후 `git rev-list --all | wc -l`이 1인지 본다. Dokploy처럼 빌드마다 새로 받는 배포는 따로 손댈 것이 없다.
+
+## OPS-358 — Workers에서 D1을 자체 호스트 SQLite로 옮길 때: D1 모양의 HTTPS 어댑터 + `withEnv`로 코드를 고치지 않고, 바인딩마다 비밀값 하나로 전환한다
+
+`측정 2026-10-05 · Workers (compatibility_date 2026-09-01/2026-09-18) · Astro Cloudflare adapter · Node 24.21 node:sqlite · wrangler 4.135.0 · D1 6개(최대 7.7 MB)`
+
+**배경:** D1 무료 읽기 한도는 계정 합계라 DB 하나가 나머지를 함께 잠근다(OPS-353). D1 6개를 AWS 한 대(t4g.small)의 SQLite로 옮겼고, SQL은 한 줄도 바꾸지 않았다.
+
+- **어댑터:** Worker 쪽에 D1에서 실제로 쓰는 `prepare/bind/first(col)/all/run/batch`만 HTTPS로 구현한다. 서버는 node:sqlite로 batch를 한 트랜잭션에서 실행하고
+  `PRAGMA foreign_keys = ON`(D1과 같음), `meta.changes`·`meta.last_row_id`를 돌려준다. BLOB은 JSON에 못 실으므로 `{"$b64": …}`로 주고받고, 받는 쪽은 D1처럼 `ArrayBuffer`로 바꾼다.
+  wrangler의 `d1_migrations` 표를 서버도 그대로 쓰면 `wrangler d1 export` 결과를 가져온 DB가 적용 목록을 유지한다.
+- **`withEnv`:** `import { env } from 'cloudflare:workers'`로 바인딩을 읽는 페이지(Astro 등)가 많으면, 진입점에서
+  `import { withEnv } from 'cloudflare:workers'` 후 `fetch(req, env, ctx) { env = swap(env); return withEnv(env, () => app.fetch(req, env, ctx)); }`로 감싼다.
+  그러면 모듈에서 import한 `env`도 바뀐 바인딩을 본다. `scheduled`도 같이 감싼다. 로컬 `wrangler dev`(workerd)에서 확인했다. 토큰을 주면 페이지가 원격 DB의 행을 바꿨고,
+  토큰을 빼면 같은 요청이 로컬 D1에서 실패했다. Workflow는 `this.env`를 직접 감싼다.
+- **전환:** `swap(env)`는 `SQL_TOKEN_<BINDING>` 비밀값이 있는 바인딩만 바꾼다. `wrangler secret put`이 새 버전을 바로 배포하므로 DB 하나씩 전환된다(export → 가져오기 → 행 수 비교 → 비밀값 → 다시 export해 그사이 바뀐 행 확인).
+  비밀값을 지우면 되돌아간다. 비밀값을 넣고 1분 안의 요청은 아직 옛 버전으로 갈 수 있으니 검사는 30초쯤 뒤에 한다.
+- **함정:** 어댑터에서 전역 `fetch`를 `this.fetcher = fetch`로 받아 `this.fetcher(url, …)`처럼 메서드로 부르면 Workers는 `TypeError: Illegal invocation`을 던진다.
+  Node는 그대로 동작해서 Node 테스트는 통과했고, 운영에서 모든 DB 호출이 500이 됐다. `const f = this.fetcher; f(…)`처럼 바인딩 없이 부르거나 기본값을 `(...a) => fetch(...a)`로 둔다.
+
+**해결(결과):** 6개 DB 합계 약 8.4 MB를 옮기는 데 DB마다 1분 안쪽이 걸렸다. 서버는 RSS 18 MB였다. 관리 화면 응답은 미국 사무실에서 측정해 0.5~0.85초(통계 30일 화면은 2.1초)였다.
