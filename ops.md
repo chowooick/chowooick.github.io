@@ -6149,3 +6149,24 @@ safer than clicking through the form.
 
 With managed publishing turned on first, all of these saved changes collect in the publishing
 overview and go to review together, which avoids the auto-submission of OPS-280.
+
+## OPS-309 — Playwright persistent profile held by another session: exit code 21 "ProcessSingleton"; copy the profile without `Singleton*` and open the copy
+
+`측정 2026-10-05 · Chrome 154 on the Air · playwright-core launchPersistentContext({ channel: 'chrome' })`
+
+**증상:** a session on the shared test host opened the shared signed-in profile while another
+session's Chrome held it. Playwright threw at once:
+`browserType.launchPersistentContext: Failed to create a ProcessSingleton for your profile directory`,
+with `Failed to create <profile>/SingletonLock: File exists (17)` in the call log and
+`process did exit: exitCode=21`. A script that only saved `storageState` afterwards wrote no state,
+so every test after it failed as signed out. The failures looked like a broken deploy (82 of 86 tests).
+
+The lock is not stale while the other Chrome runs, so waiting or deleting `SingletonLock` is wrong.
+Never delete or reset the original profile.
+
+**해결:** copy the profile to a directory of your own, leaving out the lock files and caches, and open
+the copy:
+`rsync -a --exclude 'Singleton*' --exclude '*Cache*' ~/kc-test/profile/ ~/kc-test/profile-<task>/`.
+The Google account came across in the copy: the account chooser offered it and a site sign-in
+through it completed (`SIGNED_IN`). Check the sign-in line before running the suite, so a missing
+session fails one step instead of the whole run.
