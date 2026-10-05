@@ -5064,3 +5064,13 @@ Keeping the SVG as a GDScript string constant and rasterising it on layout gives
 **증상:** a floating board got per-map themes (fog colour and density among them). Landscape previews (960 × 560, camera fitted to the board) looked right at `fog_density` 0.006–0.011 with a light lilac or pale-blue `fog_light_color`. In the match on a 390 × 844 portrait view the same board was nearly white: the portrait camera fits the board's width, so it stands about twice as far away, and exponential fog grows with distance. A bright fog colour made it worse than the original warm, darker one at the same density.
 
 **해결:** check every theme in a portrait view, not only the preview. Here densities of 0.0035–0.005 with darker fog colours (`6f5f9a` instead of `b9a8e0`) kept both views readable. A coloured light rig has the same trap: a red sun and red fill on a volcano map turned every element-coloured tile orange; a near-white sun with a cool, weak fill kept the tiles readable and the lava still glowing.
+
+## GDT-270 — A modal UI that eats key events with `set_input_as_handled()` in `_input` can still see a held key: poll `Input.is_action_pressed()` for "hold to fast-forward"
+
+`측정 2026-10-05 · Godot 4.7.2-stable · headless SceneTree test on the Air (M1)`
+
+**증상:** a credits screen wanted "hold confirm to fast-forward" while its UI root turns key events into press-only commands in `_input()` and marks every key event handled, so the game never sees them. Nothing reported the release, and an `_unhandled_input` handler never got the events at all.
+
+The `Input` singleton's action state is updated before the event is dispatched to the viewport, so marking the event handled does not touch it. In a test, `Input.parse_input_event()` of an E press plus `Input.flush_buffered_events()` (GDT-089) kept `Input.is_action_pressed("interact")` true in the screen's `_process` while the UI root consumed the event; the roll moved more than 3× as far in 0.5 s as without the hold, and dropped back to normal speed within 0.4 s of the release event.
+
+**해결:** start the hold from the UI's own press command (so a key still held from before the modal opened does not count), then poll `Input.is_action_pressed()` for every action that means confirm each frame and end the hold when none is down. Touch holds need their own flag from `gui_input` (both the touch and its emulated mouse event arrive, GDT-030; setting the same flag from both is harmless).
