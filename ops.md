@@ -6559,3 +6559,37 @@ bash, which most remote-command recipes assume, prints `==` literally, so the sa
 **해결:** quote the word (`echo "==" x` runs), use a separator that does not start with `=` (`echo --- $f`), or put
 multi-step remote jobs in a small script on the host (`~/work/mw-tools/check.sh`, called as one command) instead of a
 long `zsh -lc "…"` string — that also removes the triple quoting.
+
+---
+
+## OPS-330 — Brave(Playwright)로 Web Push를 시험하려면 프로필의 `brave.gcm.channel_status`를 켜야 한다
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · playwright-core · macOS (MacBook Air M1)`
+
+**증상:** `pushManager.subscribe()`가 실패하거나 구독 버튼이 켜지지 않는다. Brave는 기본값으로 Google 푸시 서비스(FCM)를
+쓰지 않는다(brave://settings/privacy "Use Google services for push messaging" 꺼짐).
+
+**해결:** 브라우저를 띄우기 전에 프로필의 `Default/Preferences`에 `{"brave":{"gcm":{"channel_status":true}}}`를 넣는다(기존
+JSON이 있으면 그 키만 합친다). `launchPersistentContext`로 headed 실행 + `context.grantPermissions(['notifications'])`.
+이 상태에서 구독 endpoint가 `fcm.googleapis.com`으로 나오고, VAPID로 보낸 푸시가 FCM 201 → 서비스 워커
+`showNotification` → `registration.getNotifications()`로 확인됐다(localhost와 운영 도메인 둘 다).
+
+**주의:** 같은 프로필을 Playwright로 **다시 띄우면** 구독이 페이지에서 사라진 것처럼 보이고(getSubscription이 비거나 켜짐 상태가
+안 잡힘) 그 사이 보낸 푸시도 표시되지 않았다. 구독 → 발송 → 표시 확인을 **한 브라우저 세션 안에서** 끝낸다. 서버에 남은 시험
+구독은 직접 지운다. 서명 중인 다른 세션이 쓰는 프로필을 복사할 때는 깨진 심볼릭 링크 `RunningChromeVersion`이 `cpSync`를
+ENOENT로 멈추게 하니 `Singleton*`과 함께 걸러낸다.
+
+---
+
+## OPS-331 — Astro 서버에서 내부 `app.fetch`로 보낸 POST가 "Cross-site POST form submissions are forbidden"으로 막힌다
+
+`측정 2026-10-05 · Astro 7.3 · @astrojs/cloudflare 14 · Cloudflare Workers`
+
+**증상:** Worker의 `scheduled()`(크론)에서 `app.fetch(new Request(url, { method: 'POST' }))`로 Astro API 라우트를 부르면
+응답 본문이 `Cross-site POST form submissions are forbidden`이고 라우트가 실행되지 않는다. curl로 Origin 없이 POST해도 같다.
+
+Astro의 기본 `security.checkOrigin`이 Origin 헤더가 없거나 다른 POST를 폼 제출로 보고 거부한다. 크론은 브라우저가 아니라서
+Origin을 붙이지 않는다.
+
+**해결:** 내부 요청에 `Origin: <사이트 origin>`과 `Content-Type: application/json`, 본문 `'{}'`를 붙인다. 그 경로를
+외부에서 못 부르게 하려면 래퍼 `fetch`에서 그 경로를 404로 돌려 보내고, 크론만 `app.fetch`로 직접 들어가게 한다.
