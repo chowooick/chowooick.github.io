@@ -6658,3 +6658,15 @@ async function advance(page, ms) {
 ```
 
 Running a minute of fake time frame by frame also takes real time (about 20–40 s per minute on an M1 Air), so raise that test's timeout (`test.setTimeout(150_000)`).
+
+## OPS-336 — SpacetimeDB 2.8: a client already in an app store keeps working after columns are appended, if it decodes each row from its own byte slice
+
+`측정 2026-10-05 · SpacetimeDB 2.8.0 standalone · Rust module · hand-written GDScript BSATN client (Godot 4.7.2)`
+
+**증상:** A Rust module needed four new columns at the end of its public `game` table and a new public table. A build of the client was already on Google Play and could not be replaced at the same moment as the module publish, and OPS-169 says to release new bindings with the publish.
+
+The client splits every `BsatnRowList` into one byte slice per row before decoding it: `FixedSize(n)` cuts every `n` bytes, and `RowOffsets` cuts between offsets. A decoder written against the old struct therefore reads its known fields from the slice and never sees the bytes the new columns add. It also does not subscribe to the new table, so nothing is sent for it.
+
+Measured: the old client's code (the commit the store build came from) was run headless against a local database that had been updated to the new module (`spacetime publish ... -y`, automatic migration). It connected, opened a room, set training, dealt 48 tiles, and played a whole match to `phase 3` against its bot with 0 failures. The new client against the same database read the new columns.
+
+**해결:** When the client decodes per row slice, an append-only schema change (new columns at the end with typed defaults, new tables) does not need a client release at the same moment. Check two things before relying on it: that row decoding is per slice, not a running reader across rows, and that delete matching does not compare the old client's re-encoded bytes with the new ones. Then run the store build's code against the migrated database before the production publish. The publish still disconnects every client once (OPS-170).
