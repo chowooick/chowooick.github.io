@@ -6434,3 +6434,37 @@ made it worse: Vite also watched those copies' tsconfig files.
 
 **해결:** after a whole-tree sync, stop the dev server and start it again (`pkill -f "port <n>"; npm run dev -- --port
 <n>`), then wait for a 200 before testing. Exclude `.claude` from the sync.
+
+## OPS-324 — Android Chrome fires `beforeinstallprompt` on a first visit only after the service worker has finished its precache (10–14 s for 1.9 MB); a "no prompt after N s → show manual steps" timer must start at `serviceWorker.ready`
+
+`측정 2026-10-05 · Chrome 154 · Pixel 7 Pro (Android 17) · Workbox 7.4 generateSW, 78 precache entries / 1.9 MB · CDP over adb forward`
+
+**증상:** a page that installs its PWA from a full-screen "앱 설치하기" button fell back to browser-menu steps when no
+`beforeinstallprompt` had arrived 9 s after load. On a clean first visit to a new origin the event came 10–14 s after
+the tab opened (polled through CDP), so the menu steps would flash up just before the real prompt became available.
+On return visits the worker already controls the page and the event comes within about 1 s.
+
+Also measured on the same phone, end to end with the real install sheet: 「설치」 → `appinstalled` → poll
+`getInstalledRelatedApps()` → +3 s → `intent://<host>/?open-app=1#Intent;scheme=https;action=android.intent.action.VIEW;end`
+put the new WebAPK in front 8.8 s and 9.5 s after the tap (two installs, two origins; OPS-284 gives the reason for the wait).
+When the tab had itself been opened by another app's VIEW intent (e.g. `adb shell am start -d <url> -p com.android.chrome`),
+Chrome finished that tab (`wm_finish_activity … app-request`) when it handed off; add
+`--es com.android.browser.application_id com.android.chrome` to open a test tab that behaves like one the user opened.
+With the WebAPK installed, a VIEW intent for a URL in its scope goes straight to the app.
+
+**해결:** start the fallback timer from `navigator.serviceWorker.ready` (8 s after it, plus a long absolute cap for pages
+with no worker), and let any later `beforeinstallprompt` switch the screen back to the install button. Chrome's
+transient user activation lasts about 5 s, so a tap made earlier than that before the event cannot be turned into
+`prompt()`; keep the button armed and pulse it when the event arrives.
+
+## OPS-325 — Screenshot a real iPhone/iPad from the Mac with `xcrun devicectl device capture screenshot`; `idevicescreenshot` fails on iPadOS 26 without a developer disk image
+
+`측정 2026-10-05 · Xcode devicectl (macOS 27) · iPad mini 5 (iPad11,1) · iPadOS 26.3.1 · USB, paired`
+
+**증상:** `idevicescreenshot` (libimobiledevice, Homebrew) printed `Could not start screenshotr service: Invalid service`
+and asked for the Developer disk image. `xcrun devicectl list devices` listed the iPad as `available (paired)`.
+
+**해결:** `xcrun devicectl device capture screenshot --device <UDID> --destination shot.png` saved a full-resolution
+PNG (2048×1536 landscape) with no extra setup. To open a page in Safari first:
+`xcrun devicectl device process launch --device <UDID> --payload-url 'https://…' com.apple.mobilesafari`.
+`devicectl device capture screen-record` exists as well. Taps still need XCUITest/WebDriverAgent; this covers looking.
