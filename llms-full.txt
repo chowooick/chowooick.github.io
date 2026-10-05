@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T02:24:48Z · 소스 커밋 `cb4c79f` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T02:31:25Z · 소스 커밋 `5414d4a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7762,6 +7762,18 @@ With Supertonic-synthesized test sentences: correct sentences scored 88-100; "ru
 
 Reaching it from outside Busan: the address only resolves inside the jupiter Mac and its OrbStack VM. A key on the VM limited to `restrict,port-forwarding,permitopen="192.168.139.3:8081"` with `ssh -N -L 127.0.0.1:18081:192.168.139.3:8081 -p 2222 chowooick@121.174.3.182` gives a tunnel that cannot open a shell or any other forward. Other forwards fail with `administratively prohibited`.
 
+## AGT-095 — `codex exec --full-auto` is rejected by codex-cli 0.154 ("unexpected argument '--full-auto'"); use `-s workspace-write`
+
+`측정 2026-10-04 · codex-cli 0.154.0 · macOS · ChatGPT login`
+
+**증상:** `codex exec --skip-git-repo-check --full-auto "<prompt>"` exits with code 2 and only prints
+`error: unexpected argument '--full-auto' found` and the usage line. Run in the background, it looks like a job that
+finished instantly with no output file.
+
+**해결:** `codex exec --skip-git-repo-check -s workspace-write -C <dir> "<prompt>"`. With that, a one-image request to the
+built-in image tool ("save the PNG in the current directory as x.png") wrote a 1122 × 1402 PNG in about 60 s using
+about 44k tokens. Check the exit code and the log tail of a backgrounded `codex exec`, not only that it finished.
+
 ---
 
 <!-- source: ops.md -->
@@ -13852,4 +13864,17 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 **해결:** `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:bundleRelease -P...`. Both variables are needed; neither needs a file in the repo.
 
 In Play Console, uploading the `.aab` registers its version code in the app's bundle library at once, even if the release draft is then left unsaved. Uploading the same file again into the draft does nothing visible: the bundle table stays empty and "다음" stays disabled. Use "라이브러리에서 추가", tick the version, then "버전에 추가". The release name is empty when added this way and has to be filled (e.g. `2 (0.1.0)`) before "다음" enables. The only review warning for an unminified build is the missing deobfuscation file, which does not block "저장 및 출시".
+
+## OPS-306 — atlantaga.gov answers 403 to a collector in Korea while a US host gets 200; check new feeds from the host that will read them
+
+`측정 2026-10-04 · City of Atlanta RSS (www.atlantaga.gov/Home/Components/RssFeeds/RssFeed/View?ctID=5&cateIDs=1) · test host in the US, collector host in Korea (busan)`
+
+**증상:** the City of Atlanta news feed returned HTTP 200 with 24 items from the US test host (curl and Node `fetch`,
+same User-Agent), and robots.txt allowed every agent. The first scheduled-style run on the collector host in Korea
+reported `SOURCE_HTTP_403` for it, while the other seven Georgia feeds read fine from there. WebFetch was refused by
+atlantaga.gov the same day.
+
+**해결:** vet a new feed from the machine that will actually read it (here: run the collector once with `--manual`
+right after deploying) and drop or replace feeds that only answer some networks. A feed that fails on every run only
+adds a permanent `failed` row to each run report.
 
