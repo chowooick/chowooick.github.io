@@ -2062,3 +2062,20 @@ areas. Three findings:
 Use two excerpts per track and drop answers that disagree. Back it with measurements it cannot bias (tempo and
 meter from a beat-grid fit, key from a chroma profile, a timbre-distance matrix to check that new tracks differ
 from existing ones). Do not use it to verify short sound effects. Related: AGT-090.
+
+---
+
+## AGT-103 — A scripted rewrite of a whole block in a shared file silently drops what a parallel session added to it minutes earlier
+
+`측정 2026-10-05 · Claude Code, several sessions committing to one repository`
+
+**증상:** a session read a layout file, planned a refactor (two hand-written menus → one list rendered in a loop), and
+applied it with a script that replaced each `<nav>…</nav>` block from its start tag to its end tag. Between the read
+and the script, another session had committed a new menu entry inside those blocks. The script ran on the new file,
+the replacement was built from the old reading, and the entry vanished. Unit tests, type checks and the session's own
+e2e test passed; only an unrelated test that counts the phone bar's links (now 8 instead of 9) hinted at it.
+
+**해결:** right before a block replacement, `git log -1 -- <file>` and re-read the block; after it, read the removed
+lines (`git diff` lines starting with `-`) and account for every link, item or attribute that is gone, not only the
+ones you meant to move. Prefer edits anchored on small unique strings over whole-block replacement in files other
+sessions are touching.
