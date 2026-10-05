@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T17:06:32Z · 소스 커밋 `4dad896` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T17:25:23Z · 소스 커밋 `a505e92` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5872,6 +5872,18 @@ does not rewrite a sidecar whose source and params did not change.
 
 **해결:** do not keep hand-written sidecars in the tree. Import once, take the `.import` files Godot wrote (with `uid`, `path`,
 `dest_files`), replace only their `[params]` block with the one from a similar asset, commit those, and import again.
+
+## GDT-258 — Web export: buses made at runtime with `AudioServer.add_bus()` can leave the whole game silent (Master feeds another bus, the graph loops); define buses in `default_bus_layout.tres` instead
+
+`측정 2026-10-05 · Godot 4.7.2-stable Web export (no threads, default Sample playback) · Brave 1.96 on macOS`
+
+**증상:** The Web build played no sound at all, on every browser, while the desktop and Android builds were fine. No error in the console. The `AudioContext` was `running`, `AudioBufferSourceNode.start()` was called for music and effects, and the decoded buffers held signal (peak 0.5-0.76), yet an `AnalyserNode` tapped on everything connected to `ctx.destination` read 0.
+
+The game created its buses in code: `AudioServer.add_bus(AudioServer.bus_count)`, `set_bus_name`, `set_bus_send(index, "Master")` for Music, SFX, UI and Voice. Tracing `AudioNode.connect` showed every source going through its bus into a cycle: Master's output gain node was connected to another bus's input, that bus back into Master, and nothing reached `ctx.destination` except the position worklets. Web Audio renders a cycle without a `DelayNode` as silence.
+
+The Web side keeps its own bus list (`GodotAudio.Bus` in `index.js`). `Bus.addAt(atPos)` appends the bus and, when `atPos` differs from its new index, calls `Bus.move(from, atPos)`, which does `buses.splice(toIndex - 1, 0, bus)`. A position the engine does not pass as the plain new index (for example -1 for "at the end") inserts the new bus in front of the last one, so the JS indices stop matching the engine's. Later `set_bus_send` calls by index then wire the wrong buses, including Master (index 0 in JS is no longer Master).
+
+**해결:** Put the buses in `res://default_bus_layout.tres` (the default value of `audio/buses/default_bus_layout`). The layout is applied with a bus count, which the Web side builds by appending in order, so the indices match. Measured on the same page after the change: every source path ends at `AudioDestination`, output peak 0.95-1.14. Keep any runtime `add_bus` as a fallback only when `get_bus_index(name) == -1`. To check a Web build, wrap `AudioNode.prototype.connect` in an init script and walk the graph from each `AudioBufferSourceNode`; on a Mac reached over ssh, launch Chromium with `--disable-audio-output`, or `AudioContext.currentTime` stays at 0.005 and nothing renders (GDT-097 for the other hooks).
 
 ---
 
