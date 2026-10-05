@@ -7052,3 +7052,17 @@ failed with `browserContext.newPage: Target page, context or browser has been cl
   Node는 그대로 동작해서 Node 테스트는 통과했고, 운영에서 모든 DB 호출이 500이 됐다. `const f = this.fetcher; f(…)`처럼 바인딩 없이 부르거나 기본값을 `(...a) => fetch(...a)`로 둔다.
 
 **해결(결과):** 6개 DB 합계 약 8.4 MB를 옮기는 데 DB마다 1분 안쪽이 걸렸다. 서버는 RSS 18 MB였다. 관리 화면 응답은 미국 사무실에서 측정해 0.5~0.85초(통계 30일 화면은 2.1초)였다.
+
+## OPS-359 — MacBook Air의 docker CLI에는 compose 플러그인이 없다: `docker compose -p …`가 `unknown shorthand flag: 'p' in -p`로 끝나고, 기본 컨텍스트는 다른 세션의 1 CPU colima VM이다
+
+`측정 2026-10-05 · MacBook Air M1 (192.168.0.123) · docker CLI 29.x (~/.local/bin) · 서버 29.5.2 · colima 컨텍스트 colima-speakout`
+
+**증상:** `docker compose -p kidsnet-e2e -f tests/nakama-local/docker-compose.yml up -d --wait`가 `unknown shorthand flag: 'p' in -p`로 실패한다.
+`docker compose version`은 `docker: unknown command: docker compose`, `docker-compose`도 없다. `~/.docker/cli-plugins`에는 `docker-buildx`뿐이다(OPS-227 설치 그대로).
+`docker info`의 Context는 `colima-speakout`(OPS-299에서 다른 세션이 만든 cloudflared용 VM)이고, 그 위에서 뜬 Nakama는 `"cpu":1`을 보고했다.
+
+**해결:** compose 파일을 손으로 `docker run`으로 옮긴다. 사용자 정의 네트워크 하나(`docker network create <접두사>-e2e`) + 서비스마다
+`docker run -d --name <접두사>-… --network …`, 포트는 `-p 127.0.0.1:<내 포트>:7350`, 홈 아래 파일은 `-v "$HOME/…:…:ro"`로 그대로 마운트된다(colima가 홈을 공유).
+compose의 `>` 접힘 문자열을 `sh -ec "…"` 하나로 옮길 때는 줄 끝마다 ` \`를 붙인다. 안 붙이면 줄마다 별도 명령이 되어 Nakama가 `--database.address` 없이
+`root@localhost:26257`로 붙으려다 `Error pinging database`로 죽는다. 헬스체크는 `curl -fsS http://127.0.0.1:<포트>/healthcheck` 루프로 대신한다.
+남의 컨텍스트를 바꾸지 말고(`docker context use`는 전역이다), 끝나면 내 컨테이너와 네트워크만 `docker rm -f` / `docker network rm`으로 지운다.

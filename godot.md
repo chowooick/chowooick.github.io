@@ -5160,3 +5160,17 @@ At start, `InputMap.action_add_event("ui_accept", e)` with `e = InputEventJoypad
 After the game's first screen was up, one `Runtime.evaluate` that assigned `navigator.getGamepads = () => [pad, null, null, null]` and dispatched `new Event('gamepadconnected')` with `e.gamepad = pad` was enough: the engine's polling read `pad.buttons[i] = {pressed, touched, value}` changes (standard index 0 → `JOY_BUTTON_A`, 1 → B, 9 → Start, 12–15 → d-pad) in all three window sizes. A press held 110 ms followed by 260 ms released was seen exactly once per press, at a machine load of 2.3–4.9 per core.
 
 **해결:** for a CDP-only check, install the pad late in one evaluate and replace the whole button object on each change. Related: GDT-248, GDT-278.
+
+## GDT-280 — A Nakama realtime client in pure GDScript (no nakama-godot): HTTPRequest + WebSocketPeer polled in `_process`, a duck-typed socket var so unit tests inject a fake
+
+`측정 2026-10-05 · Godot 4.7.2-stable headless (macOS arm64) · Nakama 3.40.0 JS runtime · ~760 lines`
+
+**증상:** a native build needed the same behaviour as a hand-written browser client (device auth, REST RPC, `match_join`, op codes, reconnect with backoff), and nakama-godot brings its own adapter whose HTTP path can freeze a frame (GDT-022) and whose joins have no deadline (GDT-025).
+
+The port that passed 135 checks (unit + two clients against a real Nakama, 4 runs, 0 failures):
+- **Promises:** a small `RefCounted` with `signal done`, `resolve()`/`reject()` and `func wait(): if not finished: await done`. Coroutines `await waiter.wait()`; `_process` rejects waiters past their deadline. Signal emission resumes the awaiting coroutine synchronously, so a `disconnect()` that rejects pending waiters runs the cancelled branches before it returns — give every connect a generation number and check it after each `await`.
+- **HTTP:** one `HTTPRequest` child per call with `timeout`; `cancel_request()` emits nothing, so reject the waiter yourself. A port nobody listens on gives `RESULT_CANT_CONNECT` at once; a local `TCPServer.listen()` that never accepts gives `RESULT_TIMEOUT` — both make offline failure tests.
+- **Wire:** Nakama's JSON socket sends `op_code` as a string and `data` as standard base64; `Marshalls.utf8_to_base64(JSON.stringify(payload))` for `match_data_send`. JSON numbers come back as floats, so `Number.isInteger`-style checks must accept integral floats and convert with `int()`. Pre-check base64 with a regex before `Marshalls.base64_to_raw` to keep junk frames quiet. In `RegEx`, use `\z` rather than `$` to match JS anchors (PCRE `$` also matches before a final `\n`).
+- **Close:** `close()` finishes in later `poll()`s (GDT-194): keep closed peers in a retiring list polled until `STATE_CLOSED`, or the `match_leave` queued before `close()` never leaves. Real-server check: the other player saw the leave.
+- **Tests:** declare the socket as an untyped `var _socket: Variant` and the test can drop in a `RefCounted` with `poll/get_ready_state/get_available_packet_count/get_packet/send_text/close`, then put the client in the connected state and feed envelopes — throttle, heartbeat, `match_lost` and backoff cases run in ~3 s with no server.
+- Measured: op 2 at 18–20 messages per second headless against a 20 Hz match loop.
