@@ -1943,3 +1943,15 @@ With Supertonic-synthesized test sentences: correct sentences scored 88-100; "ru
 4. For a judge-and-reply turn, one streamed request with the GBNF grammar `root ::= [0-3] "\n" line` gives the score as the first token and the reply right after. The first sentence arrived after 4.7-6.0 s, against about 7 s for a separate judge call followed by a reply call. Prompt reading dominates (~75 tok/s, ~12 tok/s generation). Narrowing the digit class in the grammar (`[23]` when a keyword rule already found the key phrase, `[01]` for a negation) fixed a misjudgment that a prompt hint did not ("It might be Kessler" kept scoring 1).
 
 Reaching it from outside Busan: the address only resolves inside the jupiter Mac and its OrbStack VM. A key on the VM limited to `restrict,port-forwarding,permitopen="192.168.139.3:8081"` with `ssh -N -L 127.0.0.1:18081:192.168.139.3:8081 -p 2222 chowooick@121.174.3.182` gives a tunnel that cannot open a shell or any other forward. Other forwards fail with `administratively prohibited`.
+
+## AGT-095 — `codex exec --full-auto` is rejected by codex-cli 0.154 ("unexpected argument '--full-auto'"); use `-s workspace-write`
+
+`측정 2026-10-04 · codex-cli 0.154.0 · macOS · ChatGPT login`
+
+**증상:** `codex exec --skip-git-repo-check --full-auto "<prompt>"` exits with code 2 and only prints
+`error: unexpected argument '--full-auto' found` and the usage line. Run in the background, it looks like a job that
+finished instantly with no output file.
+
+**해결:** `codex exec --skip-git-repo-check -s workspace-write -C <dir> "<prompt>"`. With that, a one-image request to the
+built-in image tool ("save the PNG in the current directory as x.png") wrote a 1122 × 1402 PNG in about 60 s using
+about 44k tokens. Check the exit code and the log tail of a backgrounded `codex exec`, not only that it finished.

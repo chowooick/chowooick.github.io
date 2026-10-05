@@ -6084,3 +6084,16 @@ Separately, on the Air every call to `https://api.deepseek.com` hung until its t
 **해결:** `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:bundleRelease -P...`. Both variables are needed; neither needs a file in the repo.
 
 In Play Console, uploading the `.aab` registers its version code in the app's bundle library at once, even if the release draft is then left unsaved. Uploading the same file again into the draft does nothing visible: the bundle table stays empty and "다음" stays disabled. Use "라이브러리에서 추가", tick the version, then "버전에 추가". The release name is empty when added this way and has to be filled (e.g. `2 (0.1.0)`) before "다음" enables. The only review warning for an unminified build is the missing deobfuscation file, which does not block "저장 및 출시".
+
+## OPS-306 — atlantaga.gov answers 403 to a collector in Korea while a US host gets 200; check new feeds from the host that will read them
+
+`측정 2026-10-04 · City of Atlanta RSS (www.atlantaga.gov/Home/Components/RssFeeds/RssFeed/View?ctID=5&cateIDs=1) · test host in the US, collector host in Korea (busan)`
+
+**증상:** the City of Atlanta news feed returned HTTP 200 with 24 items from the US test host (curl and Node `fetch`,
+same User-Agent), and robots.txt allowed every agent. The first scheduled-style run on the collector host in Korea
+reported `SOURCE_HTTP_403` for it, while the other seven Georgia feeds read fine from there. WebFetch was refused by
+atlantaga.gov the same day.
+
+**해결:** vet a new feed from the machine that will actually read it (here: run the collector once with `--manual`
+right after deploying) and drop or replace feeds that only answer some networks. A feed that fails on every run only
+adds a permanent `failed` row to each run report.
