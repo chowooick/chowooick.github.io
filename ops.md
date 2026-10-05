@@ -6884,3 +6884,12 @@ together with `cooling_device cur_state > 0`, the extra load is the thermal clam
 diff `/proc/net/dev` on the host's physical NIC over a fixed window. To lower the peaks themselves, cut the CI
 work per push (one `npm ci` shared by the verify steps, skip verify for docs-only pushes) or set the runner to
 `concurrent = 1`: the CPU is clamped above about 90 °C anyway, so the second parallel job adds heat, not speed.
+
+## OPS-349 — A Vite dev server (Astro 7 `astro dev`) answers 403 to any Host but its own; test a second domain locally with `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`
+
+`측정 2026-10-05 · Astro 7.3.3 (Vite) · @astrojs/cloudflare 14 · Brave 1.96 with --host-resolver-rules`
+
+**증상:** a site that serves two domains from one Worker (middleware branching on `url.hostname`) was opened in dev as `http://kyominnews.com:4417/` (Chromium `--host-resolver-rules="MAP kyominnews.com 127.0.0.1"`). Every request answered **403** with an empty page, while `http://127.0.0.1:4417/` worked. `curl -H "Host: kyominnews.com"` behaved the same. This is Vite's DNS-rebinding guard (`server.allowedHosts`), not the app.
+
+**해결:** start the dev server with the extra host in the environment, without touching the config:
+`__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=kyominnews.com npx astro dev --port 4417` — the same pages then answered 200. Two side notes: an absolute redirect the app builds for that host (`https://kyominnews.com/`) leaves the dev port, so check redirects by status and `Location`, not by following them; and Cloudflare Web Analytics' beacon logs a CORS error on `:4417`, which is harmless.
