@@ -6452,6 +6452,10 @@ On return visits the event comes within about 1 s.
 Also measured on the same phone, end to end with the real install sheet: 「설치」 → `appinstalled` → poll
 `getInstalledRelatedApps()` → +3 s → `intent://<host>/?open-app=1#Intent;scheme=https;action=android.intent.action.VIEW;end`
 put the new WebAPK in front 8.8 s and 9.5 s after the tap (two installs, two origins; OPS-284 gives the reason for the wait).
+On a Galaxy S24+ (SM-S926U, Android 16, Chrome 154) the same flow took 8.1 s, and with manifest `description` plus six
+`form_factor: "narrow"` 1080×1920 WebP `screenshots` the prompt opened Chrome's large store-style sheet (name, origin,
+「설치」, the description, a screenshot carousel) in portrait and landscape. Rotating the phone while the sheet is open
+dismisses it (`userChoice` → `dismissed`).
 When the tab had itself been opened by another app's VIEW intent (e.g. `adb shell am start -d <url> -p com.android.chrome`),
 Chrome finished that tab (`wm_finish_activity … app-request`) when it handed off; add
 `--es com.android.browser.application_id com.android.chrome` to open a test tab that behaves like one the user opened.
