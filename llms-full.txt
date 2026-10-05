@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T23:43:22Z · 소스 커밋 `a262bdb` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T23:45:48Z · 소스 커밋 `5133cd0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6131,6 +6131,20 @@ At start, `InputMap.action_add_event("ui_accept", e)` with `e = InputEventJoypad
 After the game's first screen was up, one `Runtime.evaluate` that assigned `navigator.getGamepads = () => [pad, null, null, null]` and dispatched `new Event('gamepadconnected')` with `e.gamepad = pad` was enough: the engine's polling read `pad.buttons[i] = {pressed, touched, value}` changes (standard index 0 → `JOY_BUTTON_A`, 1 → B, 9 → Start, 12–15 → d-pad) in all three window sizes. A press held 110 ms followed by 260 ms released was seen exactly once per press, at a machine load of 2.3–4.9 per core.
 
 **해결:** for a CDP-only check, install the pad late in one evaluate and replace the whole button object on each change. Related: GDT-248, GDT-278.
+
+## GDT-280 — A Nakama realtime client in pure GDScript (no nakama-godot): HTTPRequest + WebSocketPeer polled in `_process`, a duck-typed socket var so unit tests inject a fake
+
+`측정 2026-10-05 · Godot 4.7.2-stable headless (macOS arm64) · Nakama 3.40.0 JS runtime · ~760 lines`
+
+**증상:** a native build needed the same behaviour as a hand-written browser client (device auth, REST RPC, `match_join`, op codes, reconnect with backoff), and nakama-godot brings its own adapter whose HTTP path can freeze a frame (GDT-022) and whose joins have no deadline (GDT-025).
+
+The port that passed 135 checks (unit + two clients against a real Nakama, 4 runs, 0 failures):
+- **Promises:** a small `RefCounted` with `signal done`, `resolve()`/`reject()` and `func wait(): if not finished: await done`. Coroutines `await waiter.wait()`; `_process` rejects waiters past their deadline. Signal emission resumes the awaiting coroutine synchronously, so a `disconnect()` that rejects pending waiters runs the cancelled branches before it returns — give every connect a generation number and check it after each `await`.
+- **HTTP:** one `HTTPRequest` child per call with `timeout`; `cancel_request()` emits nothing, so reject the waiter yourself. A port nobody listens on gives `RESULT_CANT_CONNECT` at once; a local `TCPServer.listen()` that never accepts gives `RESULT_TIMEOUT` — both make offline failure tests.
+- **Wire:** Nakama's JSON socket sends `op_code` as a string and `data` as standard base64; `Marshalls.utf8_to_base64(JSON.stringify(payload))` for `match_data_send`. JSON numbers come back as floats, so `Number.isInteger`-style checks must accept integral floats and convert with `int()`. Pre-check base64 with a regex before `Marshalls.base64_to_raw` to keep junk frames quiet. In `RegEx`, use `\z` rather than `$` to match JS anchors (PCRE `$` also matches before a final `\n`).
+- **Close:** `close()` finishes in later `poll()`s (GDT-194): keep closed peers in a retiring list polled until `STATE_CLOSED`, or the `match_leave` queued before `close()` never leaves. Real-server check: the other player saw the leave.
+- **Tests:** declare the socket as an untyped `var _socket: Variant` and the test can drop in a `RefCounted` with `poll/get_ready_state/get_available_packet_count/get_packet/send_text/close`, then put the client in the connected state and feed envelopes — throttle, heartbeat, `match_lost` and backoff cases run in ~3 s with no server.
+- Measured: op 2 at 18–20 messages per second headless against a 20 Hz match loop.
 
 ---
 
@@ -15301,4 +15315,18 @@ failed with `browserContext.newPage: Target page, context or browser has been cl
   Node는 그대로 동작해서 Node 테스트는 통과했고, 운영에서 모든 DB 호출이 500이 됐다. `const f = this.fetcher; f(…)`처럼 바인딩 없이 부르거나 기본값을 `(...a) => fetch(...a)`로 둔다.
 
 **해결(결과):** 6개 DB 합계 약 8.4 MB를 옮기는 데 DB마다 1분 안쪽이 걸렸다. 서버는 RSS 18 MB였다. 관리 화면 응답은 미국 사무실에서 측정해 0.5~0.85초(통계 30일 화면은 2.1초)였다.
+
+## OPS-359 — MacBook Air의 docker CLI에는 compose 플러그인이 없다: `docker compose -p …`가 `unknown shorthand flag: 'p' in -p`로 끝나고, 기본 컨텍스트는 다른 세션의 1 CPU colima VM이다
+
+`측정 2026-10-05 · MacBook Air M1 (192.168.0.123) · docker CLI 29.x (~/.local/bin) · 서버 29.5.2 · colima 컨텍스트 colima-speakout`
+
+**증상:** `docker compose -p kidsnet-e2e -f tests/nakama-local/docker-compose.yml up -d --wait`가 `unknown shorthand flag: 'p' in -p`로 실패한다.
+`docker compose version`은 `docker: unknown command: docker compose`, `docker-compose`도 없다. `~/.docker/cli-plugins`에는 `docker-buildx`뿐이다(OPS-227 설치 그대로).
+`docker info`의 Context는 `colima-speakout`(OPS-299에서 다른 세션이 만든 cloudflared용 VM)이고, 그 위에서 뜬 Nakama는 `"cpu":1`을 보고했다.
+
+**해결:** compose 파일을 손으로 `docker run`으로 옮긴다. 사용자 정의 네트워크 하나(`docker network create <접두사>-e2e`) + 서비스마다
+`docker run -d --name <접두사>-… --network …`, 포트는 `-p 127.0.0.1:<내 포트>:7350`, 홈 아래 파일은 `-v "$HOME/…:…:ro"`로 그대로 마운트된다(colima가 홈을 공유).
+compose의 `>` 접힘 문자열을 `sh -ec "…"` 하나로 옮길 때는 줄 끝마다 ` \`를 붙인다. 안 붙이면 줄마다 별도 명령이 되어 Nakama가 `--database.address` 없이
+`root@localhost:26257`로 붙으려다 `Error pinging database`로 죽는다. 헬스체크는 `curl -fsS http://127.0.0.1:<포트>/healthcheck` 루프로 대신한다.
+남의 컨텍스트를 바꾸지 말고(`docker context use`는 전역이다), 끝나면 내 컨테이너와 네트워크만 `docker rm -f` / `docker network rm`으로 지운다.
 
