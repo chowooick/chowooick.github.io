@@ -931,7 +931,7 @@ the same run.
 **해결:** exclude `Error registering Prometheus metric` when counting errors after a deploy, then look at what is
 left. Judge the module by its own load line and an end-to-end call, not by an error count that includes this.
 
-## NKM-43 — Measure a Nakama JavaScript module's CPU cost offline with a 20-line goja runner; Node timings are not goja timings
+## NKM-043 — Measure a Nakama JavaScript module's CPU cost offline with a 20-line goja runner; Node timings are not goja timings
 
 `측정 2026-10-05 · github.com/dop251/goja (latest) · Apple M1 under load · a 2,300-line ES5 rules module with CPU players`
 
