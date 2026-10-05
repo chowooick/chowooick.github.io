@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T15:32:41Z · 소스 커밋 `fb4f27c` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T15:54:49Z · 소스 커밋 `9763666` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -5858,6 +5858,21 @@ To retire a worker already installed, serve a `sw.js` that calls `skipWaiting()`
 
 **해결:** start every stem in the same frame and crossfade only their volumes. For the Web, set the stems' loop flag off, and on the main stem's `finished` signal call `play()` on all of them in one frame. Measured after that: the three players reported the same position after every level change and after the 94.5 s loop point. Cost: each stem plays (and on the Web is decoded into a float32 buffer, about 33 MB per stereo 94 s stem) the whole time.
 
+## GDT-257 — A sidecar `.png.import` without `path`/`dest_files` loads only after `--import` rewrites it; syncing the sidecar back over the rewritten one gives "Failed loading resource"
+
+`측정 2026-10-05 · Godot 4.7.2-stable · texture importer · tree synced to a test Mac with rsync --exclude .godot`
+
+**증상:** new sprites showed the fallback art and the log printed `ERROR: Failed loading resource: res://assets/sprites/boss_mio.png.`
+although `.godot/imported/` held their `.ctex` files and `ResourceLoader.exists()` was true.
+
+The `.import` sidecars had been written by hand (copied from an older sprite, with `uid`, `path` and `dest_files` deleted, as in
+GDT-120). `godot --import` on the test Mac filled those lines in, but every later `rsync -az --exclude .godot client ...` from the
+dev Mac pushed the hand-written sidecar back, so the remap had no `path` again and loading failed at run time. The import step
+does not rewrite a sidecar whose source and params did not change.
+
+**해결:** do not keep hand-written sidecars in the tree. Import once, take the `.import` files Godot wrote (with `uid`, `path`,
+`dest_files`), replace only their `[params]` block with the one from a similar asset, commit those, and import again.
+
 ---
 
 <!-- source: agents.md -->
@@ -7851,6 +7866,20 @@ EXAONE 4.0 has sliding-window layers (`n_swa = 4096`, `is_swa_any = 1` in the lo
 Separately, two requests generating at the same time on this Mac ran at 6.2-8.9 tokens/s each against 11.2-11.7 alone, so running them side by side buys little throughput and makes both late.
 
 **해결:** for a structured answer from a slow local model, use a line format enforced by a grammar (`root ::= note? note? "corrected: " text "\n" … "scores: " num " " num`, with `part ::= [^\n|>]+` for fields split by ` -> ` and ` | `) and parse it with a regex per label. Measured: 6-12 s per review against 11-16 s, with tips of the same quality on a fixed set of 12 learner answers. Keep background jobs to one request at a time so the second slot stays free for interactive turns: with two background reviews in flight a turn's first token took 9.9 s instead of 1.2 s.
+
+## AGT-99 — A parallel session that deploys from a stale local `main` silently replaces the release another session shipped minutes earlier; read `previousRelease` and `git fetch` before deploying
+
+`측정 2026-10-05 · git 2.x · Dokploy release deploy (deploy-misa.sh) · several Claude Code sessions on one checkout`
+
+**증상:** session A worked in a worktree branched from the shared checkout's `main`. Session B had meanwhile pushed two commits
+to `origin/main` from its own branch and deployed them as release `...-music`, without updating the shared checkout's local
+`main`. A's build and deploy succeeded and its health checks passed, but production lost B's feature. The only trace was in the
+deploy output: `"previousRelease": "20261005-music"`, a release name A had never made.
+
+**해결:** right before building a release, `git fetch` and check `git log HEAD..origin/main`; rebase if it is not empty.
+After a deploy, compare `previousRelease` with the last release you know; an unknown name means someone shipped in between, so
+rebase on their commits and deploy again at once (here 15 minutes of exposure). A session that pushes `main` from a branch should
+also fast-forward the shared checkout's `main` when its tree is clean, so the next session does not start from the old one.
 
 ---
 
