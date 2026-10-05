@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T19:34:09Z · 소스 커밋 `0ee5edf` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T19:44:39Z · 소스 커밋 `b368ae5` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -14584,4 +14584,81 @@ Origin을 붙이지 않는다.
 
 **해결:** 내부 요청에 `Origin: <사이트 origin>`과 `Content-Type: application/json`, 본문 `'{}'`를 붙인다. 그 경로를
 외부에서 못 부르게 하려면 래퍼 `fetch`에서 그 경로를 404로 돌려 보내고, 크론만 `app.fetch`로 직접 들어가게 한다.
+
+---
+
+## OPS-332 — A Cloudflare Worker with D1, rate limits, crons and static assets runs unchanged on Dokploy under `wrangler dev`; block `/__scheduled` and `/cdn-cgi/`, and set `CF-Connecting-IP` yourself
+
+`측정 2026-10-05 · wrangler 4.134.0 (workerd) on node:24-bookworm-slim · Dokploy (misa, x86_64) behind Traefik · Docker 28.5`
+
+**증상:** a Worker (`assets` with `run_worker_first`, one D1 database, two `ratelimits` bindings, two crons, Google OAuth) had to be served from a Dokploy box instead of Cloudflare. There is no D1 or rate-limit binding in plain workerd, and `wrangler dev` is documented as a development server. Three things go wrong if it is exposed directly:
+
+- `--test-scheduled` (needed to fire crons at all) answers **anyone** on `/__scheduled?cron=...` and `/cdn-cgi/handler/scheduled` with `200 Ran scheduled event`.
+- Nothing sets `CF-Connecting-IP`. A Worker that keys its rate limits on that header and allows requests without it lets every request through; a client can also send the header itself.
+- `--var` puts secrets on the process command line.
+
+**해결:** run `wrangler dev --ip 127.0.0.1 --port 8788 --persist-to /data --test-scheduled --local-upstream <host> --show-interactive-dev-session=false` behind a ~100-line Node proxy on the public port that answers 404 for `^/(__scheduled|cdn-cgi/)`, drops any incoming `CF-Connecting-IP` and sets it from Traefik's `X-Real-Ip`, and fires each cron from `wrangler.jsonc` once a minute in UTC with a GET to `127.0.0.1:8788/__scheduled?cron=<urlencoded>`. Write secrets to `.dev.vars` next to the config (mode 0600) at start instead of `--var`. Before starting, `wrangler d1 execute <db> --local --persist-to /data --file schema.sql` and `wrangler d1 migrations apply <db> --local --persist-to /data` are idempotent on every restart (`CI=1` skips the confirmation). Set the Dokploy app to stop-first (OPS-073): two containers must not open the same SQLite files.
+
+Measured: build with Hugo + `npm install wrangler` 654 MB image (arm64); ready 20 s after start including migrations; 320-380 MiB RSS; the `ratelimits` binding counted per `CF-Connecting-IP` (10 requests from one address → 6 counted, 3 more from a second address → all counted); D1 data survived `docker restart` and Dokploy redeploys; stop-first redeploy leaves about 20 s of 502/503. The Worker's `request.url` origin matches `--local-upstream`, so origin checks against `SITE_ORIGIN` pass.
+
+Two side notes from the same day: a new Cloudflare record was answered by 1.1.1.1, 8.8.8.8 and KT 168.126.63.1 within a minute, but a home router (192.168.0.1) that had looked the name up before kept answering NXDOMAIN for 15+ minutes; test with `curl --resolve host:443:<ip>` or Chromium `--host-resolver-rules="MAP host <ip>"` instead of waiting. In the Google Cloud console (Korean UI, 2026-10), a web OAuth client is created by Playwright as: click the last `mat-select`, pick option `웹 애플리케이션`, fill `input[formcontrolname=displayName]`, click `URI 추가` and type with `page.keyboard` (the new field takes focus), then `만들기`; the client ID and the `GOCSPX-` secret are in the page text right after, so read them there and write them to a 0600 file without printing.
+
+## OPS-333 — MacBook Air 테스트 호스트에서 ssh로 띄운 Chromium 계열은 `AudioContext.currentTime`이 1초에 5 ms만 흐른다
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · Playwright chromium-1243 · macOS · MacBook Air M1 (air.local)`
+
+**증상:** WebAudio 라이브 타이밍 테스트(박자 위치, setRate, resync)가 전부 "0 beats in 2 s"로 실패한다.
+오프라인 렌더(`OfflineAudioContext`) 검사는 정상 통과한다. 같은 코드를 커밋 HEAD 버전으로 돌려도 똑같이 실패해서
+코드 회귀가 아니다.
+
+ssh에서 Playwright로 Brave와 Playwright 번들 Chromium을 각각 headless/headed, `--mute-audio` 유무로 4조합씩 띄워
+`new AudioContext()` → `resume()` → 무음 오실레이터 연결 → 1초 대기를 재면, 8조합 모두 `state: "running"`인데
+`currentTime`은 0.005초만 증가했다. 기본 출력 장치(MacBook Air 스피커)는 존재하고 `coreaudiod`도 떠 있다.
+
+**해결:** 이 호스트에서 오디오 라이브 타이밍 검사는 신호로 쓰지 않는다. 소리 품질·클리핑·길이는 오프라인 렌더로
+검증하고, 라이브 박자 동기화는 실시간 클록이 흐르는 기계에서 확인한다. 원인(ssh 세션의 오디오 출력 권한 등)은 미확인.
+
+## OPS-334 — Brave는 JavaScript로 쓴 쿠키의 만료를 약 6개월로 줄인다 (365일로 써도 181일)
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) · Playwright · macOS (air.local)`
+
+**증상:** `document.cookie = 'k=v; max-age=31536000; path=/; SameSite=Lax'`로 1년 쿠키를 쓰고 Playwright
+`context.cookies()`로 읽으면 `expires`가 지금부터 181일 뒤다. Chrome 기준으로 "만료 365일"을 단언하던 테스트가
+Brave로 바꾼 뒤 이 항목 하나만 실패했다(나머지 1,464개 통과).
+
+**해결:** 브라우저 테스트에서 쿠키 수명은 "≥ 180일" 또는 "값·path·SameSite 확인"으로 단언한다. 서버 `Set-Cookie` 헤더로 쓴 쿠키도 같은 상한을 받는지는
+재지 않았다.
+
+## OPS-335 — Playwright `page.clock.runFor(ms)` stops after about 1000 timers: a `requestAnimationFrame` loop advances only ~16 s per call
+
+`측정 2026-10-05 · @playwright/test 1.63 · Brave 1.96 (Chromium 154) · macOS`
+
+**증상:** A page counts down with a `requestAnimationFrame` loop (adds `now - last` each frame and acts at 34 s). In a test, `await page.clock.install()` then `await page.clock.runFor(61_000)` returned without error, but the page had only advanced about 15 s (its own label read "19초" left of 34). Five-second calls (`runFor(5000)`) each advanced exactly 5 s.
+
+Fake rAF fires every 16 ms, so one long `runFor` hits the fake-timers loop limit (about 1000 timer callbacks) and silently stops early. Short notices pass (they finish inside ~16 s), so the bug shows only for longer waits.
+
+**해결:** Advance in steps of a few seconds. When the countdown navigates, stop stepping once the URL changes; a `runFor` in progress during navigation throws `Target page, context or browser has been closed`:
+
+```ts
+async function advance(page, ms) {
+  const from = page.url();
+  for (let left = ms; left > 0 && page.url() === from; left -= 5000) {
+    try { await page.clock.runFor(Math.min(5000, left)); } catch (e) { if (page.url() === from) throw e; }
+  }
+}
+```
+
+Running a minute of fake time frame by frame also takes real time (about 20–40 s per minute on an M1 Air), so raise that test's timeout (`test.setTimeout(150_000)`).
+
+## OPS-336 — SpacetimeDB 2.8: a client already in an app store keeps working after columns are appended, if it decodes each row from its own byte slice
+
+`측정 2026-10-05 · SpacetimeDB 2.8.0 standalone · Rust module · hand-written GDScript BSATN client (Godot 4.7.2)`
+
+**증상:** A Rust module needed four new columns at the end of its public `game` table and a new public table. A build of the client was already on Google Play and could not be replaced at the same moment as the module publish, and OPS-169 says to release new bindings with the publish.
+
+The client splits every `BsatnRowList` into one byte slice per row before decoding it: `FixedSize(n)` cuts every `n` bytes, and `RowOffsets` cuts between offsets. A decoder written against the old struct therefore reads its known fields from the slice and never sees the bytes the new columns add. It also does not subscribe to the new table, so nothing is sent for it.
+
+Measured: the old client's code (the commit the store build came from) was run headless against a local database that had been updated to the new module (`spacetime publish ... -y`, automatic migration). It connected, opened a room, set training, dealt 48 tiles, and played a whole match to `phase 3` against its bot with 0 failures. The new client against the same database read the new columns.
+
+**해결:** When the client decodes per row slice, an append-only schema change (new columns at the end with typed defaults, new tables) does not need a client release at the same moment. Check two things before relying on it: that row decoding is per slice, not a running reader across rows, and that delete matching does not compare the old client's re-encoded bytes with the new ones. Then run the store build's code against the migrated database before the production publish. The publish still disconnects every client once (OPS-170).
 
