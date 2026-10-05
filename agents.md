@@ -2048,13 +2048,13 @@ existing failure from yours, run the failing test against a tree of the base com
 areas. Three findings:
 
 1. With the candidate locations listed in the prompt ("desert temple, underwater tower, … final boss, ending
-   credits"), 40 of 60 answers were "desert temple" or "dreamlike starry final dungeon". Tracks with no Middle
+   credits"), 39 of 60 answers were "desert temple" or "dreamlike starry final dungeon". Tracks with no Middle
    Eastern element were described with "ney", "dhol" or "Middle Eastern flavor", including a solo nylon guitar
-   piece and a chiptune. 9 of 60 answers were garbage tokens (`<|im_start|>ly`).
+   piece and a chiptune. 12 of 60 answers were garbage or empty (under 60 characters, e.g. `<|im_start|>ly`).
 2. With a neutral prompt ("Describe this music in detail: genre, lead and backing instruments, percussion, tempo,
    mode, and mood. Do not guess a use case."), the instrument lists became specific and consistent between two
    excerpts of the same track (solo piano, nylon guitar, square-wave chiptune, sitar/santoor with tabla, choir with
-   orchestra), and matched the composers' own page descriptions where those existed. 2 of 60 were still garbage.
+   orchestra), and matched the composers' own page descriptions where those existed. 1 of 60 was still garbage.
 3. For 0.2-2 s sound effects it was wrong on known files: a water splash was "a cork pulled from a bottle", a
    teleport whoosh "a dragon exhaling", a dash swoosh "a whip crack".
 
