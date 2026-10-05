@@ -6517,3 +6517,28 @@ and delete only your own project's copy on the Air.
 - Frame times at 1440 × 900, real speed, from `pagereveal`: 17 ms with a few 33 ms frames.
 
 **해결:** Give every moving piece its own one-sided name, drive them all from one WAAPI timeline in the new page's `ready.then`, move side cards with `translate` on their group, and verify with an `animate()` counter or a later read rather than `getAnimations()` in an earlier-registered `ready.then`.
+
+## OPS-328 — Dokploy `compose.update` ignores `appName`: renaming a Compose service's containers and volume means a new service, a volume copy and a moved domain
+
+`측정 2026-10-05 · Dokploy v0.30.7 (misa) · docker compose 5.0.2`
+
+**증상:** `POST /api/compose.update {"composeId":..,"appName":"monsterworld","composeFile":..}` returns success, and a
+following `compose.one` shows the new `composeFile` but the old `appName` (`monster-world-xxspuf`). No error, no field
+message. The other fields in the same call are applied, so a later deploy would run the new file under the old project
+name (`docker compose -p <old appName>`), with containers and volumes keeping the old prefix.
+
+**해결:** The project name (container names `<appName>-<service>-1`, volume `<appName>_<volume>`, network
+`<appName>_<network>`) only comes from `compose.create`, which appends a random suffix (`monsterworld` → `monsterworld-zod1fo`).
+The order that worked, with about 12 minutes of downtime of which 10 were a failed first deploy:
+
+1. `pg_dump -Fc` the live database and save `compose.one` (it holds the env) before touching anything.
+2. `compose.create` the new service, `compose.update` its raw file, `compose.saveEnvironment` with the old env. No downtime yet.
+3. Stop the old containers, `docker volume create --label com.docker.compose.project=<new appName> --label com.docker.compose.volume=<volume> <new appName>_<volume>`
+   and copy the stopped volume (`docker run --rm -v old:/from:ro -v new:/to <image with sh> cp -a /from/. /to/`). The labels keep compose from warning that the volume was not created by it.
+4. Move the domain: `domain.delete` on the old service, `domain.create` on the new one. Traefik reused the existing Let's Encrypt certificate; HTTPS answered as soon as the web container started.
+5. `compose.deploy` the new service, check row counts in the new database, then `compose.delete {"deleteVolumes": false}` the old one. It removes the stopped containers, networks and `/etc/dokploy/compose/<old appName>/` and keeps the old volume as a rollback copy.
+
+On a host whose default address pools are used up the first deploy of the new service fails with
+`failed to create network <appName>_game: ... all predefined address pools have been fully subnetted` even though the old
+service's networks are about to be freed; pin `ipam` subnets in the new file before step 2 (see the subnet entry above with
+the `172.16.x.0/24` list; `172.16.70–71.0/24` are now taken by monsterworld).
