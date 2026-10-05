@@ -6670,3 +6670,11 @@ The client splits every `BsatnRowList` into one byte slice per row before decodi
 Measured: the old client's code (the commit the store build came from) was run headless against a local database that had been updated to the new module (`spacetime publish ... -y`, automatic migration). It connected, opened a room, set training, dealt 48 tiles, and played a whole match to `phase 3` against its bot with 0 failures. The new client against the same database read the new columns.
 
 **해결:** When the client decodes per row slice, an append-only schema change (new columns at the end with typed defaults, new tables) does not need a client release at the same moment. Check two things before relying on it: that row decoding is per slice, not a running reader across rows, and that delete matching does not compare the old client's re-encoded bytes with the new ones. Then run the store build's code against the migrated database before the production publish. The publish still disconnects every client once (OPS-170).
+
+## OPS-337 — Dokploy `compose.one` still says `composeStatus: "done"` right after `compose.deploy`: polling it reports the old deployment's success
+
+`측정 2026-10-05 · Dokploy on misa · raw compose, release images built on the host`
+
+**증상:** a deploy script called `compose.deploy`, slept 5 s, read `compose.one` and stopped at the first `composeStatus == "done"`. It printed "deployment completed" and its health checks passed, but `docker ps` still showed the previous release's image tags and the public files kept the old `last-modified`. The queued deployment started about a minute later (its log file `/etc/dokploy/logs/<appName>/<appName>-<timestamp>.log` appeared then) and only then were the containers replaced. `composeStatus` is the state of the last deployment that ran, not of the one just queued, so the first poll read the previous release's "done".
+
+**해결:** give each deployment a unique `title` in `compose.deploy` and poll `GET deployment.allByCompose?composeId=<id>` for the record with that title; finish on its `status` (`done` / `error`). After any deploy, check the running image tag (`docker ps --format '{{.Image}}'`) or the public file's `last-modified` before calling it live. Related: OPS-249 (the queue can also delay the start by minutes).
