@@ -5094,3 +5094,11 @@ The `Input` singleton's action state is updated before the event is dispatched t
 `xcodebuild -project <name>.xcodeproj -scheme <name> -configuration Debug -destination id=<UDID> -allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=<team> CODE_SIGN_STYLE=Automatic build`
 → `BUILD SUCCEEDED`, the device is registered, and `xcrun devicectl device install app --device <UDID> <derivedData>/Build/Products/Debug-iphoneos/<name>.app` installs it.
 The first launch on that device still fails with `FBSOpenApplicationErrorDomain error 3`, "profile has not been explicitly trusted by the user", and the iPad shows "신뢰하지 않는 개발자". Trust is a tap on the device (Settings > General > VPN & Device Management > the Apple Development certificate > Trust); no `devicectl` command does it, and launching Settings with `--payload-url 'prefs:root=General&path=ManagedConfigurationList'` only lands under the untrusted-developer alert. Trust is per developer certificate, so one tap covers every app signed with it on that device.
+
+## GDT-273 — iOS export: with `boot_splash/show_image=false` the launch screen still shows Godot's logo and "Game engine"; set the preset's `storyboard/*` images, and uninstall before judging (iOS caches it)
+
+`측정 2026-10-05 · Godot 4.7.2-stable · iOS export (debug, Xcode 27) · iPad mini 5, iPadOS 26.3.1 · devicectl screenshots every ~0.55 s`
+
+**증상:** a project with `boot_splash/show_image=false` and a white `boot_splash/bg_color`, so its Android and web starts are plain white, opened on the iPad with the Godot robot and the words *Game engine* centred on white for about four seconds while the engine loaded, before the game's own studio ident. The exported `Launch Screen.storyboard` takes `SplashImage` from `Images.xcassets`, and with no image configured the export fills it with Godot's default splash.
+
+**해결:** in the iOS preset set `storyboard/custom_image@2x` and `storyboard/custom_image@3x` to a transparent PNG (4×4 is enough), `storyboard/use_custom_bg_color=true` and `storyboard/custom_bg_color` to the first frame's colour. The exported `SplashImage.imageset` then holds that PNG and the launch is white → ident. iOS keeps the old launch screen of an installed app, so `xcrun devicectl device uninstall app` before installing the new build. Related: GDT-244 (the Android side of the same white start).
