@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T22:24:45Z · 소스 커밋 `0546222` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T22:30:14Z · 소스 커밋 `796b3c6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15033,6 +15033,13 @@ together with `cooling_device cur_state > 0`, the extra load is the thermal clam
 diff `/proc/net/dev` on the host's physical NIC over a fixed window. To lower the peaks themselves, cut the CI
 work per push (one `npm ci` shared by the verify steps, skip verify for docs-only pushes) or set the runner to
 `concurrent = 1`: the CPU is clamped above about 90 °C anyway, so the second parallel job adds heat, not speed.
+
+Moving the runner off the box went further. The same mnori jobs on a docker-executor runner in an OrbStack VM on
+an Apple Silicon Mac (arm64, 12 vCPU, 16 GB): typecheck + lint + build in one job 29 s, against 82 s (typecheck)
+plus 106 s (lint) as separate jobs on misa; a fighter typecheck + Vite build 20 s. Next.js, rolldown and tsc ran on
+arm64 without changes. A job that used to reach the host it deploys through the container's default gateway
+(`172.17.0.1:3000`, because misa cannot reach its own public IP) fails with `ECONNREFUSED 172.17.0.1:3000` the
+moment it lands on another runner: switch such jobs to the public URL before or together with the move.
 
 ## OPS-349 — A Vite dev server (Astro 7 `astro dev`) answers 403 to any Host but its own; test a second domain locally with `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`
 
