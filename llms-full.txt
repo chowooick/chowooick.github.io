@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-05T04:05:39Z · 소스 커밋 `89b14b4` · 이 파일은 자동 생성물이다.
+생성 2026-10-05T04:42:34Z · 소스 커밋 `d11dbd9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -13907,4 +13907,16 @@ atlantaga.gov the same day.
 **해결:** vet a new feed from the machine that will actually read it (here: run the collector once with `--manual`
 right after deploying) and drop or replace feeds that only answer some networks. A feed that fails on every run only
 adds a permanent `failed` row to each run report.
+
+## OPS-307 — Cross-document view transition: one keyframe set for both directions via a custom property set by `:active-view-transition-type()`; cut the moving root at a translucent sticky header with `clip-path`
+
+`측정 2026-10-04 · Google Chrome 154.0.8037.95 (channel: 'chrome', headless and headed, macOS) · Astro site with @view-transition { navigation: auto }`
+
+**증상:** A next/prev page turn written as separate keyframes per direction doubles every rule, and when `::view-transition-old/new(root)` slides sideways under a sticky header with a `#ffffffed` background, the sliding page faintly shows through the header. A headline lifted into its own new-only layer (`view-transition-name` set in `pagereveal`) to land a beat ahead of the body ghosted over the old headline when it started before the old root had faded out.
+
+- `:root:active-view-transition-type(turn-next, panel-next) { --turn-dir: 1 }` (comma list accepted) plus `@keyframes turn-in { from { translate: calc(var(--turn-dir, 1) * 48px) 0 } }` works: the `::view-transition-*` pseudo-elements inherit the custom property from `<html>` and the keyframe resolves it. 0 aborted transitions in 10+ runs at 390 and 1280-1440 px.
+- `clip-path: inset(var(--turn-top) 0 0)` on `::view-transition-old(root)` and `::view-transition-new(root)`, with `--turn-top` set from `.topbar.getBoundingClientRect().bottom` in `pagereveal`, hides the page under the header for the whole move; a horizontal `translate` moves the clip with the image, so the top cut stays put. Put the page colour on `::view-transition-group(root)` (`animation: none`) so the strip a sliding image uncovers is not empty.
+- Ghosting: with old root fading out over 0.18 s and the headline layer starting at 0.12 s, both headlines were visible at once in slowed captures (CDP `Animation.setPlaybackRate` 0.1). Starting the headline at 0.15 s and the body at 0.2 s after a 0.16 s exit removed it. Frame times stayed at 17 ms with `filter: blur(6px)` on full-viewport snapshots (headless).
+
+**해결:** Set the direction once as a custom property under the transition type, cut the root images at the header with `clip-path`, and start any new-only layer only after the old root's exit has ended.
 
