@@ -7020,7 +7020,7 @@ failed with `browserContext.newPage: Target page, context or browser has been cl
 - Stop remote processes by PID (`ps -Ao pid,command | grep …`, then `kill <pid>`), never `pkill -f` with a
   pattern that also appears in the ssh command. Check that exactly one server is left before sending a job.
 
-## OPS-353 — GitLab 저장소 이력을 통째로 갈아엎을 때: 보호된 main 강제 푸시는 API로 잠깐 열고, 옛 커밋은 prune 유예 시간이 지나야 SHA로도 사라진다
+## OPS-357 — GitLab 저장소 이력을 통째로 갈아엎을 때: 보호된 main 강제 푸시는 API로 잠깐 열고, 옛 커밋은 prune 유예 시간이 지나야 SHA로도 사라진다
 
 `측정 2026-10-06 · gitlab.com (SaaS) · glab 1.x · REST v4`
 
