@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-06T06:03:35Z · 소스 커밋 `dd181db` · 이 파일은 자동 생성물이다.
+생성 2026-10-06T18:56:43Z · 소스 커밋 `0fefe5f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15565,4 +15565,21 @@ read window bounds from System Events, capture just that region with `screencapt
 Guideline 4.3(b) names the saturated categories outright: "dating, flashlight, … and fortune telling … we will not accept new submissions unless they offer a meaningfully different or improved experience." The 2026-06-08 revision adds that existing apps in these categories may be removed if they are not updated or improved, or fail to attract customers. 4.3(a) separately treats several near-identical apps as spam, which "may lead to your removal from the Apple Developer Program". Related rules that hit the same apps: 5.1.2(i) (since 2025-11-13, explicit consent before sending personal data such as birth date/time to a third-party AI), the 2025 age-rating survey (AI chatbot output and wellness topics raise the rating; Nebula and LINE占い are 16+, Co-Star 4+), and 3.1.2 subscription clarity.
 
 **해결:** plan one app with a feature axis a generic horoscope does not have (deterministic calendar engine, memory, relationship invites, date picking) and write that difference, with screenshots, in the App Review notes of the first submission. Do not ship several fortune apps from one engine; fold them into one app. Keep a web/PWA path ready for the season if review stalls. Put a consent screen in front of any off-device LLM call, or use Apple Foundation Models on device (Korean and Japanese supported).
+
+## OPS-368 — Check a PWA's Screen Wake Lock on an Android phone over adb, and open the installed WebAPK at any URL
+
+`측정 2026-10-06 · Pixel 7 Pro · Android 17 · Chrome WebAPK · adb 1.0.41`
+
+**증상:** `navigator.wakeLock.request('screen')` resolves the same in desktop Chrome and on a phone, so a browser test cannot
+tell whether the phone really keeps its screen on. Waiting out the screen timeout (30 min on the shared Pixel, OPS-222) is
+too slow.
+
+While a page holds the lock, `adb shell dumpsys power` lists
+`SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:0' ON_AFTER_RELEASE ACQ=-3s… (… ws=WorkSource{… com.android.chrome} …)`.
+The WorkSource names Chrome, also when the page runs inside an installed WebAPK, and `ACQ` says how long ago the page took it.
+
+**해결:**
+- Find the site's WebAPK without pulling APKs: `for p in $(adb shell pm list packages | grep webapk | cut -d: -f2); do echo "$p $(adb shell dumpsys package $p | grep -o '<host>' | head -1)"; done`. The one that prints the host is the site's app (one of 25 here).
+- Open the installed app at any page: `adb shell am start -a android.intent.action.VIEW -d https://<host>/<path> -p <webapk package>`. It opens in `SameTaskWebApkActivity` (standalone, no URL bar), so `display-mode: standalone` code paths run.
+- Then `adb shell dumpsys power | grep SCREEN_BRIGHT_WAKE_LOCK` shows whether the wake lock is held.
 
