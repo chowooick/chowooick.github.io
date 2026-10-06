@@ -5262,3 +5262,13 @@ Traps it found:
 - The root group's `accessibilityChildren` kept only the controls visible at start (6), while controls shown later (menu after a "press any key" gate, modal sheets) were still reported correctly as the focused element with that group as parent. `queue_accessibility_update()` on every node and hiding/showing the UI root did not change the list. Focus-follow reading works; VoiceOver's free cursor browsing (VO+arrows) may not reach later-shown controls in 4.7.2.
 
 **해결:** keep the probe as a test-only tool outside the shipped project (copy it into a scratch copy's `game/`), drive focus from a `--script` tour, and compare the dumped focused titles with the names the UI sets. Example: KIDS repo `tests/a11y-probe/probe.m` + `game/tests/native_a11y_tour.gd`.
+
+## GDT-287 — `Label.autowrap_mode = AUTOWRAP_WORD` still breaks Korean between syllables; split long Korean lines yourself at a separator
+
+`측정 2026-10-05 · Godot 4.7.2-stable · gl_compatibility · Noto Sans KR · 390 × 844 layout`
+
+**증상:** a centred two-line prompt "영지 명령 · 내 영지를 고르세요" in a 230 px wide pill wrapped as "영지 명령 · 내 영지를 고" / "르세요". It broke inside the word "고르세요" with `AUTOWRAP_WORD_SMART`, and the same break stayed after switching to `AUTOWRAP_WORD`. ICU line breaking allows a break between any two Hangul syllables (CSS `word-break: normal`). Godot's Label has no `keep-all` option. `Font.get_multiline_string_size(..., TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND)` measures the same breaks, so the measured height matches the bad wrap.
+
+A related trap: an autowrapping Label inside a `PanelContainer` with `SIZE_SHRINK_CENTER` gets a minimum width of about one glyph. The pill then lays its text out one syllable per line, as a tall narrow column.
+
+**해결:** keep such labels on one line when they fit. When they do not, replace your own separator with a newline before display: `text.replace(" · ", "\n")`. Measure each line with `get_string_size` to size the panel. For short status pills, turn autowrap off.
