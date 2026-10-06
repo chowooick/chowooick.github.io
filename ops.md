@@ -7084,3 +7084,16 @@ That fits a window over the past 24 hours: the account had used 1,534 (00:00 hou
 **증상:** a second domain is served by rewriting its paths in middleware (`return next('/kn' + path)`). `/kn/r/[slug].astro` and `/kn/r/[slug]/card.astro` read `Astro.params.slug` fine, but the endpoint `/kn/r/[slug]/og.png.ts` (`export const GET = ({ params }) => …`) logged `params` as `{}` and fell back to its default answer every time. The dev log shows the request as `[302] (rewrite) /r/<slug>/og.png`.
 
 **해결:** in an endpoint that can be reached through a rewrite, read the parameter from the address as a fallback: `params.slug ?? /\/r\/([0-9a-z-]+)\/og\.png$/.exec(url.pathname)?.[1]`. Log the endpoint's failures instead of `.catch(() => null)`; the silent fallback hid this for an hour.
+
+## OPS-362 — Cloudflare의 "D1 일일 작업 한도 초과" 메일은 재설정(00:00 UTC) 뒤에 한 번 더 올 수 있다: 새 초과가 아니라 지난 UTC 날짜의 늦은 알림이다
+
+`측정 2026-10-06 · Cloudflare Workers Free, D1 · GraphQL d1AnalyticsAdaptiveGroups`
+
+**증상:** 같은 내용의 한도 초과 메일("작업: 읽은 행 · 작업 한도: 5000000 · 재설정 시간: 2026-10-06 at 00:00:00 UTC")이 두 번 왔다. 첫 메일은 22:32 UTC, 두 번째는 00:16 UTC로,
+메일에 적힌 재설정 시각보다 16분 늦었다. 그 사이 D1을 쓰던 바인딩은 모두 다른 저장소로 옮겨 둔 상태였다(OPS-353).
+
+**사실:** 계정의 누적 읽은 행은 10-05 22:00 UTC 시간대에 500만을 넘었다(그날 합계 820만 행). 두 번째 메일이 온 10-06에는 계정 전체 D1 읽기가 1쿼리, 0행이었다.
+두 번째 메일은 새 초과를 뜻하지 않는다. 메일에는 어느 날짜의 초과인지가 재설정 시각으로만 적혀 있다.
+
+**해결:** 메일을 받으면 먼저 그날(UTC)의 읽은 행을 DB별로 본다. wrangler OAuth 토큰으로 GraphQL `d1AnalyticsAdaptiveGroups`
+(`filter: { date_geq: "<UTC 오늘>" }`, `sum { rowsRead }`, `dimensions { date databaseId }`)를 부르면 된다(OPS-353). 오늘 값이 0에 가까우면 지난 날짜의 늦은 알림이다.
