@@ -7110,3 +7110,32 @@ What works and what does not:
 - Unlocking needs the account password; there is no ssh-side way.
 
 **해결:** check the lock flag before trying. With an unlocked console, read VoiceOver through its AppleScript dictionary from ssh. With a locked one, test what the app exposes in-process instead (for Godot: every visible `BaseButton`/`LineEdit`/`Range` has `accessibility_name` or text) and say that the spoken output was not heard. Turn VoiceOver off afterwards with `tell application "VoiceOver" to quit`; it speaks aloud on a shared machine.
+
+## OPS-364 — Testing a PWA install page in Playwright: `Page.getInstallabilityErrors` says `in-incognito` in `newContext()`; CDP cannot emulate `display-mode`
+
+`측정 2026-10-05 · Brave 1.96 (Chromium 154) driven by playwright-core 1.63 · MacBook Air test host · headless`
+
+**증상:** a page with a valid manifest reported `[{"errorId":"in-incognito"}]` from CDP `Page.getInstallabilityErrors`, and `beforeinstallprompt` never came. `browser.newContext()` is an off-the-record profile, and Chromium does not offer installs there. Separately, `Emulation.setEmulatedMedia({ features: [{ name: 'display-mode', value: 'standalone' }] })` is accepted without an error but changes nothing: `matchMedia('(display-mode: standalone)').matches` stays `false` and `@media (display-mode: standalone)` rules do not apply.
+
+**해결:** for installability, open the page in `chromium.launchPersistentContext(<temp dir>, { executablePath: <Brave> , headless: true })`: errors were `[]` and Brave fired `beforeinstallprompt` within 8 s, headless. To test standalone-only CSS, read the built stylesheet, pull out the `@media (display-mode: standalone)` block (minifiers drop the space: `@media(display-mode:standalone)`) and inject its rules as a plain `<style>`; to test standalone-only script, stub `window.matchMedia` in `addInitScript` for queries containing `standalone`.
+
+## OPS-365 — Check a styled QR the way an iPhone camera reads it: Apple Vision (`VNDetectBarcodesRequest`) from a 15-line Swift script
+
+`측정 2026-10-05 · macOS 27 on the MacBook Air test host · /usr/bin/swift · Vision framework`
+
+**증상:** jsQR (OPS-320) is a stricter decoder than a phone camera and says nothing about what iOS itself reads. The iPhone Camera app decodes with Apple's Vision framework, which the Mac has too.
+
+```swift
+import Foundation; import Vision; import AppKit
+for path in CommandLine.arguments.dropFirst() {
+  let img = NSImage(contentsOfFile: path)!; var rect = CGRect(origin: .zero, size: img.size)
+  let cg = img.cgImage(forProposedRect: &rect, context: nil, hints: nil)!
+  let req = VNDetectBarcodesRequest(); req.symbologies = [.qr]
+  try! VNImageRequestHandler(cgImage: cg).perform([req])
+  print(path, (req.results ?? []).compactMap { $0.payloadStringValue })
+}
+```
+
+`swift vision.swift shot1.png shot2.png` over ssh needs no GUI session or permission. It decoded a level-H QR drawn as round-capped runs (0.92 module) with a logo in a cleared centre from an element screenshot and from **whole-page** screenshots at 1440 and 768 px, an animated scan line drawn over the code included.
+
+**해결:** after jsQR, run the same screenshots through Vision. Both passing is a good stand-in for "a phone camera opens it"; a real scan is still the final check.
