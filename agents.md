@@ -2107,3 +2107,22 @@ sessions are touching.
 - **float16도 실기기에서 죽는다(같은 날 확인).** WebGPU는 201MB를 다 받은 뒤 세션 생성·확인 합성 중에 WebContent 1940MB per-process-limit으로 죽었다. 같은 Jetsam 기록에서 WebKit GPU 프로세스는 26MB였다.
   WebGPU 버퍼가 GPU 프로세스가 아니라 WebContent 몫으로 잡히는 것으로 보인다(추정). WASM만 쓰게 하면 더 일찍, 받는 중 74%에서 죽었다.
   RAM 3GB급 iOS에서는 float16으로 줄여도 브라우저 Supertonic 3을 쓸 수 없다.
+
+## AGT-105 — Artifact 도구는 `.m4a`와 `audio/mp4`를 거부한다. 같은 AAC 파일을 `.mp4`로 이름만 바꾸면 올라간다
+
+`측정 2026-10-05 · Claude Code Artifact 도구(publish, files) · Brave 1.96 headless(Air)`
+
+**증상:** 소리 미리듣기 페이지에 AAC 파일 51개를 `files`로 붙이자 `extension ".m4a" is not served`로 아무것도 올라가지 않았다. `{"from": …, "contentType": "audio/mp4"}`로 형식을 적어도 `of a type artifacts don't serve`로 거부한다.
+받는 미디어 확장자는 `.mp3 .wav .ogg .mp4 .webm`뿐이다.
+
+**해결:** ffmpeg로 만든 AAC(`-c:a aac -movflags +faststart`)를 `.mp4`로 이름만 바꿔 올린다. 페이지에서 `fetch("a/x.mp4")` → `AudioContext.decodeAudioData`로 재생되고, Brave headless에서 재생 버튼을 눌러 진행 시간이 `0:02`로 넘어가는지 확인했다.
+반복 이음매를 들려주려면 압축 파일을 loop로 돌리지 말고 원본 PCM에서 `끝 N초 + 처음 N초`를 이어 붙여 한 번에 인코딩한다. AAC 앞뒤 패딩 때문에 loop 재생에는 원래 없던 틈이 생긴다.
+
+## AGT-106 — 헤드리스 Chrome의 `--screenshot --window-size=390,…`는 390px보다 넓게 배치한다. 폰 폭 확인에는 Playwright viewport를 쓴다
+
+`측정 2026-10-05 · Google Chrome(Mac) --headless=new · Brave 1.96 + playwright-core(Air)`
+
+**증상:** 390px 폭으로 찍은 스크린샷마다 오른쪽이 잘려 가로 넘침처럼 보였다. 페이지에 `position:fixed; right:0`으로 `innerWidth`를 표시해 찍어 보니 표시가 화면 밖으로 밀려 있었다. 레이아웃 폭(innerWidth)이 창 폭보다 넓다.
+같은 페이지를 Playwright `newPage({ viewport: { width: 390 } })`로 열면 `innerWidth 390 · scrollWidth 390`, 320에서도 `320 · 320`으로 넘침이 없었다.
+
+**해결:** 폰 폭은 CLI `--window-size`가 아니라 Playwright(또는 CDP `Emulation.setDeviceMetricsOverride`)의 viewport로 확인하고, 숫자는 `document.documentElement.scrollWidth`와 `innerWidth`로 비교한다.
