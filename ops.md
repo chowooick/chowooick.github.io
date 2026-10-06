@@ -2616,6 +2616,7 @@ routerUse((e) => {
 `AiError: Model ... is not available on the Workers Free plan` (code 5035)으로 실패한다. 모델 목록 API(`/ai/models/search`)에는
 이 모델들이 그대로 나오므로 목록만 보고 고르면 배포 뒤에야 안다. 몇십 건 호출 뒤에는 모든 모델이
 `you have used up your daily free allocation of 10,000 neurons` (code 4006)으로 멈추고 00:00 UTC에 풀린다.
+  **정정 (OPS-360, 2026-10-06 실측):** 00:00 UTC에 한꺼번에 풀리지 않았다. 직전 24시간 누적이 10,000을 넘는 동안 계속 4006이 나고, 오래된 사용분이 24시간을 지나면서 그만큼씩 다시 열렸다.
 
 - 무료 플랜에서 쓸 수 있는 것: gpt-oss-120b/20b, llama-4-scout, mistral-small-3.1, gemma-4-26b, qwen3 계열 등.
 - 응답의 `result.usage.neurons`로 건당 비용이 바로 나온다. 한국어 기사 1건(입력 약 1,000토큰) 요약 실측:
