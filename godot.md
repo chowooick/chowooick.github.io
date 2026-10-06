@@ -5224,3 +5224,23 @@ A second trap in the same setup: the child box's minimum size changes (text set 
 `Container.fit_child_in_rect()` sets the child's rotation to 0 and scale to 1 as well as its rect, on every sort (resize, child added, minimum size changed).
 
 **해결:** put the tilted node inside a tiny `Container` subclass whose `NOTIFICATION_SORT_CHILDREN` calls `fit_child_in_rect(child, Rect2(Vector2.ZERO, size))` and *then* sets `child.pivot_offset = size * 0.5` and `child.rotation_degrees`; return the child's combined minimum size from `_get_minimum_size()`. Short scale "bump" tweens are fine as long as nothing re-sorts mid-tween.
+
+## GDT-285 — Per-pixel hash noise in world shaders costs 5–7 ms a frame on an M1; a baked 256² noise texture removes it
+
+`측정 2026-10-05 · Godot 4.7.2-stable · Compatibility renderer · MacBook Air M1, 1440 × 900 window at 2x`
+
+**증상:** a stylised 3D scene whose ground, model and water shaders build their detail from `fract(sin(dot(p, …)) * 43758.5)` value noise (several octaves of fbm plus a 3 × 3 Voronoi for cobbles and leaf clumps) runs at 28–33 ms a frame natively and 23–33 fps in the browser. Halving `scaling_3d_scale` saves about 10 ms, so the frame is fragment-bound, not vertex- or draw-call-bound (120–160 draw calls).
+
+Replacing the procedural functions with reads from one tileable RGBA texture (R value noise, G distance to the nearest Voronoi point, B 4-octave fbm, A Voronoi edge distance, 256 × 256, mipmapped, bound once as a `global uniform sampler2D` in `[shader_globals]`) gave, on the same scenes:
+
+| scene | hash noise | baked texture |
+|---|---|---|
+| forest | 32.9 ms | 27.8 ms |
+| farm | 27.7 ms | 21.5 ms |
+| town | 28.1 ms | 23.7 ms |
+
+The same build in headless Brave 1.96 on that Air then measured 54–61 fps at 1440 × 900 (from 23–38). Mipmaps also stop distant noise from shimmering.
+
+Two related costs measured in the same pass: a full-screen `hint_screen_texture` post pass (9-tap blur and vignette on a camera quad) cost 7–9 ms; the directional shadow pass cost 4–8 ms, mostly from props far from the player, cut by turning off `cast_shadow` for scenery beyond the playable map.
+
+**해결:** bake the noise once (numpy, a few lines; keep the lattice periodic so it tiles) and sample it at the frequency the old function had (`texture(noise_tex, p / 16.0)` for a 16-cell texture). Prefer UI-layer gradients over screen-texture post passes for vignettes.
