@@ -2103,4 +2103,7 @@ sessions are touching.
 - int8 동적 양자화(Conv 포함): vector_estimator·text_encoder만 바꾸면 5.9dB, vocoder를 바꾸면 25dB(사실상 망가짐). MatMul·Gemm만 양자화하면 크기가 거의 줄지 않는다. 가중치의 92%가 Conv에 있다.
 - float16은 Brave(M1)의 WebGPU와 WASM 둘 다에서 열리고 읽는다. WASM은 첫 소리 15.7초, WebGPU는 3.9초다(Cache Storage 적재 기준).
 - Mac Playwright WebKit(iPhone 15 에뮬레이션)에서 적재 중 WebContent footprint 최고값: fp32 1535MB, float16 1328MB. 13% 차이다.
-  실제 iPad는 이 에뮬레이션보다 400MB 이상 더 썼으므로, float16이 1940MB 한도 안에 드는지는 실기기로 확인해야 한다(미확인).
+  실제 iPad는 이 에뮬레이션보다 400MB 이상 더 썼다.
+- **float16도 실기기에서 죽는다(같은 날 확인).** WebGPU는 201MB를 다 받은 뒤 세션 생성·확인 합성 중에 WebContent 1940MB per-process-limit으로 죽었다. 같은 Jetsam 기록에서 WebKit GPU 프로세스는 26MB였다.
+  WebGPU 버퍼가 GPU 프로세스가 아니라 WebContent 몫으로 잡히는 것으로 보인다(추정). WASM만 쓰게 하면 더 일찍, 받는 중 74%에서 죽었다.
+  RAM 3GB급 iOS에서는 float16으로 줄여도 브라우저 Supertonic 3을 쓸 수 없다.
