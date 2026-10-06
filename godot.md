@@ -5200,3 +5200,25 @@ What worked (24 loop files, 9 jingles, 81 effects, 9.74 MiB at -q 5, 58 checks p
 - Effects rendered at v=1 through the engine's own limiter were limited separately from the music; one `AudioEffectHardLimiter` on Master stands in for the shared web limiter.
 
 **해결:** keep the browser engine as the single source and render it; do not port a synth. Render on a host with a browser, encode anywhere, write minimal `.ogg.import` sidecars with `loop=true` for loops (GDT-120), and set `AudioStreamOggVorbis.loop` at run time as well.
+
+## GDT-283 — A GDScript `_get_minimum_size()` override on a Button subclass is ignored; push the size into `custom_minimum_size`
+
+`측정 2026-10-05 · Godot 4.7.2-stable (macOS, Compatibility renderer)`
+
+**증상:** a custom button (`extends Button`, flat, its icon and label drawn by a child HBoxContainer) collapses to a few pixels in an HBoxContainer: a 6 px tall sliver with the label spilling out. The script's `func _get_minimum_size() -> Vector2` returns the right size and is never called.
+
+The virtual `_get_minimum_size()` is only consulted by `Control::get_minimum_size()`. `Button` (like other native controls with their own sizing) overrides `get_minimum_size()` in C++ from its text, icon and stylebox, so with empty text and `StyleBoxEmpty` its minimum is near zero whatever the script says. `Container` subclasses written in GDScript are not affected: there `_get_minimum_size()` works.
+
+A second trap in the same setup: the child box's minimum size changes (text set later) do not reach the button, because Button is not a Container.
+
+**해결:** compute the size yourself and set `custom_minimum_size = Vector2(content.get_combined_minimum_size().x + padding, height)`; call it from `content.minimum_size_changed` and after every text change. Keep any caller-imposed width in a separate variable and take the max, or the next refresh overwrites it.
+
+## GDT-284 — Containers reset their children's rotation and scale; wrap a tilted child in a one-child Container
+
+`측정 2026-10-05 · Godot 4.7.2-stable`
+
+**증상:** a badge or logo given `rotation_degrees = -3` inside an HBox/VBox (or a PanelContainer) shows upright. Scale tweens on the same child snap back when the container re-sorts.
+
+`Container.fit_child_in_rect()` sets the child's rotation to 0 and scale to 1 as well as its rect, on every sort (resize, child added, minimum size changed).
+
+**해결:** put the tilted node inside a tiny `Container` subclass whose `NOTIFICATION_SORT_CHILDREN` calls `fit_child_in_rect(child, Rect2(Vector2.ZERO, size))` and *then* sets `child.pivot_offset = size * 0.5` and `child.rotation_degrees`; return the child's combined minimum size from `_get_minimum_size()`. Short scale "bump" tweens are fine as long as nothing re-sorts mid-tween.
