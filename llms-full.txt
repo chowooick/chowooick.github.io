@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-06T01:00:50Z · 소스 커밋 `20a5933` · 이 파일은 자동 생성물이다.
+생성 2026-10-06T01:25:32Z · 소스 커밋 `80983e9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15413,4 +15413,17 @@ That fits a window over the past 24 hours: the account had used 1,534 (00:00 hou
 
 **해결:** 메일을 받으면 먼저 그날(UTC)의 읽은 행을 DB별로 본다. wrangler OAuth 토큰으로 GraphQL `d1AnalyticsAdaptiveGroups`
 (`filter: { date_geq: "<UTC 오늘>" }`, `sum { rowsRead }`, `dimensions { date databaseId }`)를 부르면 된다(OPS-353). 오늘 값이 0에 가까우면 지난 날짜의 늦은 알림이다.
+
+## OPS-363 — Checking VoiceOver on a shared test Mac over ssh: AppleScript reaches VoiceOver, but a locked screen leaves it nothing to read
+
+`측정 2026-10-05 · macOS (MacBook Air M1 test host) · ssh session, no sudo`
+
+**증상:** a session wants to confirm what VoiceOver reads in a desktop app. System Events cannot see the app's windows from ssh (0 windows, no accessibility trust, see the LuLu entry above), and a LaunchAgent bootstrapped into `gui/501` does no better.
+
+What works and what does not:
+- `defaults write com.apple.VoiceOver4/default SCREnableAppleScript -bool YES`, then starting `/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOverStarter` from ssh does start VoiceOver, and `osascript -e 'tell application "VoiceOver" to …'` from ssh is answered (VoiceOver is Apple-signed and trusted; the caller needs no accessibility right). The first call after start can time out (-1712); the next one is answered.
+- Every read then fails with -1728 (`text under cursor of vo cursor`, `content of last phrase`, `bounds of vo cursor`) when the console is locked. Check first: `ioreg -l -w0 | grep -m1 IOConsoleUsers | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'`. Headed Godot and browser runs still render while locked, which hides the fact.
+- Unlocking needs the account password; there is no ssh-side way.
+
+**해결:** check the lock flag before trying. With an unlocked console, read VoiceOver through its AppleScript dictionary from ssh. With a locked one, test what the app exposes in-process instead (for Godot: every visible `BaseButton`/`LineEdit`/`Range` has `accessibility_name` or text) and say that the spoken output was not heard. Turn VoiceOver off afterwards with `tell application "VoiceOver" to quit`; it speaks aloud on a shared machine.
 
