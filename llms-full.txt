@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-06T02:20:25Z · 소스 커밋 `54e0ef8` · 이 파일은 자동 생성물이다.
+생성 2026-10-06T02:47:35Z · 소스 커밋 `c2bd2ab` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6233,6 +6233,16 @@ Traps it found:
 - The root group's `accessibilityChildren` kept only the controls visible at start (6), while controls shown later (menu after a "press any key" gate, modal sheets) were still reported correctly as the focused element with that group as parent. `queue_accessibility_update()` on every node and hiding/showing the UI root did not change the list. Focus-follow reading works; VoiceOver's free cursor browsing (VO+arrows) may not reach later-shown controls in 4.7.2.
 
 **해결:** keep the probe as a test-only tool outside the shipped project (copy it into a scratch copy's `game/`), drive focus from a `--script` tour, and compare the dumped focused titles with the names the UI sets. Example: KIDS repo `tests/a11y-probe/probe.m` + `game/tests/native_a11y_tour.gd`.
+
+## GDT-287 — Switching a Label to `AUTOWRAP_WORD` does not stop Korean breaking between syllables, and an autowrapping Label in a shrink-centred PanelContainer collapses to one glyph per line
+
+`측정 2026-10-05 · Godot 4.7.2-stable · gl_compatibility · Noto Sans KR · 390 × 844 layout`
+
+**증상:** a centred prompt "영지 명령 · 내 영지를 고르세요" in a 230 px pill wrapped as "영지 명령 · 내 영지를 고" / "르세요". Moving from `AUTOWRAP_WORD_SMART` to `AUTOWRAP_WORD` kept the same break. The cause is the syllable-level break from GDT-104, and the autowrap mode does not change it. `Font.get_multiline_string_size(..., TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND)` measures the same breaks.
+
+A second trap showed up in the same pass. An autowrapping Label inside a `PanelContainer` with `SIZE_SHRINK_CENTER` gets a minimum width of about one glyph. The pill then drew "예상: 점령" as a tall column of single syllables.
+
+**해결:** use GDT-104's WORD JOINER for prose. For a short UI line, keep it on one line when it fits; otherwise replace your own separator with a newline (`text.replace(" · ", "\n")`) and size the panel from `get_string_size` of each line. Turn autowrap off on short status pills.
 
 ---
 
