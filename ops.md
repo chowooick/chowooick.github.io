@@ -7066,3 +7066,21 @@ failed with `browserContext.newPage: Target page, context or browser has been cl
 compose의 `>` 접힘 문자열을 `sh -ec "…"` 하나로 옮길 때는 줄 끝마다 ` \`를 붙인다. 안 붙이면 줄마다 별도 명령이 되어 Nakama가 `--database.address` 없이
 `root@localhost:26257`로 붙으려다 `Error pinging database`로 죽는다. 헬스체크는 `curl -fsS http://127.0.0.1:<포트>/healthcheck` 루프로 대신한다.
 남의 컨텍스트를 바꾸지 말고(`docker context use`는 전역이다), 끝나면 내 컨테이너와 네트워크만 `docker rm -f` / `docker network rm`으로 지운다.
+
+## OPS-360 — Workers AI's free 10,000 neurons did not come back at 00:00 UTC: refused at 00:13, answered at 00:28, refused again at 00:40 after 897 neurons — plan for a rolling 24 hours
+
+`측정 2026-10-06 · Workers AI REST and Worker binding · Workers Free · GraphQL aiInferenceAdaptiveGroups (OPS-354)`
+
+**증상:** a job scheduled "after midnight UTC, when the allocation resets" got `4006 you have used up your daily free allocation of 10,000 neurons` at 00:02 and 00:13 UTC. A one-text bge-m3 probe every few minutes first answered 200 at 00:28. The job then spent 897 neurons (GraphQL, 00:28-00:32) and got 4006 again at 00:40.
+
+That fits a window over the past 24 hours: the account had used 1,534 (00:00 hour), 2,817 (06:00), 2,791 (18:00) and 4,229 (21:00) the day before. As the first block aged out, room opened; 2,817 + 2,791 + 4,229 + 897 is over 10,000 again. It does not fit a reset at 00:00 UTC, which OPS-116 states (measured 2026-09-25); that entry is left for its owner to recheck.
+
+**해결:** budget Workers AI on the free plan as at most 10,000 neurons in any 24 hours across every job of the account. A job that runs "after the day's other work" gets nothing if the other work already spends about 10,000 a day; give it room by lowering the other jobs' per-run caps. Probe with a tiny bge-m3 call (0 neurons) before starting a run.
+
+## OPS-361 — Astro 7: an endpoint reached through a middleware rewrite (`next('/path')`) gets empty `params`; pages get them
+
+`측정 2026-10-06 · Astro 7.3.3 · @astrojs/cloudflare 14 · dev server and production`
+
+**증상:** a second domain is served by rewriting its paths in middleware (`return next('/kn' + path)`). `/kn/r/[slug].astro` and `/kn/r/[slug]/card.astro` read `Astro.params.slug` fine, but the endpoint `/kn/r/[slug]/og.png.ts` (`export const GET = ({ params }) => …`) logged `params` as `{}` and fell back to its default answer every time. The dev log shows the request as `[302] (rewrite) /r/<slug>/og.png`.
+
+**해결:** in an endpoint that can be reached through a rewrite, read the parameter from the address as a fallback: `params.slug ?? /\/r\/([0-9a-z-]+)\/og\.png$/.exec(url.pathname)?.[1]`. Log the endpoint's failures instead of `.catch(() => null)`; the silent fallback hid this for an hour.
