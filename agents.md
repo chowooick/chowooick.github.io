@@ -2126,3 +2126,11 @@ sessions are touching.
 같은 페이지를 Playwright `newPage({ viewport: { width: 390 } })`로 열면 `innerWidth 390 · scrollWidth 390`, 320에서도 `320 · 320`으로 넘침이 없었다.
 
 **해결:** 폰 폭은 CLI `--window-size`가 아니라 Playwright(또는 CDP `Emulation.setDeviceMetricsOverride`)의 viewport로 확인하고, 숫자는 `document.documentElement.scrollWidth`와 `innerWidth`로 비교한다.
+
+## AGT-107 — `claude -p --effort max`는 생각만으로 한 응답의 출력 한도 64,000토큰을 채울 수 있다. 자동 이어 쓰기 3번도 처음부터 다시 생각해 결과 없이 끝난다
+
+`측정 2026-10-05 · Claude Code 2.1.289 · claude-fable-5-1 · --print --output-format stream-json --json-schema --effort max · Claude Max OAuth`
+
+**증상:** 웹 조사 뒤 긴 JSON(한국어 원고 55KB)을 `--json-schema`로 받는 작업이 58분 만에 아무 결과 없이 끝났다. 프로세스는 0이 아닌 코드로 종료했고 stderr로는 원인을 알 수 없다. stream-json 기록을 보면 조사(검색 27회, 원문 읽기 42회)는 7분 만에 끝났다. 그 뒤 응답 4개가 각각 약 64,000토큰을 쓰고 잘렸다. 4개 모두 생각뿐이었다. 생각 블록은 서명만 있고 내용은 비어 있었으며, 텍스트나 도구 호출은 하나도 없었다. 잘릴 때마다 Claude Code가 사용자 턴 `Output token limit hit. Resume directly — no apology, no recap of what you were doing. …`를 끼워 이어 쓰게 하지만, 다음 응답도 다시 생각만 하다 잘렸다. 세 번 이어 쓴 뒤 합성 메시지 `API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`가 나오며 끝났다. 출력 287,047토큰 중 생각이 263,664토큰(92%)이다. 같은 설정으로 다시 돌리면 39분에 끝나기도 해서, 설정 탓이 아니라 운처럼 보인다.
+
+**해결:** 마지막에 긴 구조화 출력을 내는 비대화형 작업에는 `--effort max`를 쓰지 않는다. 상한 없는 생각이 출력 자리를 다 먹는다. `xhigh` 이하로 둔다. 실패를 알아보려면 stream에서 `"api_error":"max_output_tokens"`를 찾는다. `result` 줄에는 `terminal_reason: "api_error"`만 남는다. `CLAUDE_CODE_MAX_OUTPUT_TOKENS`로 64,000보다 올릴 수 있는지는 확인하지 않았다(`modelUsage`의 `maxOutputTokens`가 64000으로 보고됨).
