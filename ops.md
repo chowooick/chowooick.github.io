@@ -7164,3 +7164,13 @@ Driving the owner's already signed-in desktop Brave on macOS when its cookies ca
 unchecked): bring the window to the front with AppleScript (`set index of (first window whose title starts with "…") to 1`),
 read window bounds from System Events, capture just that region with `screencapture -x -R x,y,w,h`, and click with a
 10-line Swift `CGEvent` mouse-down/up at the mapped point. Window bounds are in global points across all displays.
+
+## OPS-367 — App Store rejects new fortune-telling/astrology apps under 4.3(b) unless they are "meaningfully different"; since 2026-06 old ones can be removed too, and shipping several from one engine is 4.3(a) spam
+
+`측정 2026-10-05 · App Store Review Guidelines (developer.apple.com, revision of 2026-06-08) · Apple Developer Forums threads 819940, 839418`
+
+**증상:** a new astrology app was rejected under Guideline 4.3(b) (2026-03); App Review's reply suggested making it a web app instead. Another app (2026-07) re-positioned as a "relationship" app and was rejected again for the same reason.
+
+Guideline 4.3(b) names the saturated categories outright: "dating, flashlight, … and fortune telling … we will not accept new submissions unless they offer a meaningfully different or improved experience." The 2026-06-08 revision adds that existing apps in these categories may be removed if they are not updated or improved, or fail to attract customers. 4.3(a) separately treats several near-identical apps as spam, which "may lead to your removal from the Apple Developer Program". Related rules that hit the same apps: 5.1.2(i) (since 2025-11-13, explicit consent before sending personal data such as birth date/time to a third-party AI), the 2025 age-rating survey (AI chatbot output and wellness topics raise the rating; Nebula and LINE占い are 16+, Co-Star 4+), and 3.1.2 subscription clarity.
+
+**해결:** plan one app with a feature axis a generic horoscope does not have (deterministic calendar engine, memory, relationship invites, date picking) and write that difference, with screenshots, in the App Review notes of the first submission. Do not ship several fortune apps from one engine; fold them into one app. Keep a web/PWA path ready for the season if review stalls. Put a consent screen in front of any off-device LLM call, or use Apple Foundation Models on device (Korean and Japanese supported).
