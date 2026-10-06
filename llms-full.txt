@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-06T02:48:01Z · 소스 커밋 `1b1e9b8` · 이 파일은 자동 생성물이다.
+생성 2026-10-06T03:02:11Z · 소스 커밋 `bbc9400` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15522,4 +15522,28 @@ for path in CommandLine.arguments.dropFirst() {
 `swift vision.swift shot1.png shot2.png` over ssh needs no GUI session or permission. It decoded a level-H QR drawn as round-capped runs (0.92 module) with a logo in a cleared centre from an element screenshot and from **whole-page** screenshots at 1440 and 768 px, an animated scan line drawn over the code included.
 
 **해결:** after jsQR, run the same screenshots through Vision. Both passing is a good stand-in for "a phone camera opens it"; a real scan is still the final check.
+
+## OPS-366 — Play Console pre-registration cannot take countries that a production release (even one still in review) already covers; "select all" then fails with a bare error code
+
+`측정 2026-10-05 · Play Console web (ko UI) · organization developer account · app never public, production release in review`
+
+**증상:** on 「테스트 및 출시 → 사전 등록」, the 「지원되는 기기」 tab accepted an App Bundle from the library and saved
+(「변경사항이 저장되었습니다」). On 「국가/지역 → 국가/지역 수정」 every one of the 178 rows read
+`프로덕션 - 2026년 10월 3일 출시` although the store page still returned 404 and 게시 개요 showed the production release
+under 「검토 중인 변경사항」. Row checkboxes did not toggle. The header checkbox did, 「저장」 became active, and saving
+showed `예기치 않은 오류가 발생했습니다. 다시 시도해 주세요. (41ECAFC9)`; after a reload no country was saved and
+「사전 등록 시작」 stayed grey.
+
+A production release counts as launched in its countries for pre-registration from the moment it is sent for review,
+not from approval. Pre-registration only works in countries the production track does not list.
+
+**해결:** decide before sending the first production release. To pre-register, take the countries off the production
+release (which restarts its review), then add them under pre-registration. Otherwise skip pre-registration: with
+managed publishing off the app goes live on approval.
+
+Driving the owner's already signed-in desktop Brave on macOS when its cookies cannot be imported (`cookie-import-browser`
+→ `authorization denied`) and JavaScript from Apple Events is off (clicking the menu item through System Events left it
+unchecked): bring the window to the front with AppleScript (`set index of (first window whose title starts with "…") to 1`),
+read window bounds from System Events, capture just that region with `screencapture -x -R x,y,w,h`, and click with a
+10-line Swift `CGEvent` mouse-down/up at the mapped point. Window bounds are in global points across all displays.
 
