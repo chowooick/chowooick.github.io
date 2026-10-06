@@ -5174,3 +5174,29 @@ The port that passed 135 checks (unit + two clients against a real Nakama, 4 run
 - **Close:** `close()` finishes in later `poll()`s (GDT-194): keep closed peers in a retiring list polled until `STATE_CLOSED`, or the `match_leave` queued before `close()` never leaves. Real-server check: the other player saw the leave.
 - **Tests:** declare the socket as an untyped `var _socket: Variant` and the test can drop in a `RefCounted` with `poll/get_ready_state/get_available_packet_count/get_packet/send_text/close`, then put the client in the connected state and feed envelopes — throttle, heartbeat, `match_lost` and backoff cases run in ~3 s with no server.
 - Measured: op 2 at 18–20 messages per second headless against a 20 Hz match loop.
+
+## GDT-281 — `export_filter="all_resources"` does pack `.json` files: a 4.7.2 macOS `--export-pack` listed a JSON that no include filter named
+
+`측정 2026-10-05 · Godot 4.7.2-stable, godot --headless --export-pack macOS (Air, M1)`
+
+**증상:** a desktop build reads `res://native/audio/manifest.json` at run time, and it was unclear whether a preset with `export_filter="all_resources"` and no matching `include_filter` ships it (GDT-216 says it does not, from a build that was never run).
+
+Measured: the macOS preset had `include_filter="assets/characters3d/projection.json"` only. The pack's file table (`strings probe.pck`, between `shaders/wind.gdshader` and the next binary block) still listed `tools/roster_projection.json`, while the `.py` files in the same `tools/` folder were absent. In Godot 4 `JSON` is a resource type, so `all_resources` picks `.json` up like any other resource.
+
+**해결:** no include filter is needed for `.json` under `all_resources`. Read it with `FileAccess.get_file_as_string("res://…json")`, or `load()` it and use `(res as JSON).data`. To check a pack, run `--export-pack <preset> out.pck` (no export templates needed) and grep the path without `res://` in `strings out.pck`; a path inside a script literal carries `res://`, a file-table entry does not.
+
+## GDT-282 — Pre-render a WebAudio synth for a native Godot build: capture OfflineAudioContext buffers by subclassing, loop files as "second loop of two", and test the Vorbis loop seam with `AudioStreamPlayback.mix_audio()`
+
+`측정 2026-10-05 · Godot 4.7.2-stable --headless (Dummy driver) · Brave 1.96 headless (Playwright 1.63) · oggenc (libvorbis) -q 5`
+
+**증상:** a game's music and effects exist only as a procedural WebAudio engine; the desktop build needs files, and tempo changes (hurry-up x1.25) must not change pitch, so `pitch_scale` is out for music.
+
+What worked (24 loop files, 9 jingles, 81 effects, 9.74 MiB at -q 5, 58 checks passing):
+- **Capture without editing the engine:** before loading it, replace `window.OfflineAudioContext` with `class extends Base { startRendering() { return super.startRendering().then(b => (window.__last = b, b)); } }`. An engine that resolves the constructor at render time then hands every buffer over. Move it to Node as base64 of an interleaved `Float32Array` (tens of MB per call were fine).
+- **Seamless loops with reverb and echo:** render from beat 0 for two loop lengths and keep only `[L, 2L)`. The tails of the loop's end are then already inside its start. Measured seam step in the WAV: 0.0000-0.0112 against a 99th-percentile neighbour step of 0.009-0.078.
+- **Tempo variants:** one file per (bpm x rate) the game can send; variants with the same product (96 x1.25 = 120 x1) render bit-identically, so alias them (3 of 27 files saved). Switch variants by crossfading 60 ms to the new file at `beat / (beats / loop_seconds)`.
+- **Vorbis keeps the loop:** after oggenc -q 5, `stream.get_length()` matched the WAV frame count within 2 ms and the decoded wrap stayed sample-aligned (located shift 0 or +1 frame).
+- **Seam test in Godot:** `var pb := stream.instantiate_playback(); pb.start(len - 0.02); var buf: PackedVector2Array = pb.mix_audio(1.0, 1764)` decodes across the loop point headless (`loop = true`). Locate the wrap by matching the first 64 frames of `start(0.0)`, then compare the step at the wrap with the 99th percentile of neighbouring steps. Worst file: 0.39x of p99.
+- Effects rendered at v=1 through the engine's own limiter were limited separately from the music; one `AudioEffectHardLimiter` on Master stands in for the shared web limiter.
+
+**해결:** keep the browser engine as the single source and render it; do not port a synth. Render on a host with a browser, encode anywhere, write minimal `.ogg.import` sidecars with `loop=true` for loops (GDT-120), and set `AudioStreamOggVorbis.loop` at run time as well.
