@@ -5244,3 +5244,21 @@ The same build in headless Brave 1.96 on that Air then measured 54–61 fps at 1
 Two related costs measured in the same pass: a full-screen `hint_screen_texture` post pass (9-tap blur and vignette on a camera quad) cost 7–9 ms; the directional shadow pass cost 4–8 ms, mostly from props far from the player, cut by turning off `cast_shadow` for scenery beyond the playable map.
 
 **해결:** bake the noise once (numpy, a few lines; keep the lattice periodic so it tiles) and sample it at the frequency the old function had (`texture(noise_tex, p / 16.0)` for a 16-cell texture). Prefer UI-layer gradients over screen-texture post passes for vignettes.
+
+## GDT-286 — Check what VoiceOver reads in a Godot macOS app without any Accessibility permission: dump NSAccessibility in-process from a class-less GDExtension
+
+`측정 2026-10-05 · Godot 4.7.2-stable (editor binary and exported app), AccessKit driver · macOS on M1 test host over ssh, console locked`
+
+**증상:** reading another app's accessibility tree needs the caller to be trusted (System Events from ssh sees 0 windows; Terminal waits on a prompt; OPS-363 for VoiceOver itself on a locked console), so a remote session cannot confirm what VoiceOver will say.
+
+What worked:
+- A GDExtension with no classes: the entry symbol only fills `GDExtensionInitialization` (`minimum_initialization_level = 2`, `initialize`/`deinitialize` callbacks) and returns 1. At level 2 it `dispatch_after`s an Objective-C walk of `[NSApp windows]` → `accessibilityChildren` (role, `accessibilityTitle`, `accessibilityValue`, frame) and `[NSApp accessibilityFocusedUIElement]` to a file every 2 s. Built with `xcrun --sdk macosx clang -dynamiclib -fobjc-arc -arch arm64 -framework Cocoa`, a 4-line `.gdextension` (`entry_symbol`, `compatibility_minimum`, `macos = "res://…dylib"`) and one `--import`. In-process calls need no TCC trust.
+- Run with `godot --accessibility always`. On a locked console the window is never focused and the focused element stays empty until `DisplayServer.accessibility_set_window_focused(DisplayServer.MAIN_WINDOW_ID, true)`.
+- Result on a Godot UI: a focused `Button` is `AXButton` whose `accessibilityTitle` is `accessibility_name` (or its text); `HSlider` → `AXSlider`; a `toggle_mode` Button → `AXCheckBox`; `Label` → `AXStaticText` with the text as value. That is what VoiceOver speaks on focus.
+
+Traps it found:
+- `AudioStreamPlayer` nodes under a `CanvasLayer` appear as empty `AXGroup`s titled with the node name (`Sfx0`…); 3D nodes and players under a `Node3D` do not. Parent audio nodes outside UI layers.
+- Stacked Labels used for one visual (outline layer, fill layer) are each a separate `AXStaticText`: a two-letter logo read as six. Draw decorative layers with `draw_string`/`draw_string_outline` and leave one Label (alpha 0 is fine) for the name.
+- The root group's `accessibilityChildren` kept only the controls visible at start (6), while controls shown later (menu after a "press any key" gate, modal sheets) were still reported correctly as the focused element with that group as parent. `queue_accessibility_update()` on every node and hiding/showing the UI root did not change the list. Focus-follow reading works; VoiceOver's free cursor browsing (VO+arrows) may not reach later-shown controls in 4.7.2.
+
+**해결:** keep the probe as a test-only tool outside the shipped project (copy it into a scratch copy's `game/`), drive focus from a `--script` tour, and compare the dumped focused titles with the names the UI sets. Example: KIDS repo `tests/a11y-probe/probe.m` + `game/tests/native_a11y_tour.gd`.
