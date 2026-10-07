@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-07T19:44:27Z · 소스 커밋 `6d864e1` · 이 파일은 자동 생성물이다.
+생성 2026-10-07T21:21:34Z · 소스 커밋 `7d295b8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8399,6 +8399,7 @@ sessions are touching.
 - Cloudflare Workers/Pages 정적 자산은 파일당 25MiB가 한도라 24MiB `.partN`으로 나누고, worker가 크기를 아는 버퍼 하나에 차례로 써서 합친다(배열에 모았다가 합치면 두 배를 든다). Cache Storage 키는 합친 파일 이름으로 둔다. Dokploy(`wrangler dev`) 컨테이너로 제공해도 조각 그대로 200으로 나간다.
 - 파일 원본: kyomincenter 리포 `public/tts/f16/`(커밋 `c805525`, README에 합친 파일 SHA-256). OpenRAIL-M이라 다시 배포할 때 `LICENSE.txt`와 변경 고지(`README.txt`)를 함께 둔다.
 - 실측: who.withthebible.com 운영에서 float16을 Brave(M1) WebGPU로 받고 열기까지 44초(첫 다운로드), 로컬 빌드에서 7.1초. 둘 다 확인 합성이 정상(RMS 0.043–0.045).
+- **참고(2026-10-07):** who.withthebible.com은 같은 날 운영자 결정으로 이 단계 선택을 되돌렸다. 지금은 모든 기기가 float32를 받고, 실패하면 바로 기기 음성으로 간다. 교민센터는 이 방식을 계속 쓴다.
 
 ## AGT-109 — Supertonic 3을 8비트로 줄이려면 float8이 아니라 int8 가중치(DequantizeLinear)를 쓰고, onnxruntime-web의 graphOptimizationLevel을 "all"보다 낮춰야 메모리가 준다
 
@@ -8423,6 +8424,7 @@ sessions are touching.
 
 **해결·주의:**
 - 8비트는 int8 weight-only DQ로 만들고 세션 옵션은 `graphOptimizationLevel: "basic"`(또는 `"disabled"`)으로 연다. 변환 스크립트: who 리포 `scripts/quantize-tts.py`(출력이 배포 파일과 바이트 단위로 같다).
+- **문장 사이 쉼 줄이기(같은 날 iPad mini 5, 실제 글 페이지, int8+fp16 모델, 말 1초당 합성 시간):** denoising 5→3단계로 1.2–1.8초가 약 1.07초가 된다. 페이지를 cross-origin isolated(COOP same-origin + COEP require-corp, 워커 스크립트에도 COEP)로 만들면 WASM이 여러 스레드를 쓴다. jsDelivr의 ORT는 CORP cross-origin이라 그대로 동작한다. M1에서 4스레드는 2.1–2.3배 빠르다. **iPad mini 5(빠른 코어 2 + 느린 코어 4, hardwareConcurrency 4)에서는 2스레드 0.68–0.85초, 1스레드 0.83–1.34초, 4스레드 0.89–1.08초로 2스레드가 가장 빠르다.** 4스레드는 느린 코어를 기다리느라 오히려 느리다. 4비트로 내려도 빨라지지 않는다. 가중치가 계산 직전에 float32로 풀려 계산량이 같다(M1: fp32 3.2초, fp16 3.3초, int8 3.3초).
 - 탭이 메모리로 죽으면 iPad의 설정 > Safari > 고급 > **원격 자동화가 꺼진다**. safaridriver는 `Remote Automation is turned off`로 세션을 거부한다. 다시 켜는 것은 기기에서만 된다(사람 손). 잠겨 있으면 `device is locked`가 나온다. 메시지 전체는 응답 JSON의 message 끝부분에 있다.
 
 ---
