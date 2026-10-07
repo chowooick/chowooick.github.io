@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-06T18:56:43Z · 소스 커밋 `0fefe5f` · 이 파일은 자동 생성물이다.
+생성 2026-10-07T18:16:52Z · 소스 커밋 `831dc12` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8384,6 +8384,21 @@ sessions are touching.
 **증상:** 웹 조사 뒤 긴 JSON(한국어 원고 55KB)을 `--json-schema`로 받는 작업이 58분 만에 아무 결과 없이 끝났다. 프로세스는 0이 아닌 코드로 종료했고 stderr로는 원인을 알 수 없다. stream-json 기록을 보면 조사(검색 27회, 원문 읽기 42회)는 7분 만에 끝났다. 그 뒤 응답 4개가 각각 약 64,000토큰을 쓰고 잘렸다. 4개 모두 생각뿐이었다. 생각 블록은 서명만 있고 내용은 비어 있었으며, 텍스트나 도구 호출은 하나도 없었다. 잘릴 때마다 Claude Code가 사용자 턴 `Output token limit hit. Resume directly — no apology, no recap of what you were doing. …`를 끼워 이어 쓰게 하지만, 다음 응답도 다시 생각만 하다 잘렸다. 세 번 이어 쓴 뒤 합성 메시지 `API Error: Claude's response exceeded the 64000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`가 나오며 끝났다. 출력 287,047토큰 중 생각이 263,664토큰(92%)이다. 같은 설정으로 다시 돌리면 39분에 끝나기도 해서, 설정 탓이 아니라 운처럼 보인다.
 
 **해결:** 마지막에 긴 구조화 출력을 내는 비대화형 작업에는 `--effort max`를 쓰지 않는다. 상한 없는 생각이 출력 자리를 다 먹는다. `xhigh` 이하로 둔다. 실패를 알아보려면 stream에서 `"api_error":"max_output_tokens"`를 찾는다. `result` 줄에는 `terminal_reason: "api_error"`만 남는다. `CLAUDE_CODE_MAX_OUTPUT_TOKENS`로 64,000보다 올릴 수 있는지는 확인하지 않았다(`modelUsage`의 `maxOutputTokens`가 64000으로 보고됨).
+
+## AGT-108 — 브라우저 Supertonic 3은 기기마다 고를 모델을 미리 정한다: float32 → float16(자체 제공) → 기기 음성. 3GB 이하 iOS 화면은 처음부터 기기 음성
+
+`측정 2026-10-07 · Supertonic 3(HF 리비전 3cadd1e) · onnxruntime-web 1.30.0 · Brave 1.96(M1, WebGPU) · who.withthebible.com, kyomincenter.com(voice-tier.ts, 2026-10-05)`
+
+**증상:** 구형 iPad에서 듣기를 누르면 398MB 다운로드 도중 탭이 다시 열리고, 고품질 음성이 끝내 나오지 않는다. float16(202MB)으로 줄여도 RAM 3GB iPad mini 5에서는 같은 WebContent 1940MB 한도로 죽는다(AGT-104). 3GB급 iOS에서 되는 줄인 모델은 없다. int8은 Conv 포함 시 5.9–25dB로 소리가 망가진다.
+
+**해결:** 모델을 받기 전에 기기별 단계를 정하고, 죽으면 한 단계씩 내린다. 두 사이트가 같은 규칙을 쓴다.
+- iPhone·iPad(데스크톱 모드 iPad 포함: `platform === "MacIntel" && maxTouchPoints > 1`): 화면 짧은 변×긴 변(포인트)이 3GB 이하 모델만 있던 크기 `320x568 375x667 414x736 768x1024 810x1080`이면 처음부터 기기 음성(다시 받기 버튼도 숨김). 3GB·4GB가 섞인 크기(예: `834x1112`, `414x896`)는 넣지 않는다. 그 밖은 float16.
+- Chrome/Edge `navigator.deviceMemory`: 8 이상 float32, 4–6 float16, 그 아래 기기 음성. 값이 없으면 모바일 float16, 데스크톱 float32.
+- 크래시 표시(localStorage)를 모델을 불러올 때와 모든 합성 동안 켜 두고, 다음 방문에 남아 있으면 float32 → float16 → 기기 음성으로 내린다(AGT-058).
+- float16 변환: `onnxruntime.transformers` `OnnxModel.convert_float_to_float16(keep_io_types=True)`를 text_encoder·vector_estimator·vocoder에 적용, duration_predictor는 그대로. 평균 log-mel 차이 0.19dB(fp32끼리 시드만 바꾸면 10.7dB). worker 코드 변경은 모델 경로뿐이고 세션 옵션은 같다.
+- Cloudflare Workers/Pages 정적 자산은 파일당 25MiB가 한도라 24MiB `.partN`으로 나누고, worker가 크기를 아는 버퍼 하나에 차례로 써서 합친다(배열에 모았다가 합치면 두 배를 든다). Cache Storage 키는 합친 파일 이름으로 둔다. Dokploy(`wrangler dev`) 컨테이너로 제공해도 조각 그대로 200으로 나간다.
+- 파일 원본: kyomincenter 리포 `public/tts/f16/`(커밋 `c805525`, README에 합친 파일 SHA-256). OpenRAIL-M이라 다시 배포할 때 `LICENSE.txt`와 변경 고지(`README.txt`)를 함께 둔다.
+- 실측: who.withthebible.com 운영에서 float16을 Brave(M1) WebGPU로 받고 열기까지 44초(첫 다운로드), 로컬 빌드에서 7.1초. 둘 다 확인 합성이 정상(RMS 0.043–0.045).
 
 ---
 
