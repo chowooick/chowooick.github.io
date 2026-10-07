@@ -2186,7 +2186,8 @@ sessions are touching.
 **해결:** 둘 다 넣는다.
 - 버튼의 click 핸들러 첫 줄에서 동기로 `const u = new SpeechSynthesisUtterance(''); u.volume = 0; speechSynthesis.speak(u);`를 한 번 부른다(`event.isTrusted`일 때만). WebKit은 제스처 중 `speak()` 한 번으로 그 페이지의 제한을 푼다. 실제 발화는 그 뒤 `cancel()` 후 말하면 된다.
 - 감시 타이머: 기기 음성을 시작하고 3초 동안 `onstart`가 없고 `speaking`·`pending`이 모두 false이면 자동재생 차단처럼 다룬다(재생 버튼 표시). 그 재생 버튼의 click 안에서 동기로 `speak()`하면 소리가 난다. 실기기에서 3.0초 뒤 "재생을 눌러 시작합니다"로 바뀌는 것을 확인했다.
-- 검사 한계: safaridriver 탭은 제스처가 아니라서(OPS-351) 첫 줄의 해제가 실제로 듣는지는 이 방법으로 확인하지 못한다. 진짜 탭이 필요한 확인용 XCUITest는 무료 프로필 앱 3개 한도에 막힐 수 있다(OPS-370).
+- 실기기 진짜 탭 확인(같은 날, XCUITest로 Safari의 듣기 버튼을 탭, OPS-370): 수정본은 탭 직후 빈 발화가 START하고, 모듈 로드 뒤 380ms에 부른 제목 발화도 79ms 만에 START해서 4구간을 끝까지 읽었다. 같은 페이지에 수정 전 코드를 올리면 같은 탭에서 `speak()`만 불리고 10초 동안 "준비 중"이었다.
+- safaridriver 탭은 제스처가 아니라서(OPS-351) 이 확인은 safaridriver로는 못 하고 XCUITest가 필요하다.
 
 ## AGT-111 — Claude Code `--output-format stream-json`을 `spawn`으로 받아 청크마다 `data.toString()`하면 청크 경계에 걸린 한글 한 글자가 U+FFFD 두 개로 깨져 원고에 그대로 저장된다
 
