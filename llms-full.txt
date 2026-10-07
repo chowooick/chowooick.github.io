@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-07T18:29:45Z · 소스 커밋 `8428fda` · 이 파일은 자동 생성물이다.
+생성 2026-10-07T19:44:27Z · 소스 커밋 `6d864e1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8399,6 +8399,31 @@ sessions are touching.
 - Cloudflare Workers/Pages 정적 자산은 파일당 25MiB가 한도라 24MiB `.partN`으로 나누고, worker가 크기를 아는 버퍼 하나에 차례로 써서 합친다(배열에 모았다가 합치면 두 배를 든다). Cache Storage 키는 합친 파일 이름으로 둔다. Dokploy(`wrangler dev`) 컨테이너로 제공해도 조각 그대로 200으로 나간다.
 - 파일 원본: kyomincenter 리포 `public/tts/f16/`(커밋 `c805525`, README에 합친 파일 SHA-256). OpenRAIL-M이라 다시 배포할 때 `LICENSE.txt`와 변경 고지(`README.txt`)를 함께 둔다.
 - 실측: who.withthebible.com 운영에서 float16을 Brave(M1) WebGPU로 받고 열기까지 44초(첫 다운로드), 로컬 빌드에서 7.1초. 둘 다 확인 합성이 정상(RMS 0.043–0.045).
+
+## AGT-109 — Supertonic 3을 8비트로 줄이려면 float8이 아니라 int8 가중치(DequantizeLinear)를 쓰고, onnxruntime-web의 graphOptimizationLevel을 "all"보다 낮춰야 메모리가 준다
+
+`측정 2026-10-07 · onnxruntime-web 1.30.0 · Supertonic 3(HF 리비전 3cadd1e, opset 19) · Brave 1.96(M1) · Playwright WebKit iPhone 15 에뮬레이션 · 실제 iPad mini 5(3GB, iPadOS 26.7.1) · who.withthebible.com scripts/quantize-tts.py`
+
+**증상:** 3GB iPad에서 float16(202MB)도 탭이 죽어서(AGT-104) 8비트로 더 줄였다. 그런데 그냥 줄이면 메모리가 줄지 않거나 열리지 않는다.
+- **float8(E4M3) 가중치 + DequantizeLinear-19**는 Python onnxruntime CPU에서는 열린다. onnxruntime-web은 WASM·WebGPU 모두 `Can't create a session. ERROR_CODE: 9`(구현 없음)로 세션을 못 만든다.
+- **int8 가중치만 양자화**(Conv·MatMul 가중치를 출력 채널별 float32 scale로 int8 저장, 연산 앞에 DequantizeLinear, 활성값은 float32)는 열린다. 다만 `graphOptimizationLevel: "all"`이면 상수 접기로 DQ가 float32 가중치로 풀려 메모리 이득이 사라진다. WebKit 에뮬레이션 WASM WebContent 최고 footprint(AGT-058 방식):
+
+| 모델 | all | basic | disabled | fp32 대비 평균 log-mel 차이 |
+| --- | --- | --- | --- | --- |
+| fp32 | 1497MB | 1579MB | 1479MB | 0 |
+| fp16(교민센터 f16) | 1779MB | 1288MB | 1237MB | 0.28dB |
+| vector_estimator만 int8 + 나머지 fp16 | – | 1079MB | – | 0.94dB |
+| 세 모델 모두 int8 | 1455MB | 1046MB | 1021MB | 3.12dB |
+
+  (같은 노이즈 시드, 세 문장 평균. fp32끼리 시드만 바꾸면 10.7dB. 에뮬레이션 WebGPU는 int8도 1503–1594MB라 이득이 작다.) **fp16도 WASM에서는 "all"이 오히려 더 크다**(1779 vs 1288).
+- vocoder가 양자화에 가장 민감하다(vocoder만 int8: 2.57dB). 가중치의 92%가 Conv라 MatMul만 양자화하면 크기가 거의 안 준다(AGT-104).
+- denoising step을 5→3으로 줄이면 합성 시간은 0.68배이지만 결과가 시드를 바꾼 만큼(11dB) 달라져 이 지표로는 품질을 판단할 수 없다.
+
+**실기기(iPad mini 5, Safari, safaridriver):** 빈 테스트 페이지(HTTP, LAN)에서 "vector_estimator만 int8 + fp16, WASM, basic"이 4/4 열리고 합성했다. 준비 34–36초(139MB 다운로드 포함), **말 1초에 합성 1.2–1.8초**로 실시간보다 느려 문장 사이에 쉼이 생긴다. 세 모델 모두 int8은 disabled에서 1/1 성공, basic에서 2/2 죽음. fp16 basic, int8 all은 죽었다. 그러나 **같은 int8 모델이 실제 글 페이지(HTTPS, Cache Storage 저장, 큰 DOM)에서는 탭이 죽었다**. 빈 페이지 성공만으로 배포하지 말고 실제 페이지에서 확인한다.
+
+**해결·주의:**
+- 8비트는 int8 weight-only DQ로 만들고 세션 옵션은 `graphOptimizationLevel: "basic"`(또는 `"disabled"`)으로 연다. 변환 스크립트: who 리포 `scripts/quantize-tts.py`(출력이 배포 파일과 바이트 단위로 같다).
+- 탭이 메모리로 죽으면 iPad의 설정 > Safari > 고급 > **원격 자동화가 꺼진다**. safaridriver는 `Remote Automation is turned off`로 세션을 거부한다. 다시 켜는 것은 기기에서만 된다(사람 손). 잠겨 있으면 `device is locked`가 나온다. 메시지 전체는 응답 JSON의 message 끝부분에 있다.
 
 ---
 
