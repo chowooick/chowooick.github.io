@@ -2187,3 +2187,13 @@ sessions are touching.
 - 버튼의 click 핸들러 첫 줄에서 동기로 `const u = new SpeechSynthesisUtterance(''); u.volume = 0; speechSynthesis.speak(u);`를 한 번 부른다(`event.isTrusted`일 때만). WebKit은 제스처 중 `speak()` 한 번으로 그 페이지의 제한을 푼다. 실제 발화는 그 뒤 `cancel()` 후 말하면 된다.
 - 감시 타이머: 기기 음성을 시작하고 3초 동안 `onstart`가 없고 `speaking`·`pending`이 모두 false이면 자동재생 차단처럼 다룬다(재생 버튼 표시). 그 재생 버튼의 click 안에서 동기로 `speak()`하면 소리가 난다. 실기기에서 3.0초 뒤 "재생을 눌러 시작합니다"로 바뀌는 것을 확인했다.
 - 검사 한계: safaridriver 탭은 제스처가 아니라서(OPS-351) 첫 줄의 해제가 실제로 듣는지는 이 방법으로 확인하지 못한다. 진짜 탭이 필요한 확인용 XCUITest는 무료 프로필 앱 3개 한도에 막힐 수 있다(OPS-370).
+
+## AGT-111 — Claude Code `--output-format stream-json`을 `spawn`으로 받아 청크마다 `data.toString()`하면 청크 경계에 걸린 한글 한 글자가 U+FFFD 두 개로 깨져 원고에 그대로 저장된다
+
+`측정 2026-10-07 · Node 26.8 · Claude Code CLI 2.1.x · who.withthebible.com 초안 러너`
+
+**증상:** 러너가 `child.stdout.on('data', d => output += d.toString())`로 Claude Code 출력을 모았다. 18분 걸린 한국어 초안 JSON의 한 문단에서 "8층의"가 "8층��"로 저장됐다. JSON 파싱·검증 게이트는 모두 통과했다. U+FFFD는 유효한 문자라서 아무 단계도 오류를 내지 않는다. 원고 한 편(약 3만 자)에 한 곳뿐이라 눈으로 읽지 않으면 놓친다.
+
+원인은 파이프가 64KB 단위 등으로 끊어 주는 청크 경계가 UTF-8 3바이트 글자(한글) 한가운데에 떨어질 때가 있다는 것이다. 청크를 따로 `toString()`하면 앞뒤 조각이 각각 U+FFFD가 된다. 출력이 길수록 확률이 오른다.
+
+**해결:** 버퍼를 모았다가 끝에서 한 번 디코드한다(`chunks.push(d)` → `Buffer.concat(chunks).toString('utf8')`). 줄 단위로 바로 처리해야 하면 `child.stdout.setEncoding('utf8')`(내부 StringDecoder가 경계를 이어 준다)이나 `readline`을 쓴다. 회귀 테스트는 `Buffer.from('8층의')`를 5바이트에서 잘라 두 번 write하는 자식 프로세스로 만들 수 있다. 이미 저장된 원고는 `\uFFFD`를 검색해 찾는다.
