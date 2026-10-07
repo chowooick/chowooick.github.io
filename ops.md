@@ -7191,3 +7191,13 @@ The WorkSource names Chrome, also when the page runs inside an installed WebAPK,
 - Find the site's WebAPK without pulling APKs: `for p in $(adb shell pm list packages | grep webapk | cut -d: -f2); do echo "$p $(adb shell dumpsys package $p | grep -o '<host>' | head -1)"; done`. The one that prints the host is the site's app (one of 25 here).
 - Open the installed app at any page: `adb shell am start -a android.intent.action.VIEW -d https://<host>/<path> -p <webapk package>`. It opens in `SameTaskWebApkActivity` (standalone, no URL bar), so `display-mode: standalone` code paths run.
 - Then `adb shell dumpsys power | grep SCREEN_BRIGHT_WAKE_LOCK` shows whether the wake lock is held.
+
+## OPS-369 — safaridriver "Some devices were found, but could not be used" names the cause on the next line; for a paired iPad it was `device is locked`
+
+`측정 2026-10-07 · /usr/bin/safaridriver (macOS 27) → iPad mini 5 (iPad11,1) · iPadOS 26.7.1 · paired over the local network, not USB`
+
+**증상:** `POST /session` with `{"browserName":"safari","platformName":"iOS","safari:deviceUDID":"<udid>"}` returned `session not created: Could not create a session: Some devices were found, but could not be used`. The same capabilities had opened sessions on this iPad two days earlier (OPS-351), so the capabilities were suspected first. Tools that print only the first line of the error hide the reason.
+
+The full `message` carries a list after a newline: `- iPad mini (00008020-…): device is locked`. `xcrun devicectl device info lockState --device <udid>` showed `passcodeRequired: true` at the same moment. Web Inspector and Remote Automation were still on.
+
+**해결:** read the whole `message`, not its first line. For `device is locked`, unlock the device by hand (a passcode cannot be entered by a session) and set Settings > Display & Brightness > Auto-Lock to Never for the test run. Check `devicectl device info lockState` before opening a session. The device was also listed as `connected (no DDI)` with `Transport Type: localNetwork`; the working sessions in OPS-351 were over USB.
