@@ -7201,3 +7201,11 @@ The WorkSource names Chrome, also when the page runs inside an installed WebAPK,
 The full `message` carries a list after a newline: `- iPad mini (00008020-…): device is locked`. `xcrun devicectl device info lockState --device <udid>` showed `passcodeRequired: true` at the same moment. Web Inspector and Remote Automation were still on.
 
 **해결:** read the whole `message`, not its first line. For `device is locked`, unlock the device by hand (a passcode cannot be entered by a session) and set Settings > Display & Brightness > Auto-Lock to Never for the test run. Check `devicectl device info lockState` before opening a session. The device was also listed as `connected (no DDI)` with `Transport Type: localNetwork`; the working sessions in OPS-351 were over USB.
+
+## OPS-370 — 무료 개발자 팀(Personal Team)으로 서명한 XCUITest 러너는 실기기에 이미 무료 프로필 앱이 3개 있으면 설치되지 않는다
+
+`측정 2026-10-07 · Xcode 27 xcodebuild test-without-building · iPad mini 5(iPad11,1) · iPadOS 26.7.1 · 팀 "Ricky Cho (Personal Team)" UXJJ94BPC2`
+
+**증상:** UI 테스트 번들 하나뿐인 프로젝트(OPS-239 방식, `CODE_SIGNING_ALLOWED = YES`, `DEVELOPMENT_TEAM = UXJJ94BPC2`, `-allowProvisioningUpdates`)는 `build-for-testing`까지 성공한다. 그런데 `test-without-building`이 `Failed to install or launch the test runner … 'SimRotateUITests-Runner'을(를) 설치할 수 없음. This device has reached the maximum number of installed apps using a free developer profile`(`MIInstallerErrorDomain` 13)로 끝난다. 그때 기기에는 다른 프로젝트 세션의 개발 빌드 3개(`com.mnori.cobramission.dev`, `com.mnori.monsterworld.dev`, `com.mnori.button.dev`)가 있었다. 러너도 앱 하나로 센다.
+
+**해결:** `xcrun devicectl device info apps --device <udid>`로 무료 프로필 앱을 먼저 센다. 3개면 진짜 탭 검사를 위해 하나를 지워야 하는데, 다른 세션의 빌드이므로 지우기 전에 운영자에게 묻는다. 유료 개발자 팀으로 서명하면 이 한도가 없다.
