@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T19:25:22Z · 소스 커밋 `52c75eb` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T19:33:54Z · 소스 커밋 `4b568a4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6313,6 +6313,14 @@ Measured with an init script that wraps `AudioNode.prototype.connect`, taps an `
 Mechanism (as GDT-258, which needed only two buses here): JS `Bus.addAt(-1)` creates the bus at the end and then `Bus.move(newIndex, -1)`, which does `buses.splice(-1 - 1, 0, bus)`: the new bus goes in front of Master. The engine's next `set_bus_send(1, "Master")` sends JS bus 1, which is now Master, into JS bus 0, so Master's output is disconnected from the destination and wired into the loop.
 
 **해결:** create the buses with `AudioServer.set_bus_count(AudioServer.bus_count + n)` and then set names and sends; the Web side mirrors a count by appending buses in order. Measured on the same build after the change: the graph ends at `AudioDestination` (`Gain(0.8) -> … -> Gain(1.0) -> AudioDestination`), output RMS peaks -11.1 to -13.0 dBFS, signal in 205-223 of 246-275 windows, in Brave headless, Brave headed and WebKit. A `default_bus_layout.tres` (GDT-258) works too. A headless or native test cannot catch this; check a Web build's graph or output level.
+
+## GDT-295 — Measuring how much of an object the game camera really shows: two flat-colour passes, one with `depth_test_disabled`, with tonemapping and glow off for the passes
+
+`측정 2026-10-08 · Godot 4.7.2-stable · Forward+ on macOS (M1), windowed SubViewport 1080×2340 and 1920×1080`
+
+**증상:** "the item a piece holds is hard to see" could not be settled from screenshots. The item was fully drawn on each piece, but in a 2×4 block seen from a 58° camera, the head and hat of the piece one row *nearer the camera* covered the item of the piece behind it. A lineup photo of single pieces never showed this, and pixel-counting a normal render cannot tell "small" from "covered".
+
+**해결:** render the same frame twice with only the object's `MeshInstance3D`s overridden. Pass 1 uses `shader_type spatial; render_mode unshaded, cull_disabled; ALBEDO = vec3(1,0,1);`, so the pixels you count are the ones you can see. Pass 2 adds `depth_test_disabled` to the same shader and sets `render_priority = 100`, so the pixels you count are the whole object. Each object's score is seen ÷ whole. Count `r > 0.75 && b > 0.75 && g < 0.3`, and give each pixel to the object whose `camera.unproject_position(aabb centre)` is nearest. Before the passes, set the `Environment` to `TONE_MAPPER_LINEAR`, exposure 1, and turn glow, fog, volumetric fog and SSAO off, then restore them afterwards. Wait on the wall clock (about 0.25 s) between passes in a windowed SubViewport (GDT-017). In this run the method found 23% of an item showing behind a wide-brimmed hat. After the item was moved, it found 87% at worst, over 36 character designs. A full sweep of 36 setups × 2 passes at 1080×2340 took about 3 minutes on an M1 Air with a GDScript pixel loop.
 
 ---
 
