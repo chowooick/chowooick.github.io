@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T17:03:47Z · 소스 커밋 `5ff91a4` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T17:33:42Z · 소스 커밋 `03f203b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15732,4 +15732,12 @@ local image and no registry, tries to pull.
 **해결:** re-tag the image the container is running (`docker tag <repo>:<tag-that-exists> <repo>:<tag-in-.env>`,
 same image ID, no rebuild and no data touched) and deploy again. Before a partial deploy that reuses
 another service's tag, check `docker image inspect <repo>:<tag>` exists.
+
+## OPS-374 — 실기기 iPad의 XCUITest는 xcodebuild를 돌릴 때마다 Touch ID "Enable UI Automation"을 다시 요구했다. 사람 손이 올 때까지 1분 간격으로 다시 돌리면 된다
+
+`측정 2026-10-08 · Xcode 27 xcodebuild test-without-building · iPad mini 5(iPad11,1) · iPadOS 26.7.1 · Personal Team 서명 UI 테스트 번들`
+
+**증상:** 한 번 지문으로 UI 자동화를 켜고 테스트가 끝까지 돈 뒤, 몇 분 뒤 같은 러너로 `test-without-building`을 다시 돌리자 또 `Failed to initialize for UI testing … Timed out while enabling automation mode.`(약 60초 대기)로 끝났다. 기기 화면에는 다시 "'XCTest'의 Touch ID · Enable UI Automation" 창이 떠 있었다(OPS-370은 처음 켤 때만 필요하다고 적었지만, 이날은 실행마다 필요했다). 실패한 실행은 테스트가 실패한 뒤에도 xcodebuild가 진단 수집에서 몇 분 동안 끝나지 않기도 했다.
+
+**해결:** 루프로 `test-without-building`을 다시 돌리고, 로그에 `Timed out while enabling automation mode`가 없을 때 멈춘다(이날 5번째 시도에서 지문이 와서 통과). 그동안 운영자에게 지문 한 번을 부탁한다. 결과 확인은 `-resultBundlePath`로 받은 xcresult에서 `xcrun xcresulttool export attachments --path … --output-path …`로 `XCTAttachment(screenshot:)` 화면과 화면 녹화(mp4)를 꺼내 본다. 진단에서 멈춘 xcodebuild는 결과 번들이 이미 쓰였으면 죽여도 된다.
 
