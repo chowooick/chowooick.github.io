@@ -7265,3 +7265,14 @@ another service's tag, check `docker image inspect <repo>:<tag>` exists.
 - Files the edge cached **before** the origin started sending `no-cache` did not pick it up: after the next deploy `sw.js` came back `cf-cache-status: STALE` with the old content on three requests in a row. One more purge by URL, then `MISS` and `REVALIDATED` from there on.
 
 **해결:** send `Cache-Control: no-cache` for every static file, then purge those URLs once (in Starlette, subclass `StaticFiles` and set the header in `file_response`). In the service worker, fetch with `{cache: 'no-cache'}` so the browser revalidates by ETag instead of trusting the rewritten `max-age`. To stop the rewrite itself, set a cache rule for the hostname with browser TTL `respect_origin` (OPS-301); changing the zone-wide browser TTL also changes every other site on the zone.
+
+## OPS-376 — Android WebView app on `WebViewAssetLoader`: a link to `/` shows an error page, and `dumpsys vibrator_manager` shows whether a `performHapticFeedback` from the JS bridge actually played
+
+`측정 2026-10-08 · Pixel 7 Pro, Android 16, WebView 154.0.8037.106 · androidx.webkit WebViewAssetLoader (AssetsPathHandler on "/") · Speak Out release build`
+
+**증상:** the page loads as `https://appassets.androidplatform.net/index.html`. Following a plain `<a href="/">` (here the logo, reached by Enter on the focused link) asked the loader for the asset path "", which logs `E WebViewAssetLoader: Error opening asset path: … FileNotFoundException`. The app showed 「웹페이지를 사용할 수 없음」 with `net::ERR_INVALID_RESPONSE`. The same link works on the website.
+
+- Haptics through a `@JavascriptInterface` method that calls `webView.performHapticFeedback(…)` need no VIBRATE permission. To verify them on the device, `adb shell dumpsys vibrator_manager` lists each one with the app's package, `reason: performHapticFeedback(constant=17)` and the outcome: `finished` (`Prebaked=DOUBLE_CLICK` for REJECT, `TEXTURE_TICK` for CLOCK_TICK) while the app is in front, and `ignored_background` (nothing felt) once another app has the focus.
+- A release build with WebView debugging off can still be driven: build the same release once with `setWebContentsDebuggingEnabled(true)`, `adb install -r` it (same upload key, the app's data is kept), `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` and send `Runtime.evaluate` to the page's `webSocketDebuggerUrl`. Reinstall the normal build afterwards.
+
+**해결:** never navigate to `/` inside the asset origin. Handle the logo in script, or link to `/index.html`. Check haptics in `dumpsys vibrator_manager` with the app in front.
