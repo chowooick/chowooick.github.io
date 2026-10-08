@@ -5272,3 +5272,13 @@ Traps it found:
 A second trap showed up in the same pass. An autowrapping Label inside a `PanelContainer` with `SIZE_SHRINK_CENTER` gets a minimum width of about one glyph. The pill then drew "예상: 점령" as a tall column of single syllables.
 
 **해결:** use GDT-104's WORD JOINER for prose. For a short UI line, keep it on one line when it fits; otherwise replace your own separator with a newline (`text.replace(" · ", "\n")`) and size the panel from `get_string_size` of each line. Turn autowrap off on short status pills.
+
+## GDT-288 — `Dictionary.merge(data)` keeps the existing value on a key clash, so an event payload's `"kind"` is silently dropped under the envelope's `"kind"`
+
+`측정 2026-10-08 · Godot 4.7.2-stable · GDScript`
+
+**증상:** a simulation built events as `var event = {"id": n, "kind": event_type}` then `event.merge(data)`. An item pickup sent `{"kind": "P", "pos": ...}` as its data. Every consumer that read `event["kind"]` for the item got `"item"` (the event type) instead. The pickup popup fell through its `match` and showed the word "item" for months. No error or warning is printed.
+
+`merge(dictionary, overwrite := false)` only adds keys the target lacks. A payload key equal to an envelope key (`kind`, `id`, `type`) loses without a sound.
+
+**해결:** never reuse envelope key names inside payloads (here the payload key became `"item"`). If the payload must win, call `merge(data, true)`, but then a payload can overwrite the event type. A one-line check in the event helper catches the clash early: `assert(not data.has("kind"))`.
