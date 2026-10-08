@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T17:33:42Z · 소스 커밋 `03f203b` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T17:50:14Z · 소스 커밋 `9857a42` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6253,6 +6253,20 @@ A second trap showed up in the same pass. An autowrapping Label inside a `PanelC
 `merge(dictionary, overwrite := false)` only adds keys the target lacks. A payload key equal to an envelope key (`kind`, `id`, `type`) loses without a sound.
 
 **해결:** never reuse envelope key names inside payloads (here the payload key became `"item"`). If the payload must win, call `merge(data, true)`, but then a payload can overwrite the event type. A one-line check in the event helper catches the clash early: `assert(not data.has("kind"))`.
+
+## GDT-289 — Web export sample playback honours `pitch_scale`: it becomes the `AudioBufferSourceNode.playbackRate` (pitch and length change together)
+
+`측정 2026-10-08 · Godot 4.7.2-stable Web export (nothreads template), Brave 1.96 headless on an M1 MacBook Air`
+
+**증상:** none; the question is whether a semitone ladder of `pitch_scale` on short effects (chain reactions, streaks) works on the Web, where `audio/general/default_playback_type.web` is Sample and bus effects are not applied to samples (GDT-097).
+
+It works. The engine JS (`GodotAudio.SampleNode` in the exported `index.js`) receives the player's `pitch_scale` as the `pitchScale` start option of `godot_audio_sample_start`, and `_syncPlaybackRate()` sets `source.playbackRate.value = playbackRate (1) * pitchScale` before `start()`. A later change of `pitch_scale` on a playing player goes through `godot_audio_sample_update_pitch_scale` to the same place.
+
+Measured with an `addInitScript` hook on `AudioBufferSourceNode.prototype.start` that records `this.playbackRate.value` and the `ended` time, for `AudioStreamPlayer2D` voices with `pitch_scale` set before `play()`: 9 of 9 sources started at exactly the requested rate (1.0, 1.0595, 1.5, 2.0, 1.1225, 0.75; jittered 0.9911 and 1.0141 where the game asked for 1.0). A 0.26 s buffer played 0.299 / 0.272 / 0.229 / 0.165 s at rates 1 / 1.0595 / 1.5 / 2 (the `ended` event arrives about 35-40 ms late on the main thread, so the steps, not the absolute times, are the signal).
+
+As with `playbackRate` everywhere in WebAudio, this is resampling: a sound pitched up is also shorter. A timed sound (one whose end must land on a beat or a reveal) must not be pitched or jittered.
+
+**해결:** set `pitch_scale` on the voice before `play()`; nothing Web-specific is needed. Also: a probe scene under a folder listed in the export preset's `exclude_filter` exports fine and then fails at boot with `Cannot open file 'res://…/probe.tscn'` and `Failed loading scene`; drop that folder from the filter in the sandbox copy that builds the probe.
 
 ---
 
