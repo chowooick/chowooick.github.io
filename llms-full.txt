@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T19:06:55Z · 소스 커밋 `cb00cb3` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T19:10:51Z · 소스 커밋 `fa69d62` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8552,6 +8552,18 @@ sessions are touching.
 
 **해결:** 프롬프트로 고치지 말고 결과를 후처리한다. 그 단계의 과제 단어 목록과 한 단어도 겹치지 않는 1점은 0점으로 센다. 같은 10개를 다시 재면 과제 무시 6/6이 0점, 바꿔 말한 정답 4/4가 3점이다. 정답을 키워드 없이 말한 경우는 모델이 2-3점을 주므로 이 규칙에 걸리지 않는다.
 
+## AGT-115 — iPad Safari에서는 "메모리가 충분한지"를 미리 잴 방법이 없다: 손대지 않은 할당은 4GB까지 성공하고, 실제로 쓰는 할당은 예외 없이 탭을 죽인다
+
+`측정 2026-10-08 · iPad mini 5(iPad11,1, RAM 3GB) · iPadOS 26.7.1 · Safari 26.6.2 · safaridriver · 워커 안에서 측정`
+
+**증상:** 브라우저 음성 모델(398MB, 여는 동안 WebContent 1.2~1.6GB, AGT-104)을 받기 전에 "이 기기가 버틸지"를 재서 안 되면 기기 음성으로 돌리려 했다. 잴 수 있는 신호를 모두 확인했다.
+
+- `navigator.deviceMemory`: 없음(undefined). `navigator.hardwareConcurrency`: 4(A12는 6코어). WebGPU 어댑터 `info`는 vendor·architecture·description이 모두 `"apple"`, `limits.maxBufferSize` 268435456, `maxStorageBufferBindingSize` 536870912(기본값 그대로). UA는 iPad 공통이라 기종을 알 수 없다.
+- 손대지 않은 할당: `new ArrayBuffer(n)`과 `new WebAssembly.Memory({initial})`이 0.5~4GB 전부 성공한다. `memory.grow`도 4032MB까지 커진다. RAM 3GB 기기인데도 실패하지 않으므로 신호가 되지 않는다.
+- 실제로 쓰는 할당(32MB씩 만들고 4KB마다 1바이트씩 써서 페이지를 실제로 차지하게 함): 1664MB까지 보고한 뒤 **예외 없이 탭이 죽었다**(safaridriver `invalid session id`). `RangeError`가 나지 않으므로 try/catch로 잡을 수 없다. 모델이 필요한 만큼을 잴 수 있을 만큼 할당하면 재는 일 자체가 탭을 죽인다.
+
+**해결:** iOS에서는 사전 측정으로 크래시를 막을 수 없다. 기기 단위로 정해야 한다. 예를 들어 iPhone·iPad는 처음부터 가벼운 경로(기기 음성)로 시작하고 무거운 경로는 사용자가 고르게 하거나, 무거운 계산을 서버에서 미리 해 둔다. 크래시 뒤 다음 방문에서 표식(`localStorage`에 남긴 "작업 중" 플래그)으로 알아차리는 기존 방식(AGT-104)이 유일하게 확실한 신호다.
+
 ---
 
 <!-- source: ops.md -->
@@ -15811,4 +15823,15 @@ another service's tag, check `docker image inspect <repo>:<tag>` exists.
 **증상:** 한 번 지문으로 UI 자동화를 켜고 테스트가 끝까지 돈 뒤, 몇 분 뒤 같은 러너로 `test-without-building`을 다시 돌리자 또 `Failed to initialize for UI testing … Timed out while enabling automation mode.`(약 60초 대기)로 끝났다. 기기 화면에는 다시 "'XCTest'의 Touch ID · Enable UI Automation" 창이 떠 있었다(OPS-370은 처음 켤 때만 필요하다고 적었지만, 이날은 실행마다 필요했다). 실패한 실행은 테스트가 실패한 뒤에도 xcodebuild가 진단 수집에서 몇 분 동안 끝나지 않기도 했다.
 
 **해결:** 루프로 `test-without-building`을 다시 돌리고, 로그에 `Timed out while enabling automation mode`가 없을 때 멈춘다(이날 5번째 시도에서 지문이 와서 통과). 그동안 운영자에게 지문 한 번을 부탁한다. 결과 확인은 `-resultBundlePath`로 받은 xcresult에서 `xcrun xcresulttool export attachments --path … --output-path …`로 `XCTAttachment(screenshot:)` 화면과 화면 녹화(mp4)를 꺼내 본다. 진단에서 멈춘 xcodebuild는 결과 번들이 이미 쓰였으면 죽여도 된다.
+
+## OPS-375 — Cloudflare: an origin that sends no `Cache-Control` gets its .js/.css held at the edge for the zone's browser TTL (4 h) after a deploy; `no-cache` fixes the edge, but browsers still receive `max-age=14400`. POST to `/api/v4` from the dashboard session is blocked, the 「사용자 지정 제거」 dialog is not
+
+`측정 2026-10-08 · Cloudflare free plan, zone browser cache TTL 4시간 · FastAPI StaticFiles origin behind a Cloudflare Tunnel · Brave 1.96 Playwright persistent profile · Speak Out`
+
+**증상:** after two deploys 13 minutes apart, `audio.js` came back `cf-cache-status: HIT`, `age: 925`, with the first deploy's content, while `?v=<random>` returned the new file. Starlette `StaticFiles` sends `ETag` and `Last-Modified` but no `Cache-Control`, so the edge kept the file for the zone's 4 h TTL. One page can then load scripts from two different commits.
+
+- With the origin sending `Cache-Control: no-cache`, the edge answers `cf-cache-status: REVALIDATED` and serves the new file at once. **But the response to the browser still says `cache-control: max-age=14400`**: the zone's browser cache TTL overrides the origin's `no-cache`. A plain `fetch()` in a service worker, or a returning visitor without one, can still reuse a 4 h old file from the browser's HTTP cache.
+- Purging by URL: `POST /api/v4/zones/<id>/purge_cache` from the dashboard page (headers `x-cross-site-security: dash` and `x-atok: window.bootstrap.atok`) returned `403` with an HTML block page; GET `/zones?name=…` worked with the same headers (same as OPS-111). The UI path works: `…/<account>/<zone>/caching/configuration` → button 「사용자 지정 제거」 → in the `[role=dialog]` choose 「URL」, fill its `textarea` with one URL per line, press 「제거」. The next request was `MISS` with the new content.
+
+**해결:** send `Cache-Control: no-cache` for every static file (in Starlette, subclass `StaticFiles` and set the header in `file_response`). In the service worker, fetch with `{cache: 'no-cache'}` so the browser revalidates by ETag instead of trusting the rewritten `max-age`. To stop the rewrite itself, set a cache rule for the hostname with browser TTL `respect_origin` (OPS-301); changing the zone-wide browser TTL also changes every other site on the zone.
 
