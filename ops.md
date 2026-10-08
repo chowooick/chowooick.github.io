@@ -7212,3 +7212,11 @@ The full `message` carries a list after a newline: `- iPad mini (00008020-…): 
 - 자리를 비운 뒤에도 첫 실행은 `Failed to initialize for UI testing … Timed out while enabling automation mode.`로 끝났다. 그때 기기 화면(`xcrun devicectl device capture screenshot --device <udid> --destination x.png`)에는 "'XCTest'의 Touch ID · Enable UI Automation" 창이 떠 있었다. 실기기 UI 자동화는 처음 켤 때 기기 주인의 지문이나 암호가 필요하다. 세션이 할 수 없는 단계이므로 이 화면을 띄워 둔 채 운영자에게 알린다.
 - 그 뒤 실제로 돌릴 때의 함정 둘(같은 날): ① Safari 웹 콘텐츠 버튼은 `safari.buttons["음성으로 듣기"]`(identifier 일치)로 찾지 못한다. `buttons.matching(NSPredicate(format: "label == %@", "음성으로 듣기"))`로 찾는다. ② safaridriver 세션을 끝내지 않고 드라이버를 죽이면 Safari가 주황 주소창의 자동화 창에 남는다. URL을 열 때마다 "Safari가 자동 테스트를 실행 중입니다" 창이 다시 뜨고, XCUITest가 "테스트 세션 중단"을 눌러도 되풀이된다. `xcrun devicectl device info processes --device <udid> | grep MobileSafari`로 pid를 찾아 `xcrun devicectl device process terminate --device <udid> --pid <pid>`로 Safari를 끝내면 평소 창으로 돌아온다. "자동화 끄기"는 누르지 않는다. 원격 자동화 설정이 꺼져 safaridriver를 다시 켜려면 기기에서 사람이 손대야 한다.
 - 지운 다른 세션의 앱은 그 프로젝트의 `build/ios/*.ipa`를 풀어 `xcrun devicectl device install app --device <udid> Payload/<name>.app`으로 다시 넣을 수 있다(무료 프로필 만료일 안에서만). 앱 데이터는 지울 때 사라진다.
+
+## OPS-371 — 위키백과 조회수로 인기순을 매길 때: 조회수 API는 리다이렉트를 따라가지 않고, 한국어 문서 제목은 개역개정 표기가 아니다
+
+`측정 2026-10-08 · Wikimedia REST pageviews per-article · MediaWiki action=query · ko/en Wikipedia · 성경 인물 171명`
+
+**증상:** `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/ko.wikipedia/all-access/user/<제목>/monthly/<시작>/<끝>`에 흔히 쓰는 이름을 넣으면 수치가 0에 가깝거나 404가 난다. 이 API는 리다이렉트 문서의 조회수를 그 문서 몫으로 따로 센다. 정식 문서로 넘겨 주지 않는다. 조회가 한 번도 없는 기간은 오류가 아니라 404로 온다. 한국어 위키백과 성경 인물 문서는 공동번역·가톨릭 표기가 정식 제목이다(`사도 바울로`, `폰티우스 필라투스`, `유다 이스카리옷`, `히즈키야`). 같은 이름의 다른 인물이 정식 문서를 차지한 경우도 있었다(ko `호세아`는 북이스라엘 왕, en `Micah`는 인명 안내 문서).
+
+**해결:** 제목은 먼저 `https://<lang>.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1&prop=pageprops&titles=A|B|…`(50개씩)로 확인한다. `redirects`에 잡히면 정식 제목으로 고치고, `pageprops.disambiguation`이 있으면 동음이의 문서이므로 다른 제목을 찾는다. 조회수의 404는 0회로 센다. User-Agent에 연락처가 든 이름을 붙이고 동시 요청 4개로 171명 × 2개 언어가 47초 걸렸다. 화면에 보이는 이름은 독자에게 익숙한 표기로 따로 둔다. 구현: who.withthebible.com `scripts/build-people.mjs`.
