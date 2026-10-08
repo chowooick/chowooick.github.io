@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T20:01:56Z · 소스 커밋 `1d4096d` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T20:05:20Z · 소스 커밋 `4922897` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8587,6 +8587,18 @@ sessions are touching.
 **증상:** 내 앱을 `am start`로 앞에 올리면 3~4초 안에 다른 프로젝트 앱(`com.mnori.speakout`)이 다시 앞으로 왔다. `mLastInteractivePowerHintTime`이 75초 넘게 조용해도 마찬가지였다. 원인은 그 세션이 백그라운드로 돌린 `adb install -r`(재설치 뒤 자동 실행)과 QA 루프였다. `ListAgents`에는 이름이 `001` `002`뿐이라 어느 세션이 폰을 쓰는지 알 수 없었다. Air 쪽 `ps`에도 그 adb 루프는 보이지 않았다.
 
 **해결:** 포그라운드 앱의 패키지로 프로젝트를 짐작한다. `~/.claude/projects/-Users-<user>-work-<project>/`에서 가장 최근 `.jsonl`을 고르고 `grep -o 'This session is [^ ]* \[[0-9a-f]*\]'`로 그 세션의 `이름 [ref]`를 뽑는다. 그 주소로 `SendMessage`를 보내 "N초만 비켜 달라, 끝나면 돌려놓겠다"고 요청하고 `notify_when_idle: true`를 건다. 이번에는 몇 분 안에 "go" 답이 왔고, 그 뒤 앱이 다시 빼앗기지 않았다. 다 쓰면 폰을 쓰겠다고 기다리는 세션에 "free"를 알린다. 기다리는 세션은 같은 방식으로 먼저 메시지를 보내 온다.
+
+## AGT-117 — Score-then-reply in one request: Qwen3 30B-A3B gives an off-task "Hello there" 3 when the prompt also holds the success reply, until the prompt says a greeting is 0. It then matches EXAONE 32B at a fifth of the time. llama-server drops idle keep-alive connections between 3 and 6 s
+
+`측정 2026-10-08 · llama.cpp build 11429 (Homebrew 0.6.0) on M1 Max 64 GB, Qwen3-30B-A3B-Instruct-2507-IQ4_XS (unsloth GGUF, 16.4 GB) · baseline EXAONE-4.0-32B-Q4_K_M on M4 Pro 64 GB (b10766) · Speak Out turn prompt with GBNF `[0-3] "\\n" line``
+
+**증상:** one request returns a 0-3 score on the first line and the in-character reply on the second. The prompt says "if 2 or 3, your reply must carry: <success line>; if 0 or 1: <fail line>". On 76 answers (each step's model answer, "Hello there" on all 33 steps, 4 keyword-free paraphrases, 4 small-talk lines, 2 refusals), Qwen3 30B-A3B judged 60 as expected. It gave **3 to "Hello there" on 16 of 33 steps** and then spoke the success line. EXAONE 32B on the same prompt judged 76/76.
+
+- Two sentences added to the rules fixed it: `A greeting or small talk ("Hello there", "Nice weather today") does not do the task: 0. Score only what the caller said, never what you are about to reply.` Qwen then judged 76/76 on two runs (33 of 37 correct answers got 3, so a "3 on all three answers" reward stays reachable), and EXAONE still 76/76. Replies to failed clue steps kept the clue back on both.
+- Time from the Air: score median 0.27-0.48 s and p90 0.52-0.69 s, whole reply 0.67-0.86 s on Qwen (M1 Max over a LAN reverse tunnel), against 2.05 s / 5.38 s / 4.46 s on EXAONE (M4 Pro over an SSH tunnel, 155-191 ms per round trip). EXAONE generated at 11.9 tokens/s.
+- Keep-alive: through the SSH tunnel a new connection took 535-657 ms to the first byte, a reused one 155-191 ms. llama-server (both builds) reused a connection after 3 s idle and closed it by 6 s. The next request on the closed connection failed in httpx with `RemoteProtocolError: Server disconnected without sending a response.`
+
+**해결:** if a fast MoE takes the score-and-reply turn, give it an explicit off-task example and a "score what was said" line, then re-run the whole answer set on both models before switching. Keep one `httpx.AsyncClient` per server with `keepalive_expiry` under 3-4 s, and resend a request once on `RemoteProtocolError`. To serve a model from a Mac whose firewall should not take incoming connections, run llama-server on its loopback and open `ssh -N -R 127.0.0.1:<port>:127.0.0.1:<port> <server>` from that Mac, kept by launchd. Give the caller a short first-token deadline (1.5 s here) and fall back to the other server.
 
 ---
 
