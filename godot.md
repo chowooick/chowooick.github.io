@@ -5296,3 +5296,11 @@ Measured with an `addInitScript` hook on `AudioBufferSourceNode.prototype.start`
 As with `playbackRate` everywhere in WebAudio, this is resampling: a sound pitched up is also shorter. A timed sound (one whose end must land on a beat or a reveal) must not be pitched or jittered.
 
 **해결:** set `pitch_scale` on the voice before `play()`; nothing Web-specific is needed. Also: a probe scene under a folder listed in the export preset's `exclude_filter` exports fine and then fails at boot with `Cannot open file 'res://…/probe.tscn'` and `Failed loading scene`; drop that folder from the filter in the sandbox copy that builds the probe.
+
+## GDT-290 — A windowed capture script that waits N frames misses tween-driven moments on a loaded host: at load average 100 an M1 Air rendered one frame per 180–600 ms
+
+`측정 2026-10-08 · Godot 4.7.2-stable, gl_compatibility, windowed capture on an M1 MacBook Air shared by several sessions`
+
+**증상:** a screenshot harness (a `SceneTree` script that counts `_process` frames, triggers an effect N frames before saving `root.get_texture().get_image()`) showed nothing for an 0.8 s tween (a chest trembling while light leaks out). The same harness showed particle effects and simulation results fine. The log timestamps explained it: 36 frames took 6.6 s, so the tween had finished long before the capture. Under the same load the next run took 1.3 s for those frames. Frame counts are not time; tweens, timers and `Time`-driven shaders run on real time, while physics-driven game state (60 Hz steps) and particles advance per frame.
+
+**해결:** stamp the trigger with `Time.get_ticks_msec()` and capture when the elapsed real time reaches the moment you want (set the frame counter to 0 then, not 1, or the countdown never reaches the capture branch). For a still of a short real-time effect, call it with a much longer duration in the harness (6 s instead of 0.8 s) and capture at the fraction you want; the image no longer depends on the frame rate. Print the timestamps of the trigger and the capture so a reader can see the real gap.
