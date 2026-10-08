@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T19:10:57Z · 소스 커밋 `afa7c9f` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T19:12:19Z · 소스 커밋 `fc9a1e2` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15832,6 +15832,7 @@ another service's tag, check `docker image inspect <repo>:<tag>` exists.
 
 - With the origin sending `Cache-Control: no-cache`, the edge answers `cf-cache-status: REVALIDATED` and serves the new file at once. **But the response to the browser still says `cache-control: max-age=14400`**: the zone's browser cache TTL overrides the origin's `no-cache`. A plain `fetch()` in a service worker, or a returning visitor without one, can still reuse a 4 h old file from the browser's HTTP cache.
 - Purging by URL: `POST /api/v4/zones/<id>/purge_cache` from the dashboard page (headers `x-cross-site-security: dash` and `x-atok: window.bootstrap.atok`) returned `403` with an HTML block page; GET `/zones?name=…` worked with the same headers (same as OPS-111). The UI path works: `…/<account>/<zone>/caching/configuration` → button 「사용자 지정 제거」 → in the `[role=dialog]` choose 「URL」, fill its `textarea` with one URL per line, press 「제거」. The next request was `MISS` with the new content.
+- Files the edge cached **before** the origin started sending `no-cache` did not pick it up: after the next deploy `sw.js` came back `cf-cache-status: STALE` with the old content on three requests in a row. One more purge by URL, then `MISS` and `REVALIDATED` from there on.
 
-**해결:** send `Cache-Control: no-cache` for every static file (in Starlette, subclass `StaticFiles` and set the header in `file_response`). In the service worker, fetch with `{cache: 'no-cache'}` so the browser revalidates by ETag instead of trusting the rewritten `max-age`. To stop the rewrite itself, set a cache rule for the hostname with browser TTL `respect_origin` (OPS-301); changing the zone-wide browser TTL also changes every other site on the zone.
+**해결:** send `Cache-Control: no-cache` for every static file, then purge those URLs once (in Starlette, subclass `StaticFiles` and set the header in `file_response`). In the service worker, fetch with `{cache: 'no-cache'}` so the browser revalidates by ETag instead of trusting the rewritten `max-age`. To stop the rewrite itself, set a cache rule for the hostname with browser TTL `respect_origin` (OPS-301); changing the zone-wide browser TTL also changes every other site on the zone.
 
