@@ -5320,3 +5320,11 @@ As with `playbackRate` everywhere in WebAudio, this is resampling: a sound pitch
 **증상:** a mine-boss playtest bot gives each boss a budget of 180 "seconds" by adding `1.0 / 60.0` per awaited `process_frame`. After the game gained hit-stops (`Engine.time_scale = 0.05` for 35 ms of wall time on a sword hit, 75 ms on a crit, 50 ms on a kill, restored by a node that reads `Time.get_ticks_msec()`), one boss with many minions (803 strikes, 129 dodge rolls in the fight) was left at 94 of 360 HP when the budget ran out (no run of the bot without hit-stops was made on that day to compare). On a loaded host one frame takes far longer than a hit-stop, so every hit-stop scales one whole frame's delta by 0.05: the frame is counted in the budget but the world barely moves.
 
 **해결:** advance the bot's clock by game time, `t += dt * Engine.time_scale`, so a held world does not spend the budget. With that change the same boss went down at 117.2 game-seconds and all six bosses passed (`PLAY_MINES 0 failures`). The same applies to anything a test waits on by counting frames while the game uses time-scale effects (slow motion, hit-stop); wall-clock waits (`create_timer(s, true, false, true)`) are not affected by the scale.
+
+## GDT-293 — `tween_property(node, "rotation:y", atan2(d.x, d.z), t)` spins the long way: an NPC set to face west (yaw 3π/2) turned a full circle to face a player on its left
+
+`측정 2026-10-08 · Godot 4.7.2-stable · GDScript Tween`
+
+**증상:** talking to an NPC made it spin almost 360° before facing the player (owner's report: "아빠가 이유없이 한바퀴 돕니다"). The NPC's model yaw was set from an 8-way facing (`f * PI / 4`, so west is 4.71 rad); `atan2` returns -π..π (-1.57 for the same direction). A Tween interpolates the raw numbers, 4.71 → -1.57: 6.28 rad, one full turn. `lerp_angle` handles the wrap, but `tween_property` on a rotation property does not.
+
+**해결:** tween to the nearest equivalent angle: `var want := model.rotation.y + wrapf(target - model.rotation.y, -PI, PI)`, then tween to `want`. Same for any angle you tween (rotation.x/z, a camera yaw). Per-frame code can keep using `lerp_angle`.
