@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T19:03:19Z · 소스 커밋 `3819eb4` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T19:06:55Z · 소스 커밋 `cb00cb3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6299,6 +6299,20 @@ As with `playbackRate` everywhere in WebAudio, this is resampling: a sound pitch
 **증상:** talking to an NPC made it spin almost 360° before facing the player (owner's report: "아빠가 이유없이 한바퀴 돕니다"). The NPC's model yaw was set from an 8-way facing (`f * PI / 4`, so west is 4.71 rad); `atan2` returns -π..π (-1.57 for the same direction). A Tween interpolates the raw numbers, 4.71 → -1.57: 6.28 rad, one full turn. `lerp_angle` handles the wrap, but `tween_property` on a rotation property does not.
 
 **해결:** tween to the nearest equivalent angle: `var want := model.rotation.y + wrapf(target - model.rotation.y, -PI, PI)`, then tween to `want`. Same for any angle you tween (rotation.x/z, a camera yaw). Per-frame code can keep using `lerp_angle`.
+
+## GDT-294 — Web export silent from two runtime `add_bus()` calls; `AudioServer.set_bus_count()` fixes it in code without a bus layout file
+
+`측정 2026-10-08 · Godot 4.7.2-stable Web export (nothreads, Sample playback) · Brave 1.96 headless and headed, Playwright WebKit 2359, on macOS`
+
+**증상:** a game that played sound on desktop and Android was completely silent on the Web in every browser ("no sound on the Mac"). Its audio autoload made two buses in `_ready()`: `AudioServer.add_bus()` (default position -1), `set_bus_name(idx, "Music")`, `set_bus_send(idx, "Master")`, then the same for "SFX". Headless engine tests passed because the native mixer is not affected.
+
+Measured with an init script that wraps `AudioNode.prototype.connect`, taps an `AnalyserNode` onto every connection to `ctx.destination`, and walks the graph from each `AudioBufferSourceNode`:
+- `AudioContext` reached `running` (Brave: on the first click; WebKit: `interrupted` until the click, then `resume()` with `navigator.userActivation.isActive = true` resolved to `running`), music fetches returned 200, no `decodeAudioData` failure, 33-39 sources started in 20 s of play;
+- every source's path ended in a loop of the three buses' gain nodes (`Gain(0.8) -> solo -> mute -> Gain(0.8) -> … -> Gain(0.8)`) and only the position/mixer `AudioWorkletNode` reached the destination; the output RMS was exactly 0 in 329 of 329 100 ms windows.
+
+Mechanism (as GDT-258, which needed only two buses here): JS `Bus.addAt(-1)` creates the bus at the end and then `Bus.move(newIndex, -1)`, which does `buses.splice(-1 - 1, 0, bus)`: the new bus goes in front of Master. The engine's next `set_bus_send(1, "Master")` sends JS bus 1, which is now Master, into JS bus 0, so Master's output is disconnected from the destination and wired into the loop.
+
+**해결:** create the buses with `AudioServer.set_bus_count(AudioServer.bus_count + n)` and then set names and sends; the Web side mirrors a count by appending buses in order. Measured on the same build after the change: the graph ends at `AudioDestination` (`Gain(0.8) -> … -> Gain(1.0) -> AudioDestination`), output RMS peaks -11.1 to -13.0 dBFS, signal in 205-223 of 246-275 windows, in Brave headless, Brave headed and WebKit. A `default_bus_layout.tres` (GDT-258) works too. A headless or native test cannot catch this; check a Web build's graph or output level.
 
 ---
 
