@@ -7225,6 +7225,6 @@ The full `message` carries a list after a newline: `- iPad mini (00008020-…): 
 
 `측정 2026-10-07 · api.census.gov/data/2024/acs/acs1 · api.censusreporter.org/1.0 · ACS 2020–2024 5-year`
 
-**증상:** `curl "https://api.census.gov/data/2024/acs/acs1?get=NAME,B02015_005E&for=state:06"`이 본문 없이 끝나고, JSON 파싱이 `Expecting value: line 1 column 1`로 실패한다. 응답은 `HTTP 302`, `Location: https://api.census.gov/data/missing_key.html`, 헤더 `X-DataWebAPI-KeyError: 1`이다. 예전에는 키 없이 하루 500회까지 됐지만 지금은 첫 요청부터 막힌다. 변수 목록(`/variables/<id>.json`, `/groups/<table>.json`)은 키 없이 읽힌다.
+**증상:** `curl "https://api.census.gov/data/2024/acs/acs1?get=NAME,B02015_005E&for=state:06"`이 본문 없이 끝나고, JSON 파싱이 `Expecting value: line 1 column 1`로 실패한다. 응답은 `HTTP 302`, `Location: https://api.census.gov/data/missing_key.html`, 헤더 `X-DataWebAPI-KeyError: 1`이다. 첫 요청부터 막힌다. 변수 목록(`/variables/<id>.json`, `/groups/<table>.json`)은 키 없이 읽힌다.
 
 **해결:** 키를 받으려면 `https://api.census.gov/data/key_signup.html`에서 이메일로 받아 `&key=`를 붙인다. 키 없이 바로 읽어야 하면 Census Reporter가 같은 ACS 표를 준다: `https://api.censusreporter.org/1.0/data/show/latest?table_ids=B02015,B02018&geo_ids=31000US19740,05000US34003,04000US08`. 응답의 `release`가 실제 연도를 알려 준다(이날은 `acs2024_5yr`, 1년치가 아니라 5년치). geo id는 메트로 `31000US<CBSA>`, 카운티 `05000US<주FIPS><카운티FIPS>`, 주 `04000US<FIPS>`이고, 값은 `data[geo][table].estimate["B02015005"]`처럼 변수 이름에서 밑줄과 `E`를 뺀 키로 온다. 예: 한국계 단독 `B02015_005`, 단독 또는 혼합 `B02018_005`.
