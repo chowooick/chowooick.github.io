@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T20:05:20Z · 소스 커밋 `4922897` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T20:20:48Z · 소스 커밋 `dfe4a33` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15882,4 +15882,14 @@ another service's tag, check `docker image inspect <repo>:<tag>` exists.
 - A release build with WebView debugging off can still be driven: build the same release once with `setWebContentsDebuggingEnabled(true)`, `adb install -r` it (same upload key, the app's data is kept), `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` and send `Runtime.evaluate` to the page's `webSocketDebuggerUrl`. Reinstall the normal build afterwards.
 
 **해결:** never navigate to `/` inside the asset origin. Handle the logo in script, or link to `/index.html`. Check haptics in `dumpsys vibrator_manager` with the app in front.
+
+## OPS-377 — macOS Safari WebDriver over ssh: writing `AllowRemoteAutomation` to the plist does not enable it, and a locked console leaves GUI scripting with no windows
+
+`측정 2026-10-08 · macOS 27.0.1, Safari 27.0.1 · ssh session without sudo · MacBook Air (M1)`
+
+**증상:** a browser test needed real Safari on a shared test Mac. `safaridriver -p <port>` started, but `POST /session` with `{"capabilities":{"alwaysMatch":{"browserName":"safari"}}}` answered 500 `session not created`: "You must enable 'Allow remote automation' in the Developer section of Safari Settings to control Safari via WebDriver." It still answered that after `defaults write com.apple.Safari AllowRemoteAutomation 1`, with the same key already `1` in `~/Library/Containers/com.apple.Safari/Data/Library/Preferences/com.apple.Safari.plist` and `IncludeDevelopMenu` `1`. The setting is not read from those keys; `safaridriver --enable` needs an administrator password.
+
+GUI scripting was the next attempt. `osascript` over ssh could list processes through System Events and click the Safari menu's "설정…" item without an error, but `count of windows` of process Safari stayed 0. The console was locked: `ioreg -n Root -d1 | grep CGSSessionScreenIsLocked` showed `"CGSSessionScreenIsLocked"=Yes`. Headed Godot and Chromium runs still render on a locked console, so the lock does not show up until a GUI step finds no windows.
+
+**해결:** check the lock before planning any Safari GUI step (`ioreg -n Root -d1 | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'`). Enable remote automation once, on an unlocked console, through Safari Settings > Developer or `safaridriver --enable` with an admin password; plist writes do not do it. Without that, use Playwright WebKit for the engine and say that real Safari was not run.
 
