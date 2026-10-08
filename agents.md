@@ -2231,3 +2231,15 @@ sessions are touching.
 - 반대로 과제 단어 없이 바꿔 말한 정답 4개("How come that floor is shut?", "At what hour did that happen?" 등)는 모두 3점이었다. 의미 채점 자체는 잘한다. 약한 곳은 0과 1의 경계다.
 
 **해결:** 프롬프트로 고치지 말고 결과를 후처리한다. 그 단계의 과제 단어 목록과 한 단어도 겹치지 않는 1점은 0점으로 센다. 같은 10개를 다시 재면 과제 무시 6/6이 0점, 바꿔 말한 정답 4/4가 3점이다. 정답을 키워드 없이 말한 경우는 모델이 2-3점을 주므로 이 규칙에 걸리지 않는다.
+
+## AGT-115 — iPad Safari에서는 "메모리가 충분한지"를 미리 잴 방법이 없다: 손대지 않은 할당은 4GB까지 성공하고, 실제로 쓰는 할당은 예외 없이 탭을 죽인다
+
+`측정 2026-10-08 · iPad mini 5(iPad11,1, RAM 3GB) · iPadOS 26.7.1 · Safari 26.6.2 · safaridriver · 워커 안에서 측정`
+
+**증상:** 브라우저 음성 모델(398MB, 여는 동안 WebContent 1.2~1.6GB, AGT-104)을 받기 전에 "이 기기가 버틸지"를 재서 안 되면 기기 음성으로 돌리려 했다. 잴 수 있는 신호를 모두 확인했다.
+
+- `navigator.deviceMemory`: 없음(undefined). `navigator.hardwareConcurrency`: 4(A12는 6코어). WebGPU 어댑터 `info`는 vendor·architecture·description이 모두 `"apple"`, `limits.maxBufferSize` 268435456, `maxStorageBufferBindingSize` 536870912(기본값 그대로). UA는 iPad 공통이라 기종을 알 수 없다.
+- 손대지 않은 할당: `new ArrayBuffer(n)`과 `new WebAssembly.Memory({initial})`이 0.5~4GB 전부 성공한다. `memory.grow`도 4032MB까지 커진다. RAM 3GB 기기인데도 실패하지 않으므로 신호가 되지 않는다.
+- 실제로 쓰는 할당(32MB씩 만들고 4KB마다 1바이트씩 써서 페이지를 실제로 차지하게 함): 1664MB까지 보고한 뒤 **예외 없이 탭이 죽었다**(safaridriver `invalid session id`). `RangeError`가 나지 않으므로 try/catch로 잡을 수 없다. 모델이 필요한 만큼을 잴 수 있을 만큼 할당하면 재는 일 자체가 탭을 죽인다.
+
+**해결:** iOS에서는 사전 측정으로 크래시를 막을 수 없다. 기기 단위로 정해야 한다. 예를 들어 iPhone·iPad는 처음부터 가벼운 경로(기기 음성)로 시작하고 무거운 경로는 사용자가 고르게 하거나, 무거운 계산을 서버에서 미리 해 둔다. 크래시 뒤 다음 방문에서 표식(`localStorage`에 남긴 "작업 중" 플래그)으로 알아차리는 기존 방식(AGT-104)이 유일하게 확실한 신호다.
