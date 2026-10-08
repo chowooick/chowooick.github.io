@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-08T16:54:08Z · 소스 커밋 `35ff563` · 이 파일은 자동 생성물이다.
+생성 2026-10-08T17:03:47Z · 소스 커밋 `5ff91a4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8468,6 +8468,18 @@ sessions are touching.
 원인은 두 가지다. 초안 프롬프트에는 한도가 있었지만 고쳐 쓰는 프롬프트에는 "발언 수는 바꿔도 된다"만 있었다. 그리고 합친 결과를 통째로 검증해서, 섹션 하나가 넘치면 전부를 버렸다.
 
 **해결:** ① 고쳐 쓰는 프롬프트에도 같은 한도를 숫자로 적는다(한도 상수에서 끼워 넣어 두 프롬프트가 어긋나지 않게). ② 고친 섹션을 합치기 전에 섹션마다 한도·화자·출처 규칙을 따로 검사하고, 어긋난 섹션만 빼고 나머지를 받는다. 통째 검증은 마지막 안전망으로 남긴다. 고친 뒤 실제 작성에서 두 섹션(act-4, act-5)이 반영됐다.
+
+## AGT-113 — Safari(WebKit)는 문단 안에 블록 상자가 끼어 있으면 그 뒤 글자에 CSS Custom Highlight(`::highlight`)를 칠하지 않는다. 테마 선택자 아래의 `::highlight` 규칙도 적용되지 않았다
+
+`측정 2026-10-08 · iPad mini 5(iPad11,1) · iPadOS 26.7.1 · Safari 26.6.2 · Chrome 154(Pixel 7 Pro)·Brave 1.96 대조 · who.withthebible.com 문장 강조`
+
+**증상:** 읽어 주는 문장을 `CSS.highlights.set(name, new Highlight(range))`로 칠했다. Chrome에서는 보이고 Safari에서는 아무것도 칠해지지 않는다. `CSS.highlights.has(name)`은 true, `range.toString()`도 맞는 문장이다. safaridriver 스크린샷뿐 아니라 `xcrun devicectl device capture screenshot`(실제 화면)에서도 칠이 없다. 빨강(`background-color: red`)으로 바꿔도 같다.
+
+- 같은 페이지에 새로 넣은 `<p>글자</p>`는 칠해진다. 칠해지지 않은 문단은 `<p><span style="display:flex">역할 이름</span>본문…</p>` 구조였다. 문단 안의 `display: flex`(또는 `block`) 자식이 블록-인-인라인 상자를 만들고, **그 뒤의 글자 노드에는 하이라이트가 그려지지 않는다.** 앞의 span을 `display: inline-flex; width: 100%`로 바꾸면 같은 줄바꿈 모양 그대로 칠해진다.
+- 또 하나: `:root[data-theme="dark"] ::highlight(x) {…}`와 `@media (prefers-color-scheme: dark) { :root:not(…) ::highlight(x) {…} }` 규칙은 Safari에서 효과가 없었다. 밝은 테마용 기본 규칙(어두운 보라 .2)만 적용되어 어두운 배경에서는 보이지 않았다. 
+- `::highlight()` 안의 `color: var(--ink)` 같은 사용자 정의 속성도 기대하지 않는다.
+
+**해결:** 하이라이트할 글자가 있는 요소 안에는 블록 수준 자식을 두지 않는다(라벨은 `inline-flex` + `width: 100%`). 하이라이트 색은 테마 선택자 없이 규칙 하나로, 두 테마에서 다 보이는 중간 톤 반투명 한 가지로 정한다(이 사이트: `rgb(128 106 180 / .38)`). 확인은 실기기 화면 캡처로 한다. 지원 여부(`typeof Highlight`, `CSS.highlights`)만 보면 이 문제를 놓친다.
 
 ---
 
