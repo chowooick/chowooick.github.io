@@ -7345,3 +7345,24 @@ top frame found nothing.
 - Verify without a browser: the Drive connector's `get_file_permissions` lists `{"role":"reader","type":"anyone"}`,
   and an anonymous `curl -sL "https://drive.usercontent.google.com/download?id=<id>&export=download"` returns Google's
   **Virus scan warning** page for a file this size. That page is normal: a person clicks through it to download.
+
+## OPS-380 — SpacetimeDB 2.8 Rust module: `#[default(-1i32)]` does not compile; a named constant does, and migrates existing rows to -1
+
+`측정 2026-10-09 · spacetimedb crate =2.8.0 · SpacetimeDB server 2.8.0 (local standalone) · Rust 1.97.1 · wasm32`
+
+**증상:** appending `#[default(-1i32)] pub play_day: i32` to a live table failed to build, with the error pointing at the
+table attribute rather than the column:
+
+```
+error[E0600]: cannot apply unary operator `-` to type `AlgebraicValue`
+   --> server/src/lib.rs:281:1
+    | #[table(accessor = game, public)]
+```
+
+The macro expands a default as `#val.serialize(ValueSerializer)`. With `val` = `-1i32` that is `-1i32.serialize(..)`,
+which Rust parses as `-(1i32.serialize(..))`: a negation of the serialised value. `#[default((-1i32))]` compiles, but
+rustc then warns `unnecessary parentheses around assigned value` and its suggested fix is the form that does not
+build. Positive literals (`#[default(0u32)]`, `#[default(1250i32)]`) are unaffected.
+
+**해결:** name the value: `const NO_DAY: i32 = -1;` and `#[default(NO_DAY)]`. No warning, and a data-keeping publish
+(`spacetime publish … -y`, no `-c`) migrated the table in place: all 189 existing rows read `-1` in the new column.
