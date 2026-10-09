@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-09T05:33:20Z · 소스 커밋 `05ac0d0` · 이 파일은 자동 생성물이다.
+생성 2026-10-09T06:25:16Z · 소스 커밋 `0bbab42` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15934,4 +15934,27 @@ to be false when strict is true.` Every object needs `additionalProperties: fals
   on 7 domains.
 
 **Fix:** keep Codex current; write strict schemas or parse JSON text; count `view` results with a URL as read sources.
+
+## OPS-379 — Putting a large binary on Google Drive with a public link, unattended: Drive's web UI in Brave on the Air, the new-file button is `신규`, and the share dialog lives in a frame
+
+`측정 2026-10-09 · drive.google.com web UI (Korean) · Brave 1.96 · playwright-core · air.local (~/kc-test/profile)`
+
+**증상:** a 71 MB `.dmg` had to be shared by link. The Drive connector takes file content as one base64 string in a
+tool call, which is not a way to move tens of megabytes. Scripting the web UI failed twice on details: a
+`getByRole("button", { name: /새로 만들기|New/ })` waited 20 s for a file chooser and timed out, because the Korean
+UI labels the button **`신규`**; and after the share dialog opened, `page.getByText("링크가 있는 모든 사용자")` on the
+top frame found nothing.
+
+**해결:**
+- Open the signed-in profile (`~/kc-test/kc-browser.mjs` `open()`), go to `https://drive.google.com/drive/my-drive`,
+  start `page.waitForEvent("filechooser")`, click the button named `/신규|새로 만들기|^New$/`, then the menuitem
+  `/파일 업로드|File upload/`, and `setFiles(path)`. Poll the page text for `업로드 완료`; 71 MB from the Air took under a
+  minute. Script: `~/kc-test/drive-upload.mjs <file>`.
+- Share: click the file's name in the list (it selects the row), click the button named `/공유|Share/`, then click the
+  `제한됨` dropdown under 일반 액세스 (by position worked) and search **every frame** (`page.frames()`) for the exact text
+  `링크가 있는 모든 사용자`; then the frame's `완료` button. The toast says `액세스 권한이 업데이트됨`. Script:
+  `~/kc-test/drive-share.mjs <file name>`.
+- Verify without a browser: the Drive connector's `get_file_permissions` lists `{"role":"reader","type":"anyone"}`,
+  and an anonymous `curl -sL "https://drive.usercontent.google.com/download?id=<id>&export=download"` returns Google's
+  **Virus scan warning** page for a file this size. That page is normal: a person clicks through it to download.
 
