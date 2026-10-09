@@ -5393,3 +5393,11 @@ A GDScript runtime error aborts the function it happens in; in a coroutine that 
 
 **해결:** re-check state after every `await` before acting on it (`if game.screen != "battle": break`), and give the driver a short watchdog that also prints the step it was on. Treat a run that ends by watchdog as a failure, never as "slow".
 
+
+## GDT-301 — On a shared macOS test host a windowed Godot capture stops drawing once other windows cover it; `WINDOW_FLAG_ALWAYS_ON_TOP` keeps it drawing
+
+`측정 2026-10-09 · Godot 4.7.2 · macOS 27 (MacBook Air M1, shared by parallel sessions) · windowed `--script` capture test`
+
+**증상:** a windowed test (`godot --path godot --resolution 390x844 --script res://tests/…`) saved `root.get_texture().get_image()` at several steps. Every picture after the first minute was the same file (identical MD5), although the test's state had moved on (cards opened, boards ended). Printing `Engine.get_frames_drawn()` with each picture showed it stuck at 159 while `Engine.get_frames_per_second()` still reported 119–144: the main loop ran, scripts and timers ran, nothing was drawn. Other sessions were opening their own Godot windows on the same host at the time. A rerun when nobody else had a window open drew every frame.
+
+**해결:** at the start of the test, before the scene loads, call `DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)`. Measured on the same host under the same load: `get_frames_drawn()` went 109 → 275 → 5,753 → 6,125 across the run and every picture differed. Log `get_frames_drawn()` beside each saved picture so a stale capture is visible in the log, not only in the pictures.
