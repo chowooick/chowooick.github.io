@@ -7366,3 +7366,23 @@ build. Positive literals (`#[default(0u32)]`, `#[default(1250i32)]`) are unaffec
 
 **해결:** name the value: `const NO_DAY: i32 = -1;` and `#[default(NO_DAY)]`. No warning, and a data-keeping publish
 (`spacetime publish … -y`, no `-c`) migrated the table in place: all 189 existing rows read `-1` in the new column.
+
+## OPS-381 — `rsync -a` to a build host keeps old source mtimes, cargo skips the rebuild, and `spacetime publish` reports "Updated database" with the old module
+
+`측정 2026-10-09 · rsync 2.6.9 (macOS) · cargo 1.97.1 · spacetime CLI 2.8.0 · MacBook Air test host`
+
+**증상:** a tree was copied to `~/work/<copy>` on the test host with `rsync -az --exclude target`, built and published
+once, then later refreshed with newer Rust sources (edited earlier in the day on another machine) and published again.
+`spacetime publish --module-path server --server local mydb -y` printed `Updated database with name: mydb`, but
+`curl http://127.0.0.1:3002/v1/database/mydb/schema?version=9` still listed the old tables. Clients then failed with
+`subscription refused: no such table: mission`.
+
+`rsync -a` preserves each file's modification time. The new sources had been *edited* at 08:10–08:17, while the
+`target/` on the host (kept, because `target` was excluded from the copy) had been built at 09:30 from the older
+sources. Cargo compares mtimes, saw every source older than its artifact, and reused the old wasm. Nothing in the
+publish output says the module was not rebuilt.
+
+**해결:** after refreshing sources with `rsync -a` into a tree whose `target/` survives, `touch` the crate sources (or
+`cargo clean -p <crate>`) before building, then verify the published schema, not the CLI's word:
+`touch server/src/*.rs shared/src/*.rs && spacetime publish … -y && curl -s …/schema?version=9 | jq '.tables[].name'`.
+Alternatively copy with `rsync -rlz` (no `-t`) so the copies take the time they arrive.
