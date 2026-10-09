@@ -5382,3 +5382,14 @@ Mechanism (as GDT-258, which needed only two buses here): JS `Bus.addAt(-1)` cre
 **증상:** a capture script for 1–3 s UI animations (a score tally, stamps, a combo sticker) waited `create_timer(s, true, false, true)` (wall clock, ignoring `Engine.time_scale`) before each `await RenderingServer.frame_post_draw` + `get_image().save_png()`. The animations themselves ran on `Time.get_ticks_usec()`. On the loaded Air, single frames took 70–130 ms and some hitches lasted seconds: in one 390×844 run all three frames of one tally came out with nothing drawn (the animation had already ended by the time the next frame rendered), with no error in the log; a rerun of the same script drew them. Moving the animations to a clock advanced by real frame time capped per frame (0.25 s), while the test kept its wall-clock waits, broke it the other way: at 1440×900 the timeline lagged, so a "burst" shot still showed the earlier phase and a new tally overlapped the previous one.
 
 **해결:** advance presentation timelines by `min(real_dt, cap)` (a hitch pauses them instead of skipping them), and in the test wait on that same clock: `var end = node.clock + s; while node.clock < end: await process_frame`. With that, 2 × 29 shots at 390×844 and 1440×900 each landed on the intended moment in two consecutive runs. Keep wall-clock waits only for effects that are meant to run on real time (hit-stop, slow motion). Separately, one run sat for more than 5 minutes at 5 % CPU inside a shot's `await RenderingServer.frame_post_draw`; killing it and running the same size again completed, so give a capture run a watchdog and a log, and report which run produced each image.
+
+## GDT-300 — A runtime error inside an awaited test coroutine ends only that coroutine; a SceneTree test keeps running, prints nothing more, and exits only at its watchdog
+
+`측정 2026-10-09 · Godot 4.7.2 · macOS, windowed `--script` UI test`
+
+**증상:** a UI test driver (`extends Node`, `func run(): ... await ...`) called a method on the current screen after an `await` (`await capture(...)`). During the await the screen changed, so the call hit a script without that method: `SCRIPT ERROR: Invalid call. Nonexistent function 'act' in base 'Control (results.gd)'`. The rest of `run()` never ran: no more screenshots, no final `print`, no `quit()`. The process stayed alive until the test's own 900 s watchdog timer quit it, and the exit code was the watchdog's.
+
+A GDScript runtime error aborts the function it happens in; in a coroutine that is the resumed frame, and the caller that started it with `call_deferred("run")` is long gone, so nothing propagates. The engine keeps processing frames.
+
+**해결:** re-check state after every `await` before acting on it (`if game.screen != "battle": break`), and give the driver a short watchdog that also prints the step it was on. Treat a run that ends by watchdog as a failure, never as "slow".
+

@@ -5311,6 +5311,8 @@ Godot writes `<asset>.import` (and `<script>.gd.uid`) next to the source files, 
 
 **해결:** after the first import on the test host, copy the generated files back and commit them: `rsync -az --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:project/godot/ godot/`. Or re-run `--import` after every sync. The same applies to any generator that writes beside its sources.
 
+**Follow-up (2026-10-09, Godot 4.7.2):** a third way that needs no copy-back: protect the host's generated files from `--delete` with rsync filters, `rsync -az --delete --filter='P *.import' --filter='P *.uid' ./ host:copy/`. The host keeps its own sidecars across syncs; sidecars that exist on the dev machine are still sent. A different message for the same cause: a font loaded with `load()` returned `null`, and the first use printed `Invalid assignment of property or key 'fallbacks' with value of type 'Array[Font]' on a base object of type 'null instance'`. Also exclude the folders a running test writes into (`--exclude=/shots`), or `--delete` removes its captures mid-run.
+
 ## OPS-248 — zsh: a glob with no match aborts the whole command line, so `rm -f /tmp/x-*.log; nohup …` starts nothing
 
 `측정 2026-09-30 · zsh 5.9 (macOS), command sent over ssh`
