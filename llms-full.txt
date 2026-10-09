@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-09T00:03:49Z · 소스 커밋 `8f5737e` · 이 파일은 자동 생성물이다.
+생성 2026-10-09T02:42:22Z · 소스 커밋 `b255ca8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -15892,4 +15892,38 @@ another service's tag, check `docker image inspect <repo>:<tag>` exists.
 GUI scripting was the next attempt. `osascript` over ssh could list processes through System Events and click the Safari menu's "설정…" item without an error, but `count of windows` of process Safari stayed 0. The console was locked: `ioreg -n Root -d1 | grep CGSSessionScreenIsLocked` showed `"CGSSessionScreenIsLocked"=Yes`. Headed Godot and Chromium runs still render on a locked console, so the lock does not show up until a GUI step finds no windows.
 
 **해결:** check the lock before planning any Safari GUI step (`ioreg -n Root -d1 | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'`). Enable remote automation once, on an unlocked console, through Safari Settings > Developer or `safaridriver --enable` with an admin password; plist writes do not do it. Without WebDriver, real Safari still runs a page test on an unlocked Mac: serve a local copy of the page on `http://localhost:<port>` (a secure context) with the measuring script injected at the top of `<head>` and a `setInterval` that `fetch`es its results to a small POST handler on the same server; open it with `open -a Safari <url>`; give the user gesture with `osascript` System Events `click at {x, y}` inside the front window (measured 2026-10-08, Safari 27.0.1: the click resumed the page's `AudioContext` to `running`, and sound reached the destination in 242 of 246 100 ms windows). Close only that tab afterwards (loop Safari's tabs and close those whose `URL` starts with the test address).
+
+## OPS-378 — `codex exec` as an unattended text and research worker on a ChatGPT login: old CLIs reject newer models, `--output-schema` must be strict, and opened pages show up as `view` results
+
+`measured 2026-10-08 · codex-cli 0.154.0 → 0.162.0 (Homebrew), ChatGPT login, macOS`
+
+**Symptom 1:** `codex exec -m gpt-6.1-sol` fails at once with `The 'gpt-6.1-sol' model is not supported when using Codex
+with a ChatGPT account.` (preceded by `Model metadata for 'gpt-6.1-sol' not found`). The same login runs `gpt-6-astra`, and
+the ChatGPT app's bundled CLI (0.160.1) runs both. The model list is served per client version: `brew upgrade codex` to 0.162.0
+fixed it. `~/.codex/models_cache.json` shows the slugs and the `client_version` the list was fetched for.
+
+**Symptom 2:** `--output-schema` with a loose schema (an object property typed only `{"type":["object","null"]}`) fails the
+turn: `Invalid schema for response_format 'codex_output_schema': 'schema.additionalProperties' is required to be supplied and
+to be false when strict is true.` Every object needs `additionalProperties: false` and all its properties in `required`.
+`minItems`/`maxItems`, `minimum`/`maximum` and `enum` are accepted. For a free-form result, drop `--output-schema`, ask for
+"one JSON object, no code fences" and parse the last `agent_message` (strip fences, take first `{` to last `}`).
+
+**Facts for an isolated worker:**
+- `codex login status` prints to **stderr**, not stdout (`Logged in using ChatGPT` / `Logged in using an API key ...`).
+- `--ignore-user-config` skips `~/.codex/config.toml` (MCP servers, plugins, `service_tier`), but auth still comes from
+  `CODEX_HOME`. Add `--ephemeral --ignore-rules --sandbox read-only -c approval_policy="never"`, and turn tools off with
+  `--disable shell_tool --disable unified_exec --disable apps --disable plugins --disable image_generation --disable multi_agent`
+  (names from `codex features list`). A run like that made zero `command_execution` items.
+- `-c web_search="live"` turns on web search; `"disabled"` turns it off.
+- With `--json`, each search is an `item.completed` of type `web_search`. `action.type` is `search` (with `queries`) or
+  `open_page` (with one `url`), sometimes `other`. **One open item can carry several opened pages**: the results list each
+  with a `ref_id` like `turn2view1` and the snippet `Total lines: N`. Search hits have `turnNsearchM` (also `youtube`,
+  `reddit`, `academia`). Failed opens come back as `view` results with an empty `url` and `Total lines: 1`. So "pages the model
+  actually read" = results whose `ref_id` ends in `view<N>` with a non-empty URL.
+- bible.com range pages such as `/ko/bible/86/NUM.27.1-11.KLB` came back empty three times; chapter pages
+  (`/ko/bible/86/NUM.27.KLB`) opened.
+- One research-and-write job (study prompt of about 15k characters, gpt-6.1-sol, effort high) took 725 s and opened 11 pages
+  on 7 domains.
+
+**Fix:** keep Codex current; write strict schemas or parse JSON text; count `view` results with a URL as read sources.
 
