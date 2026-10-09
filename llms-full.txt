@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-09T06:25:16Z · 소스 커밋 `0bbab42` · 이 파일은 자동 생성물이다.
+생성 2026-10-09T14:46:00Z · 소스 커밋 `c57e3b7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6337,6 +6337,14 @@ Mechanism (as GDT-258, which needed only two buses here): JS `Bus.addAt(-1)` cre
 **증상:** a project test that loads every `.gd` under `res://` (to catch scripts that fail to parse before something first loads them) started failing as soon as the Android build template was installed: `parse_all: 56 scripts, 4 broken`, with `Parse Error: Could not find base class "BaseTest"` for `res://android/build/src/instrumented/assets/test/android_plugin/signal_tests.gd`, `file_access/file_access_tests.gd`, `javaclasswrapper/java_class_wrapper_tests.gd` and `res://android/build/src/instrumented/assets/main.gd`. `res://android/build` has a `.gdignore`, so the editor and the export never see those files, but `DirAccess.get_directories_at()` / `get_files_at()` list them anyway, and `load()` on them parses them outside the project's class cache.
 
 **해결:** skip a directory when `FileAccess.file_exists(dir.path_join(d).path_join(".gdignore"))`. With that the same project reported `51 scripts, 0 broken`. The same applies to any home-made walk of `res://` (string scanners, asset checks): `.gdignore` is honoured by the editor's file system, not by `DirAccess`.
+
+## GDT-298 — On macOS Metal, `RenderingServer.viewport_get_measured_render_time_gpu()` returns 0: measure feature cost by frame time instead
+
+`측정 2026-10-09 · Godot 4.7.2-stable · Forward+, Metal, MacBook Air M1 (Apple7), windowed`
+
+**증상:** with `RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)` on the root viewport, `viewport_get_measured_render_time_gpu(rid)` read `0.00 ms` on every frame in 9 runs of a 3D city (preset LOW to HIGH, render scale 0.5 to 1.0, windowed and full screen), while the frame took 23–200 ms. `viewport_get_measured_render_time_cpu()` and `get_frame_setup_time_cpu()` did return values (3–6 ms). `Performance.TIME_PROCESS` tracks the whole frame time there, so it does not isolate the GPU either.
+
+**해결:** on Metal, cost a rendering feature by turning it off and comparing the average frame time over 2.5 s with vsync off (`DisplayServer.window_set_vsync_mode(VSYNC_DISABLED)`). To tell GPU-bound from CPU-bound, drop `get_tree().root.scaling_3d_scale` to 0.25: what remains is roughly the CPU and draw-call floor (in that city: 43 ms at 0.67, 24 ms at 0.25). On a shared machine, log `uptime` with each run; the same configuration varied by about ±5 ms between runs at load averages of 30–100.
 
 ---
 
