@@ -5402,7 +5402,7 @@ A GDScript runtime error aborts the function it happens in; in a coroutine that 
 
 **해결:** at the start of the test, before the scene loads, call `DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)`. Measured on the same host under the same load: `get_frames_drawn()` went 109 → 275 → 5,753 → 6,125 across the run and every picture differed. Log `get_frames_drawn()` beside each saved picture so a stale capture is visible in the log, not only in the pictures.
 
-## GDT-299 — `visibility_range_end` on a `MultiMeshInstance3D` is measured to the middle of the whole MultiMesh's bounds: props in a large region vanish at the camera's feet
+## GDT-302 — `visibility_range_end` on a `MultiMeshInstance3D` is measured to the middle of the whole MultiMesh's bounds: props in a large region vanish at the camera's feet
 
 `측정 2026-10-09 · Godot 4.7.2-stable · Forward+, Metal, MacBook Air M1, windowed capture`
 
