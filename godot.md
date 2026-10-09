@@ -5401,3 +5401,11 @@ A GDScript runtime error aborts the function it happens in; in a coroutine that 
 **증상:** a windowed test (`godot --path godot --resolution 390x844 --script res://tests/…`) saved `root.get_texture().get_image()` at several steps. Every picture after the first minute was the same file (identical MD5), although the test's state had moved on (cards opened, boards ended). Printing `Engine.get_frames_drawn()` with each picture showed it stuck at 159 while `Engine.get_frames_per_second()` still reported 119–144: the main loop ran, scripts and timers ran, nothing was drawn. Other sessions were opening their own Godot windows on the same host at the time. A rerun when nobody else had a window open drew every frame.
 
 **해결:** at the start of the test, before the scene loads, call `DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)`. Measured on the same host under the same load: `get_frames_drawn()` went 109 → 275 → 5,753 → 6,125 across the run and every picture differed. Log `get_frames_drawn()` beside each saved picture so a stale capture is visible in the log, not only in the pictures.
+
+## GDT-299 — `visibility_range_end` on a `MultiMeshInstance3D` is measured to the middle of the whole MultiMesh's bounds: props in a large region vanish at the camera's feet
+
+`측정 2026-10-09 · Godot 4.7.2-stable · Forward+, Metal, MacBook Air M1, windowed capture`
+
+**증상:** a city groups street props (newsboxes, hydrants, trash cans) into one `MultiMeshInstance3D` per 128 m × 128 m region, node at the world origin, instance transforms in world space, `visibility_range_end = 63 m` on the lowest preset. Three newsboxes about 8 m in front of the camera were not drawn; at 98 m (the next preset) they were. The range is not taken per instance and not from the node's origin, but from the centre of the MultiMesh's AABB, which can be 90 m from an instance at the edge of a 128 m region.
+
+**해결:** keep a MultiMesh that has a visibility range small relative to the range: the same props split into 32 m regions (centre at most 23 m from any instance) drew again at 63 m. Rule of thumb: region half-diagonal well under the range end. Smaller regions also cull better; the extra draw calls are only for regions in view.
