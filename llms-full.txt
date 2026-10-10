@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-10T17:57:38Z · 소스 커밋 `aab4c3e` · 이 파일은 자동 생성물이다.
+생성 2026-10-10T20:37:46Z · 소스 커밋 `c2a45c1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6423,6 +6423,48 @@ limiter in front of the speakers (there are no bus effects on sample playback): 
 `DynamicsCompressorNode` (threshold −3, knee 0, ratio 20, attack 0.002, release 0.12) took 100
 clipped samples to 0. It adds automatic make-up gain of 0.6 × (−curve(0 dB)) = +1.71 dB at those
 settings; a gain node of 0.821 before it keeps everything below the threshold at its old level.
+
+## GDT-305 — Android (Mali): 3D MSAA in the Compatibility renderer leaks ~3 MB/s of native heap in the GL driver until `std::bad_alloc`; Godot's memory counters never see it
+
+`측정 2026-10-10 · Godot 4.7.2-stable Android debug export, gl_compatibility · Pixel 7 Pro (Mali-G710), Android 17`
+
+**증상:** the app's native heap grows about 3 MB/s from launch, idle on the title screen included:
+236 MB to 1,057 MB in 4 minutes, then the process dies with `std::bad_alloc` (SIGABRT) on `GLThread`
+after 946 s. `Performance.MEMORY_STATIC` stays flat, and the same project on macOS keeps a flat RSS,
+so nothing inside Godot looks wrong. Hiding the world, the HUD or every node, turning off every
+`_process`, pausing the tree, and switching off sky reflections, glow, SSAO, fog, adjustments and
+shadows (each and all together) did not change the rate.
+
+Measure it from outside the engine: `adb shell dumpsys meminfo <pid>` (Native Heap row) every 10 s.
+Find it with heapprofd, which attaches to a debuggable (export-debug) app without root:
+
+```
+adb shell 'cat cfg | perfetto --txt -c - -o /data/misc/perfetto-traces/heap.pftrace'
+# cfg: data source "android.heapprofd", process_cmdline "<package>", sampling_interval_bytes 32768,
+#      duration_ms 45000
+```
+
+Read with the `perfetto` Python package (`TraceProcessor`, `heap_profile_allocation` +
+`experimental_ancestor_stack_profile_callsite`). Every large unreleased callsite was inside
+`libGLES_mali.so`: `glDrawArrays → gles_fb_prepare_draw → … → glescore_framebuffer_pool::create_pool_entry`
+(14.5 MB of 21 MB sampled in 45 s) and `gles_fb_bind_framebuffer → gles_fbp_object_new`, called
+from `GodotLib.step` — a framebuffer-pool entry per frame that the driver never frees.
+
+A probe flipping one setting every 30 s isolated it: `msaa_3d = MSAA_DISABLED` stopped the growth
+(270.9 → 271.3 MB over 30 s), `scaling_3d_scale = 1.0` and removing a `hint_screen_texture` shader
+did not. On Android Godot multisamples 3D through `GL_EXT_multisampled_render_to_texture`
+(`glFramebufferTexture2DMultisampleEXT`, `drivers/gles3/storage/render_scene_buffers_gles3.cpp`),
+both with and without an internal (scaled) buffer; that is the path Mali leaks on. The Web build
+multisamples through a renderbuffer and a resolve blit instead, and the extension is Android-only
+in `config.cpp`.
+
+**해결:** turn 3D MSAA off in the Android app only: `rendering/anti_aliasing/quality/msaa_3d.android=0`
+in `project.godot` for the root viewport, and route every runtime `viewport.msaa_3d = …`
+(quality tiers, `SubViewport`s) through a helper that returns `MSAA_DISABLED` when
+`OS.get_name() == "Android"`. After the change the same phone held 183.6–184.0 MB for 151 s where
+the old build grew ~450 MB. The Compatibility renderer has no FXAA to replace it, so edges alias
+slightly at 3.5× density. Do not bisect by hiding nodes: a viewport setting leaks with nothing
+drawn.
 
 ---
 
