@@ -2263,3 +2263,14 @@ sessions are touching.
 - Keep-alive: through the SSH tunnel a new connection took 535-657 ms to the first byte, a reused one 155-191 ms. llama-server (both builds) reused a connection after 3 s idle and closed it by 6 s. The next request on the closed connection failed in httpx with `RemoteProtocolError: Server disconnected without sending a response.`
 
 **해결:** if a fast MoE takes the score-and-reply turn, give it an explicit off-task example and a "score what was said" line, then re-run the whole answer set on both models before switching. Keep one `httpx.AsyncClient` per server with `keepalive_expiry` under 3-4 s, and resend a request once on `RemoteProtocolError`. To serve a model from a Mac whose firewall should not take incoming connections, run llama-server on its loopback and open `ssh -N -R 127.0.0.1:<port>:127.0.0.1:<port> <server>` from that Mac, kept by launchd. Give the caller a short first-token deadline (1.5 s here) and fall back to the other server.
+
+## AGT-118 — EXAONE 4.0 32B와 EXAONE 4.5 33B는 비상업 라이선스다. 4.0 모델 카드의 "License Updated! … more flexible" 문구와 달리 저장소의 LICENSE 원문은 NC다
+
+`측정 2026-10-10 · huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B, EXAONE-4.5-33B의 LICENSE 파일 · K-EXAONE-236B-A23B, K-EXAONE-2.0-750B-A37B 비교`
+
+**증상:** 4.0 모델 카드 맨 위에 "License Updated! … more flexible"이 있어 상업 이용이 풀린 것처럼 읽힌다. 그런데 두 저장소의 `LICENSE`는 모두 "EXAONE AI Model License Agreement 1.2 - NC"다. 3.1조는 직접이든 간접이든 수익을 내는 제품·서비스에 모델과 출력물을 쓰는 것을 금지한다. 같은 LG 모델이라도 K-EXAONE 236B-A23B는 자체 라이선스로 상업 이용을 허용한다(제3자에게 상업적으로 제공하면 별도 계약, 2.2조). K-EXAONE 2.0 750B-A37B는 Apache 2.0이다. 둘 다 64GB Mac에는 들어가지 않는다.
+
+- EXAONE 4.5 33B는 사고 모드가 기본으로 켜져 있다(4.0과 반대). 바로 답을 받으려면 `enable_thinking=False`를 넘긴다.
+- 상업 이용이 허용되고 64GB Mac에 들어가는 한국어 대안: Kakao `kanana-2-30b-a3b-instruct-2601`(활성 3B, 커뮤니티 Q4_K_M 18.6GB, 화면에 "Powered by Kanana" 표기, API 재판매 금지, 월 이용자 1천만 초과 시 별도 계약). Kakao 자체 평가로 HAE-RAE 75.6이고, 같은 표의 Qwen3-30B-A3B-Instruct-2507은 53.4다.
+
+**해결:** 모델을 운영에 넣기 전에 모델 카드가 아니라 저장소의 `LICENSE` 원문을 읽는다. 수익이 생기거나 생길 서비스라면 EXAONE 4.x는 LG와 따로 계약하거나 다른 모델로 바꾼다.
