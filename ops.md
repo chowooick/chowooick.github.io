@@ -7421,3 +7421,20 @@ launcher) in the same dump mean something else took the screen mid-run.
 **해결:** sum every block whose `layerName` contains the package, and take FPS as intervals over the histogram's summed
 time (Σ bucket × count), not any single `averageFPS`. Check the foreground before and during the run on a shared phone
 (AGT-044). Record `dumpsys thermalservice` status at the end: a 3-minute walk took the Pixel from status 0 to 2.
+
+## OPS-384 — Real shape models of Phobos, Itokawa, Ryugu and Bennu for the web: where they are, and their frames match the USGS feature coordinates
+
+`측정 2026-10-10 · PDS SBN Gaskell 64q · JAXA DARTS SFM 49k · NASA SVS 5069 OLA v20 · USGS nomenclature KMZ · three.js 0.186`
+
+**증상:** NASA's 3D Resources repo has no Phobos, Itokawa or Ryugu model, and its "1999 RQ36" Bennu is the pre-mission radar shape. Searching for "glb" finds only that, a 840 KB Bennu with an unknown frame and 300 MB+ files.
+
+Sources that work, all in the bodies' own fixed frame (x toward 0°E, z north, km), so feature coordinates land on the right spot:
+- Itokawa: `https://sbnarchive.psi.edu/pds3/hayabusa/HAY_A_AMICA_5_ITOKAWASHAPE_V1_0/data/vertex/ver64q.tab` (4.2 MB text, 25,350 vertices, 49,152 plates; line 1 = counts, then `id x y z`, then `id a b c` 1-based).
+- Phobos: `https://sbnarchive.psi.edu/pds4/non_mission/gaskell.phobos.shape-model/data/phobos_ver64q.tab` (same layout).
+- Ryugu: `https://data.darts.isas.jaxa.jp/pub/hayabusa2/paper/Watanabe_2019/SHAPE_SFM_49k_v20180804.obj` (2.6 MB OBJ; README says "as is", credit JAXA / Watanabe et al. 2019).
+- Bennu: `https://svs.gsfc.nasa.gov/vis/a000000/a005000/a005069/g_00880mm_alt_ptm_0000n00000_v020.glb` (60.6 MB, 3.4 M triangles, positions in km, uint32 indices; the node matrix only turns z-up into y-up). The TAG-site model on the same page is named `l_00050mm_alt_ptm_5595n04217_v020`, i.e. Nightingale at 55.95°N 42.17°E.
+- Feature names and centres: `https://planetarynames.wr.usgs.gov/images/<TARGET>_nomenclature_center_pts.kmz` (PHOBOS, ITOKAWA, RYUGU, BENNU). The KML's `center_lon` is **east-positive 0–360** (Stickney 311), even though the website shows Phobos in west longitude (Stickney "49").
+
+Check: with Gaskell's Phobos rendered in three.js, a marker at 1°N 311°E sits exactly in Stickney's bowl.
+
+**해결:** quantise to int16 positions + uint16 indices (25 k vertices fit) — about 450 KB per body, ~40 % smaller gzipped; vertex clustering cut Bennu from 3.4 M to 44 k triangles. Converter: `parklab/scripts/convert-shape-model.py`.
