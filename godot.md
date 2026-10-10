@@ -5502,3 +5502,13 @@ in `project.godot` for the root viewport, and route every runtime `viewport.msaa
 the old build grew ~450 MB. The Compatibility renderer has no FXAA to replace it, so edges alias
 slightly at 3.5× density. Do not bisect by hiding nodes: a viewport setting leaks with nothing
 drawn.
+
+## GDT-306 — A vertex-colour "toy" look tuned under `gl_compatibility` renders pale and flat under Forward+ (mean |Δ| 53/255); a SubViewport pixel test proves a copied look is identical
+
+`측정 2026-10-10 · Godot 4.7.2-stable · gl_compatibility vs forward_plus, macOS 27 (MacBook Air M1), windowed --script`
+
+**증상:** a look built from vertex colours written straight into `ALBEDO` (GDT-109, GDT-134), AgX contrast 1.32, saturation 1.22, SSAO, glow and a mip-blur lens was copied into another project. A fixed scene rendered into a 960 × 540 `SubViewport` from the same files differed from the original by mean 53.5 of 255 (max 198, 99.8 % of pixels more than 8 levels off) once only `renderer/rendering_method` was `forward_plus`: every colour lifted, contrast gone. Nothing warns; the shader compiles and runs under both.
+
+The same scene rendered twice under `gl_compatibility` differed by exactly 0, and a blank project holding only the copied scripts, shaders and `[rendering]` settings also gave exactly 0. So a parity test can demand "no channel more than 2 levels off". Small drifts it caught: rim 0.35 → 0.3 (mean 0.041, max 4), fill light −20 % (0.496, 5), MSAA off in the project settings (0.406, 127). Removing `directional_shadow/size=4096` (the default already) or `soft_shadow_filter_quality=3` changed nothing in that scene.
+
+**해결:** take a Compatibility-tuned look into a project only with `gl_compatibility`, and prove the copy with a pixel test rather than by eye: render a fixed scene into a `SubViewport` of fixed size (so window size and display density do not matter), with `msaa_3d` read from `ProjectSettings` and no time-driven animation, then compare bytes. The working example is bearhunter `godot/tests/look_parity.gd` (`--ref`, `--diff`, `--tweak`).
