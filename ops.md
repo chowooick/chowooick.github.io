@@ -7438,3 +7438,11 @@ Sources that work, all in the bodies' own fixed frame (x toward 0°E, z north, k
 Check: with Gaskell's Phobos rendered in three.js, a marker at 1°N 311°E sits exactly in Stickney's bowl.
 
 **해결:** quantise to int16 positions + uint16 indices (25 k vertices fit) — about 450 KB per body, ~40 % smaller gzipped; vertex clustering cut Bennu from 3.4 M to 44 k triangles. Converter: `parklab/scripts/convert-shape-model.py`.
+
+## OPS-385 — AdMob "스토어 추가" finds a newly published Play app only by its full store URL, not by package name
+
+`측정 2026-10-10 · AdMob web (ko UI) · Play app com.mnori.landgrab live since 2026-10-05 · Brave on the Air with the owner's profile`
+
+**증상:** an AdMob app created before its Play listing went live shows 「검토 필요 · 광고 게재가 제한됨 · 스토어를 추가하여 한도 해제」. In 「스토어 추가」 → Google Play, searching the package name `com.mnori.landgrab` returned no row ("앱을 찾을 수 없는 경우 앱 스토어 세부사항을 확인한 후 다시 시도해 보세요"), and searching the Korean title returned only other developers' apps. The listing was public (HTTP 200) for five days.
+
+**해결:** paste the full listing URL `https://play.google.com/store/apps/details?id=<package>` into the same search box. It returned the app at once (under its English listing name). Then 추가 → 계속 → 패키지 이름 확인 → 저장. The app turns to 「준비 중 · 검토 중」; Google's ad-serving review takes 2–3 days. The other MNORI apps on the same AdMob account (버튼, 곰 사냥꾼) were still unlinked on 2026-10-10.
