@@ -5417,3 +5417,38 @@ A GDScript runtime error aborts the function it happens in; in a coroutine that 
 **증상:** a server sends `{"lands": {"12": {...}}, "turn": {"commandable": [12, 15]}}`. After `JSON.parse_string`, the array holds `12.0` and `15.0` (every JSON number is a float). `state.lands.get(str(t), {})` returned the empty default for every tile, so code that read the land's level saw the fallback (level 1) and kept sending an invalid "raise to level 2" command, which the server rejected on every attempt. No error, no warning: `str(12.0)` is `"12.0"`, which is simply not a key.
 
 **해결:** convert before building the key: `str(int(t))`. Do it at every place an id from JSON becomes a string key (tile ids, seat indexes, card counts). Keys of a parsed JSON object stay strings, so only values used as keys are affected.
+
+## GDT-304 — Web export: a page-side `AudioBufferSourceNode.prototype.start` patch makes music loops sample-exact (0 gaps in 157 s), and a tap on `connect` records exactly what the page plays
+
+`측정 2026-10-10 · Godot 4.7.2-stable Web export, Brave 1.96 (Chromium 154) on a MacBook Air M1`
+
+**증상:** music layers (three sample-aligned Ogg files started in one frame) looped on the Web with
+silence at every restart. GDT-097 explains why (the engine restarts a looping sample from its
+`ended` event). Restarting the layers from GDScript instead (`loop = false`, all three `play()`ed
+again on the first one's `finished`) was worse: 5 silences of 40–190 ms in 157 s of recording,
+one per 33 s loop.
+
+Measured by recording the page's own output: an inline script before the engine wraps
+`AudioNode.prototype.connect` so that any connection to an `AudioDestinationNode` goes to a gain
+node instead, which feeds the destination and a `ScriptProcessorNode` that copies the samples.
+This works with `--mute-audio` (Web Audio still renders), so nothing reaches the room. Every
+discontinuity it caught fell on a 128-sample render-quantum boundary, which is how to tell a
+source starting or stopping from a recording glitch.
+
+**해결:** in the page's HTML shell, before `index.js`:
+
+```js
+var start = AudioBufferSourceNode.prototype.start;
+AudioBufferSourceNode.prototype.start = function () {
+  if (this.buffer && this.buffer.duration > 20) this.loop = true; // music only
+  return start.apply(this, arguments);
+};
+```
+
+A looping source never fires `ended`, so the engine's restart never runs; layers started in one
+frame stay aligned because Web Audio loops each one sample-exactly. Recorded after the patch:
+0 drop-outs in 157 s, layer loudness unchanged (±0.1 LU). The same `connect` wrap can put a
+limiter in front of the speakers (there are no bus effects on sample playback): a
+`DynamicsCompressorNode` (threshold −3, knee 0, ratio 20, attack 0.002, release 0.12) took 100
+clipped samples to 0. It adds automatic make-up gain of 0.6 × (−curve(0 dB)) = +1.71 dB at those
+settings; a gain node of 0.821 before it keeps everything below the threshold at its old level.
