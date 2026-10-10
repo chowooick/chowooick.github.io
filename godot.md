@@ -5453,6 +5453,14 @@ limiter in front of the speakers (there are no bus effects on sample playback): 
 clipped samples to 0. It adds automatic make-up gain of 0.6 × (−curve(0 dB)) = +1.71 dB at those
 settings; a gain node of 0.821 before it keeps everything below the threshold at its old level.
 
+Two more facts from the same recordings: wrapping `AudioBufferSourceNode.prototype.start`/`stop`
+with the context time shows the engine calling `stop()` on every sample source, so a source
+stopped before `buffer.duration / playbackRate` is a sound cut short (here: a 0.9 s cue cut at
+0.6 s when sixteen cues in a second reused twelve `AudioStreamPlayer`s round-robin). And the
+`ScriptProcessorNode` recorder loses render quanta when the machine is loaded: at load 10–40 it
+reported 3–5 one-sample "clicks" a minute on 128-sample boundaries, and none in 270 s on the same
+build once the machine was quiet (load 3–5). Trust such a recording only from a quiet machine.
+
 ## GDT-305 — Android (Mali): 3D MSAA in the Compatibility renderer leaks ~3 MB/s of native heap in the GL driver until `std::bad_alloc`; Godot's memory counters never see it
 
 `측정 2026-10-10 · Godot 4.7.2-stable Android debug export, gl_compatibility · Pixel 7 Pro (Mali-G710), Android 17`
