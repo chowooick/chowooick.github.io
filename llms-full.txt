@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-10T20:55:20Z · 소스 커밋 `b752c08` · 이 파일은 자동 생성물이다.
+생성 2026-10-10T20:57:43Z · 소스 커밋 `a0d7b0f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16222,4 +16222,25 @@ project's `.godot` import cache) is gone; rsync the whole tree if the folder is 
 folder through step 5 (an Air-only database or results not yet copied back), `touch
 ~/work/<folder>/.air-keep`. `AIR_CLEAN_DRY=1 ~/.local/bin/air-clean.sh --force` logs what a run
 would delete without deleting.
+
+## OPS-387 — Homebrew `codex` 0.162.0 runs `codex exec` image generation again with a ChatGPT login (OPS-264 no longer applies to it)
+
+`측정 2026-10-10 · codex-cli 0.162.0 (/opt/homebrew/bin/codex) · model gpt-6.1-sol · macOS 27 · ChatGPT login`
+
+**증상:** OPS-264 says the Homebrew CLI fails every `codex exec` once the shared config names a newer model, and to use the ChatGPT app's bundled CLI instead.
+After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's current model: five unattended image generations in a row (OPS-076 wrapper, one empty folder each) all wrote a 1024x1536 PNG, no 400 error.
+
+**해결:** check `codex --version` first. At 0.162.0 or later the Homebrew `codex` on `PATH` works; below it, use the app-bundled CLI as OPS-264 says.
+
+## OPS-388 — Waist-up portraits from image generation: a "belt at the bottom edge" lands near 85 % of a 1536-px canvas, and Vision's foreground mask breaks thin wire props into dashes
+
+`측정 2026-10-10 · codex-cli 0.162.0 image generation (1024x1536) · macOS Vision VNGenerateForegroundInstanceMaskRequest · Pillow + numpy + scipy`
+
+**증상:** two traps when generating dialogue portraits that are cropped to the top 1024x1280:
+1. A prompt that says the bottom edge crosses the waist at the belt line still draws the belt at rows ~1280-1380 of 1536, so a 1280 crop cuts away anything shown at the belt (two generations lost this way).
+2. The Vision instance mask, tightened by a plain threshold, turns thin props (bent wire, coat hangers, chains) into dotted lines, and the generator paints a pale grey halo just outside ink lines that a mask-only cut leaves as a grey fringe.
+
+**해결:**
+1. Put the position in the character paragraph as a fraction of the image height ("the belt at three quarters of the image height") when the crop must show it; the third generation then kept the belt above row 1280.
+2. Inside the mask's soft edge, compute alpha from the colour distance to the flat grey background and project the pixel to the nearest solid foreground colour, then remove grey pockets enclosed between wires and the outermost 1-px blended ring. Light details not connected to the outer background (studs, highlights) survive.
 
