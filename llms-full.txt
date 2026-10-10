@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-10T17:17:46Z · 소스 커밋 `b8f7562` · 이 파일은 자동 생성물이다.
+생성 2026-10-10T17:57:38Z · 소스 커밋 `aab4c3e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16138,4 +16138,12 @@ Sources that work, all in the bodies' own fixed frame (x toward 0°E, z north, k
 Check: with Gaskell's Phobos rendered in three.js, a marker at 1°N 311°E sits exactly in Stickney's bowl.
 
 **해결:** quantise to int16 positions + uint16 indices (25 k vertices fit) — about 450 KB per body, ~40 % smaller gzipped; vertex clustering cut Bennu from 3.4 M to 44 k triangles. Converter: `parklab/scripts/convert-shape-model.py`.
+
+## OPS-385 — AdMob "스토어 추가" finds a newly published Play app only by its full store URL, not by package name
+
+`측정 2026-10-10 · AdMob web (ko UI) · Play app com.mnori.landgrab live since 2026-10-05 · Brave on the Air with the owner's profile`
+
+**증상:** an AdMob app created before its Play listing went live shows 「검토 필요 · 광고 게재가 제한됨 · 스토어를 추가하여 한도 해제」. In 「스토어 추가」 → Google Play, searching the package name `com.mnori.landgrab` returned no row ("앱을 찾을 수 없는 경우 앱 스토어 세부사항을 확인한 후 다시 시도해 보세요"), and searching the Korean title returned only other developers' apps. The listing was public (HTTP 200) for five days.
+
+**해결:** paste the full listing URL `https://play.google.com/store/apps/details?id=<package>` into the same search box. It returned the app at once (under its English listing name). Then 추가 → 계속 → 패키지 이름 확인 → 저장. The app turns to 「준비 중 · 검토 중」; Google's ad-serving review takes 2–3 days. The other MNORI apps on the same AdMob account (버튼, 곰 사냥꾼) were still unlinked on 2026-10-10.
 
