@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-10T13:03:46Z · 소스 커밋 `431e55c` · 이 파일은 자동 생성물이다.
+생성 2026-10-10T16:56:59Z · 소스 커밋 `0a6b21c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16069,4 +16069,21 @@ the path map, a 3D globe and local times. The NASA decade tables (`/SEdecade/SEd
 
 **해결:** link eclipse paths to timeanddate.com, and check such links with a real browser rather than curl. Treat a
 200 from curl as proof only that the server answered, not that a JavaScript map drew.
+
+## OPS-383 — Android FPS without an in-game probe: SurfaceFlinger timestats, but one layer is split into a block per refresh rate
+
+`측정 2026-10-10 · Pixel 7 Pro (Android 16) · adb 1.0.41 · Godot 4.7.2 debug APK (Vulkan SurfaceView)`
+
+**증상:** a release-style export leaves `tools/*` out, so an in-game FPS probe is not in the APK, and
+`dumpsys gfxinfo` sees only HWUI views, not a Godot/Unity `SurfaceView`. SurfaceFlinger's timestats measure any app:
+`adb shell dumpsys SurfaceFlinger --timestats -clear` then `-enable`, play, `-dump`, `-disable`. Each layer block has
+`totalFrames`, `averageFPS` and a `present2present histogram` (`16ms=…  33ms=…  50ms=…`), which gives the share of
+frames over a budget directly. The trap: when the panel switches between 60 and 120 Hz during the window, **the same
+`layerName` appears in several blocks**, one per `displayRefreshRate`/`renderRate` pair, and reading the first block
+shows only part of the run (a 28 s walk read as 564 frames over 14.5 s). Blocks from another app's layer (the
+launcher) in the same dump mean something else took the screen mid-run.
+
+**해결:** sum every block whose `layerName` contains the package, and take FPS as intervals over the histogram's summed
+time (Σ bucket × count), not any single `averageFPS`. Check the foreground before and during the run on a shared phone
+(AGT-044). Record `dumpsys thermalservice` status at the end: a 3-minute walk took the Pixel from status 0 to 2.
 
