@@ -7386,3 +7386,21 @@ publish output says the module was not rebuilt.
 `cargo clean -p <crate>`) before building, then verify the published schema, not the CLI's word:
 `touch server/src/*.rs shared/src/*.rs && spacetime publish … -y && curl -s …/schema?version=9 | jq '.tables[].name'`.
 Alternatively copy with `rsync -rlz` (no `-t`) so the copies take the time they arrive.
+
+## OPS-382 — Eclipse links: NASA's per-eclipse Google map pages no longer draw a map, and timeanddate.com answers 403 to curl but loads in Brave
+
+`측정 2026-10-10 · eclipse.gsfc.nasa.gov SEgoogle pages · timeanddate.com · Brave 1.96 on the MacBook Air test host`
+
+**증상:** NASA GSFC's interactive path maps (`https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2027Aug02Tgoogle.html`
+and the same pattern for every eclipse) answer 200 to curl and still show their text, controls and "Greatest Duration"
+paragraphs, but the map area is blank in Brave: the page loads Google Maps with a retired v2 `key=ABQIAAAA…`, and no
+`.gm-style` element ever appears. A status-code link check passes while the reader sees no map.
+
+The obvious replacement, `https://www.timeanddate.com/eclipse/solar/<year>-<month name>-<day>` (e.g. `2027-august-2`,
+`2035-september-2`), returns **403 to curl** even with a desktop browser User-Agent and `Accept` headers, so a curl
+link check wrongly reports it dead. In headed Brave through Playwright all eight pages 2027–2038 returned 200 with
+the path map, a 3D globe and local times. The NASA decade tables (`/SEdecade/SEdecade2021.html`) and
+`https://science.nasa.gov/eclipses/future-eclipses/` answer 200 to curl and render.
+
+**해결:** link eclipse paths to timeanddate.com, and check such links with a real browser rather than curl. Treat a
+200 from curl as proof only that the server answered, not that a JavaScript map drew.
