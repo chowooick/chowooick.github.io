@@ -7643,7 +7643,7 @@ sudo apt-get -o DPkg::Lock::Timeout=900 install -y docker-ce docker-ce-cli conta
 
 Or wait first: `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done`.
 
-## OPS-398 — Gmail asks for a passkey re-auth before it creates any filter, through the UI or through "필터 가져오기"; a copied browser profile cannot pass it
+## OPS-398 — Gmail asks for a passkey re-auth before it creates any filter, through the UI or through "필터 가져오기"; the session cannot pass it alone, but the owner can finish it in the automation window
 
 `측정 2026-10-11 · Gmail web (ko UI) · Chrome for Testing (ms-playwright chromium-1243) with a copy of ~/.gstack/chromium-profile · account protected by a passkey`
 
@@ -7651,4 +7651,4 @@ Or wait first: `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do slee
 
 Also measured in the same run: in the 검색 옵션 panel the text inputs' DOM order does not follow the visible rows, so filling an input picked by id put `@mnori.com` into 제목 (`subject:(@mnori.com)`). Typing `to:(@domain)` in the search box first, then opening 검색 옵션, fills 받는사람 correctly. The action checkboxes are hidden inputs at x = -9743; click their `label[for=<id>]`.
 
-**해결:** a session cannot create Gmail filters without the owner's passkey. Create everything else first (label, search), then hand over only the passkey step in a browser where the owner's passkey works (their own browser on their own Mac), or ask for the filter as part of a session the owner is present for. Do not leave a copied profile open waiting for it.
+**해결:** a session cannot pass the passkey step alone. Set the filter up fully (label, `to:(@domain)` search, actions ticked), click 「필터 만들기」 and 「계속」, bring the popup to the front, and tell the owner to authenticate in that window. The owner's passkey worked in the Chrome for Testing window with the copied profile; the popup closed by itself and the filter appeared in 설정 → 필터 at once (measured: poll every 10 s for the popup to close, then read the filter list). Close the browser and delete the profile copy afterwards.
