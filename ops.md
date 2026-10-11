@@ -7548,3 +7548,61 @@ timing out). Hopping through jupiter is no use either: it sits on a different LA
 shares the Air's link (use `air.local`, OPS-347), the Air is unreachable from this Mac until it returns to the
 home network or the Air joins the tailnet. Do not leave Tailscale changed: `tailscale down` restores the
 stopped state. Run the suite locally only as a stated fallback and run it on the Air once it is reachable.
+
+## OPS-393 — Dokploy `install.sh` pins Docker 28.5.0, which Docker's apt repo does not carry for Ubuntu 26.04 (resolute); install Docker 29.x first, then re-run
+
+`측정 2026-10-11 · Dokploy v0.30.8 install.sh, Ubuntu 26.04.1 LTS (resolute) amd64, Docker CE repo`
+
+**증상:** `curl -sSL https://dokploy.com/install.sh | sudo sh` on a fresh Ubuntu 26.04 box fails:
+the bundled get.docker.com step adds the Docker apt repo for `resolute`, then dies with
+`ERROR: '28.5.0' not found amongst apt-cache madison results`, leaving Docker uninstalled, so the
+next step fails `docker: not found` / `Failed to initialize Docker Swarm`. The installer hardcodes
+`DOCKER_VERSION="28.5.0"` (install.sh line 4) and calls `get.docker.com | sh -s -- --version
+$DOCKER_VERSION`. The `resolute` component of the Docker repo only publishes docker-ce 29.x
+(`apt-cache madison docker-ce` → 5:29.6.0 … 5:29.9.0-1~ubuntu.26.04~resolute); there is no 28.x
+build for 26.04, so the pinned version can never resolve.
+
+**해결:** Install Docker from the already-configured repo at whatever version it carries, then
+re-run the Dokploy installer — it skips Docker when `command -v docker` succeeds (prints
+`Docker already installed`, install.sh line 139) and goes straight to swarm init + stack deploy.
+
+```bash
+sudo apt-mark unhold docker-ce docker-ce-cli docker-ce-rootless-extras
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo sh /tmp/dokploy-install.sh    # Docker 29.9.0 ran Dokploy v0.30.8 fine
+```
+
+## OPS-394 — Ubuntu 26.04 subiquity writes a netplan with no `dhcp4`, so a wired box comes up IPv6-only (RA works, no IPv4 lease)
+
+`측정 2026-10-11 · Ubuntu 26.04.1 LTS server install, systemd-networkd, Verizon CR1000A (OpenWrt) router`
+
+**증상:** A freshly installed server reachable only over IPv6 link-local — `ip -4 addr` empty,
+`ip route` empty — while `ip -6 route` shows a working RA default via the router and a global
+SLAAC address. Docker Hub and other IPv4-only mirrors are then unreachable. The installer-written
+`/etc/netplan/00-installer-config.yaml` has only `match`/`set-name` for the interface and no
+`dhcp4`/`dhcp6` key, so networkd brings nothing up on v4 (IPv6 still works via kernel RA). Seen on
+a wired install; the box had a live link the whole time.
+
+**해결:** Add `dhcp4: true` (and `dhcp6: true`) under the interface and `sudo netplan apply`; the
+IPv4 DHCP lease and default route appear within seconds. Reach the box first over IPv6 link-local:
+`ssh user@'fe80::...%<local-iface>'` (the `%scope` is the *local* machine's interface). Find it
+without IPv4 via `ndp -an`/`ping6 -c2 ff02::1%en0` on macOS.
+
+## OPS-395 — Ubuntu subiquity LVM install caps the root LV at 100 GB regardless of disk size; the rest of the volume group sits unused
+
+`측정 2026-10-11 · Ubuntu 26.04.1 LTS, subiquity guided LVM, 931 GB SATA SSD`
+
+**증상:** `df -h /` shows ~98 GB on a 1 TB disk. `lsblk`: `sda` 931.5 G, `sda3` 928 G as
+`LVM2_member`, but `ubuntu--vg-ubuntu--lv` only 100 G. `vgs` shows ~828 G `VFree` left unallocated.
+This is subiquity's default for the guided-LVM layout — it provisions a 100 GB root LV and leaves
+the remainder free in the VG, not an error. Easy to miss: a Docker host then fills up at 100 GB
+while 800 GB sits idle.
+
+**해결:** Extend the LV into the free extents and grow the filesystem online (ext4 grows while
+mounted):
+
+```bash
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv    # xfs: xfs_growfs /
+```
