@@ -7501,3 +7501,11 @@ After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's curr
 **해결:**
 1. Put the position in the character paragraph as a fraction of the image height ("the belt at three quarters of the image height") when the crop must show it; the third generation then kept the belt above row 1280.
 2. Inside the mask's soft edge, compute alpha from the colour distance to the flat grey background and project the pixel to the nearest solid foreground colour, then remove grey pockets enclosed between wires and the outermost 1-px blended ring. Light details not connected to the outer background (studs, highlights) survive.
+
+## OPS-389 — `rsync --delete` to a test host's Godot copy deletes the `.import` and `.uid` files Godot wrote there: new fonts then fail with "has no resource loaders"
+
+`측정 2026-10-10 · rsync 3.x · Godot 4.7.2 · macOS 27 (MacBook Air M1 test host)`
+
+**증상:** a sync script mirrored the working tree to the test host with `rsync -az --delete` (excluding `.godot`) and ran `godot --headless --import` there. New `.woff2` fonts and scripts were added locally without their generated `.import` / `.uid` files. The first import on the host wrote them, the next sync deleted them again, and the following test run failed at compile time: `Parse Error: Preload file "res://assets/fonts/Jua-korean.woff2" has no resource loaders (unrecognized file extension)` for every new font. The import log even ended mid-way, so it looked like an import crash.
+
+**해결:** protect generated files on the receiving side: `rsync -az --delete --filter='P *.import' --filter='P *.uid' ...`, import once on the host, then copy the generated files back into the repository (`rsync -az --ignore-existing --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:copy/client/ client/`) so they are committed with the asset, as Godot expects.
