@@ -5584,3 +5584,11 @@ The same scene rendered twice under `gl_compatibility` differed by exactly 0, an
 **증상:** a capture script that sets `root.size = Vector2i(w, h)` in `_initialize`, loads the game and saves `root.get_texture().get_image()` gave 1600 × 900 frames once. The next three runs of the same command (1600 × 900, 1200 × 900, 390 × 844, back to back) saved frames of 3456 × 2168 (the screen) and some of 16384 × 64, with the layout drawn for those sizes; the 390-wide run had 19 of 23 frames wrong. No error was printed and every run exited 0. The project sets `window/size/window_width_override`/`height_override` and `stretch/mode="disabled"`. The same scripts had always produced exact sizes on a MacBook Air.
 
 **해결:** pass the size on the command line as well: `godot --resolution 1200x900 --position 40,40 --path client --script ../tests/capture_flow.gd -- out 1200 900`. The next run saved 21 of 21 frames at exactly 1200 × 900. Check frame sizes after any capture run on a new machine (`PIL.Image.open(p).size`) before reading the pictures.
+
+## GDT-316 — Gamepad/keyboard focus: from the right button of a two-button row, `ui_left` went up to the full-width row above instead of the button beside it
+
+`측정 2026-10-10 · Godot 4.7.2-stable · macOS 27 · gl_compatibility · Control focus (no focus_neighbor set)`
+
+**증상:** a title screen's `VBoxContainer` held a full-width row button (x 63–396, y 391–442) and below it an `HBoxContainer` of two buttons (left x 63–224, right x 234–396, both y 452–496; container separations of about 10 px after scaling). With the right button focused, `ui_left` moved the focus up to the full-width row, not to the left button; `ui_down` from the full-width row landed on the right button, not the left one. No error. The engine's automatic neighbour search scores candidates by distance, and the row above (10 px up, overlapping in x) was as near as the button beside (10 px left). A test that pressed down twice then left from the right button failed on every run on this layout.
+
+**해결:** set the neighbours of a button grid explicitly instead of relying on the search: `b.focus_neighbor_left = b.get_path_to(left_button)`, `..._right`, `..._top`, `..._bottom`. `get_path_to` works before the controls are in the scene tree as long as they share a parent. After that, 6 of 6 runs of the gamepad test reached the intended buttons.
