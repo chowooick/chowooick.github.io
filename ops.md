@@ -7652,3 +7652,27 @@ Or wait first: `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do slee
 Also measured in the same run: in the 검색 옵션 panel the text inputs' DOM order does not follow the visible rows, so filling an input picked by id put `@mnori.com` into 제목 (`subject:(@mnori.com)`). Typing `to:(@domain)` in the search box first, then opening 검색 옵션, fills 받는사람 correctly. The action checkboxes are hidden inputs at x = -9743; click their `label[for=<id>]`.
 
 **해결:** a session cannot pass the passkey step alone. Set the filter up fully (label, `to:(@domain)` search, actions ticked), click 「필터 만들기」 and 「계속」, bring the popup to the front, and tell the owner to authenticate in that window. The owner's passkey worked in the Chrome for Testing window with the copied profile; the popup closed by itself and the filter appeared in 설정 → 필터 at once (measured: poll every 10 s for the popup to close, then read the filter list). Close the browser and delete the profile copy afterwards.
+
+## OPS-399 — Brave on macOS: System Events `click at` and `AXPress` on a web-page button do nothing; setting `AXFocused` and sending Return presses it
+
+`측정 2026-10-11 · Brave Browser (Chromium) on macOS 27, System Events with Accessibility granted, dash.cloudflare.com login page`
+
+**증상:** With JavaScript from Apple Events off (and the menu toggle not taking, OPS-366 note), a web button found in
+Brave's accessibility tree — e.g. `button "chowooick@gmail.com 계정으로 Google 사용하여 계속"` — returns its element path
+from `tell application "System Events" to click at {x, y}` and from `perform action "AXPress"`, without an error, but the
+page does not react: no navigation, no popup, the URL stays the same.
+
+**해결:** focus the element and type Return:
+
+```applescript
+tell application "Brave Browser" to activate
+tell application "System Events" to tell process "Brave Browser"
+  set b to button "<name>" of … -- path as returned by `click at`
+  set value of attribute "AXFocused" of b to true
+  delay 0.3
+  keystroke return
+end tell
+```
+
+For targets that are not focusable (table rows, divs with click handlers) post a real `CGEvent` mouse-down/up from a
+small Swift binary at the point mapped from a `screencapture` (Retina: screenshot pixels ÷ 2 = points).
