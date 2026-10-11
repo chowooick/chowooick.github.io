@@ -5568,3 +5568,19 @@ The same scene rendered twice under `gl_compatibility` differed by exactly 0, an
 **증상:** a helper cut a mesh into pieces by collecting triangle indices per cell: `if not picks.has(cell): picks[cell] = PackedInt32Array()` then `(picks[cell] as PackedInt32Array).append(t)`. Every piece came out empty, the cliffs and mine walls vanished from the map, and the test output showed no script error. Packed arrays are values: the cast (or `var a: PackedInt32Array = picks[cell]`) gives a copy, and the append goes to the copy.
 
 **해결:** keep a plain `Array` in the dictionary (`picks[cell] = []`, `picks[cell].append(t)`; `Array` is a reference), or read the packed array into a variable, append, and write it back (`picks[cell] = a`).
+
+## GDT-314 — Headless runs report every played `AudioStreamPlayer` stream as leaked at exit; `stop()` in `_exit_tree` does not help, not calling `play()` under the Dummy driver does
+
+`측정 2026-10-10 · Godot 4.7.2-stable · macOS 27 · --headless (audio driver "Dummy")`
+
+**증상:** a headless test that loads the whole game (`godot --headless --path client --script ../tests/client_replay.gd`) exited 0 but printed `WARNING: 46 ObjectDB instances were leaked at exit` and `ERROR: 20 resources still in use at exit`. `--verbose` listed only audio: `AudioStreamOggVorbis`, `OggPacketSequence`, `AudioStreamPlaybackOggVorbis`, `OggPacketSequencePlayback`, one pair per Ogg file the game's sound node had played (music stems and effects). The same game in a window (same scripts, bus muted) exited with no leak warning at all. Stopping every player and clearing the stream cache in the sound node's `_exit_tree()` changed nothing (48 leaked).
+
+**해결:** under the Dummy driver nothing can be heard, so do not start playback: `var _silent := AudioServer.get_driver_name() == "Dummy"` and `if not _silent: player.play()` (set the stream, volume and pitch as usual so the rest of the code sees the same state). Both headless tests then exited with no leak warning (0 instances, 0 resources).
+
+## GDT-315 — macOS: a `--script` capture's `root.size = Vector2i(w, h)` did not hold on a 16-inch Retina MacBook Pro; frames came out 3456 × 2168 or 16384 × 64 until `--resolution` was passed
+
+`측정 2026-10-10 · Godot 4.7.2-stable · macOS 27 · MacBook Pro 16" (display 3456 × 2234 Retina) · gl_compatibility, windowed`
+
+**증상:** a capture script that sets `root.size = Vector2i(w, h)` in `_initialize`, loads the game and saves `root.get_texture().get_image()` gave 1600 × 900 frames once. The next three runs of the same command (1600 × 900, 1200 × 900, 390 × 844, back to back) saved frames of 3456 × 2168 (the screen) and some of 16384 × 64, with the layout drawn for those sizes; the 390-wide run had 19 of 23 frames wrong. No error was printed and every run exited 0. The project sets `window/size/window_width_override`/`height_override` and `stretch/mode="disabled"`. The same scripts had always produced exact sizes on a MacBook Air.
+
+**해결:** pass the size on the command line as well: `godot --resolution 1200x900 --position 40,40 --path client --script ../tests/capture_flow.gd -- out 1200 900`. The next run saved 21 of 21 frames at exactly 1200 × 900. Check frame sizes after any capture run on a new machine (`PIL.Image.open(p).size`) before reading the pictures.
