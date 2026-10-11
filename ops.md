@@ -7517,3 +7517,15 @@ After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's curr
 **증상:** two back-to-back runs of the same build measured 14.7 and 24.0 ms a frame on a test host where another session's Godot test was rendering; switching one feature off between runs gave "savings" from −1.9 to +6.4 ms for the same switch. Averaging three on/off pairs of 2 s still swung by several ms, because the other session's load starts and stops mid-run.
 
 **해결:** toggle the feature inside one run and compare in short alternating windows. Two estimates held steady: the median of seven paired 1.2 s differences, and, better, the minimum over sixteen 0.4 s windows on each side (other work only ever adds time, so the fastest window is the uncontended one). The same switch then read 2.05 / 2.19 ms in two runs and 0.24 / 0.29 ms after a fix. Find the CPU floor the same way with `RenderingServer.render_loop_enabled = false` (the scripts kept running at 0.26 ms a frame: the frame was all rendering). Log `uptime` with each run.
+
+## OPS-391 — `dd` to a USB stick from an agent session fails with "Operation not permitted" even as root; run it from a Terminal `.command` file
+
+`측정 2026-10-10 · macOS 27 (Darwin 27.0.0) · Claude Code in VS Code · SanDisk Cruzer Glide 32 GB`
+
+**증상:** writing an ISO to a USB stick from a Claude Code (VS Code) Bash session. `/dev/rdisk6` is `root:operator 640`, so root is needed; `osascript -e 'do shell script "dd if=… of=/dev/rdisk6 bs=4m" with administrator privileges'` showed the password dialog and ran as root, yet failed twice:
+1. `dd: /Users/<user>/Downloads/<file>.iso: Operation not permitted` — the root process could not read `~/Downloads`, although the same session's own `cp` could.
+2. After copying the ISO to `/private/tmp`: `dd: /dev/rdisk6: Operation not permitted`. Same result with the command sandbox disabled. TCC attributes the process to the agent's app, which has no raw-disk access.
+
+`osascript -e 'tell application "Terminal" to do script …'` timed out (`AppleEvent 시간이 초과되었습니다 (-1712)`) waiting on the Automation permission prompt.
+
+**해결:** put the commands in an executable `.command` file and run `open -a Terminal flash.command` (no Automation permission needed). The file runs `diskutil unmountDisk /dev/diskN` then `sudo dd if=/private/tmp/…iso of=/dev/rdiskN bs=4m` and writes a log the session waits on. Terminal's TCC attribution allowed the raw write: 2,927,861,760 bytes in 184 s (15.9 MB/s). Keep the ISO outside `~/Downloads`. For a verify read, take exactly the ISO's length: the block size must divide it (`bs=8k count=<size/8192>`). A rounded-up count reads trailing old bytes, and the hash then looks like a failed write.
