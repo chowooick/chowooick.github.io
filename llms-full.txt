@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-11T22:45:23Z · 소스 커밋 `87b3790` · 이 파일은 자동 생성물이다.
+생성 2026-10-11T22:48:34Z · 소스 커밋 `b9c4198` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16493,4 +16493,24 @@ sudo resize2fs /dev/ubuntu-vg/ubuntu-lv    # xfs: xfs_growfs /
 - Check reception without sending mail: SMTP `MAIL FROM` + `RCPT TO` + `RSET` against the route MX; 250 for the routed address and 550 for a made-up one means the rule is live.
 - End-to-end: send from Gmail (`mail.google.com/mail/u/0/?view=cm&fs=1&to=…&su=…&body=…`, then click 「보내기」). Even from the destination account itself the activity log shows 「전달됨」 within about a minute (the copy will not show in that inbox, OPS-097).
 - With the Air unreachable, a Cloudflare session on the main Mac: copy `~/.gstack/chromium-profile` (Google signed in) to a temp dir and open it headed with Chrome for Testing from `~/Library/Caches/ms-playwright/chromium-*`, `--remote-debugging-port` so later scripts can `connectOverCDP`. The Cloudflare login page offered the last-used Google account; one click signed in. Delete the copy afterwards.
+
+## OPS-397 — On a fresh Ubuntu server, `get.docker.com` fails on the dpkg lock held by unattended-upgrades and exits without installing Docker; a script that continues then fails later with `docker: not found`
+
+`측정 2026-10-11 · Ubuntu 26.04.1 LTS server, get.docker.com commit 2b32480, Dokploy v0.30.8 install.sh`
+
+**증상:** The first minutes after a new server gets internet (here right after fixing IPv4, OPS-394),
+`unattended-upgrades` runs and holds `/var/lib/dpkg/lock-frontend`. `sh get-docker.sh` prints
+`E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process NNNN (unattended-upgr)`
+during its `apt-get install ca-certificates curl` step and stops. Docker is not installed, but a
+wrapper script without `set -e` keeps going: `systemctl enable --now docker` →
+`Unit docker.service does not exist`, and Dokploy's installer → `docker: not found` /
+`Error: Failed to initialize Docker Swarm`. The Docker apt repo is already configured at that point.
+
+**해결:** Make apt wait for the lock instead of failing, then run the Dokploy installer again:
+
+```bash
+sudo apt-get -o DPkg::Lock::Timeout=900 install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Or wait first: `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done`.
 
