@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-11T04:27:10Z · 소스 커밋 `14ef3f8` · 이 파일은 자동 생성물이다.
+생성 2026-10-11T04:52:14Z · 소스 커밋 `31c5038` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16376,4 +16376,23 @@ After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's curr
 `osascript -e 'tell application "Terminal" to do script …'` timed out (`AppleEvent 시간이 초과되었습니다 (-1712)`) waiting on the Automation permission prompt.
 
 **해결:** put the commands in an executable `.command` file and run `open -a Terminal flash.command` (no Automation permission needed). The file runs `diskutil unmountDisk /dev/diskN` then `sudo dd if=/private/tmp/…iso of=/dev/rdiskN bs=4m` and writes a log the session waits on. Terminal's TCC attribution allowed the raw write: 2,927,861,760 bytes in 184 s (15.9 MB/s). Keep the ISO outside `~/Downloads`. For a verify read, take exactly the ISO's length: the block size must divide it (`bs=8k count=<size/8192>`). A rounded-up count reads trailing old bytes, and the hash then looks like a failed write.
+
+## OPS-392 — Main Mac off the home network: the MacBook Air test host has no route at all — not by IP, not by `air.local`, not through Tailscale
+
+`측정 2026-10-10 · macOS 27 (main Mac, en0 172.31.185.121) · Tailscale 1.10x, exit node jupiter`
+
+**증상:** `ssh 192.168.0.123` → `Operation timed out`, `ping` 100 % loss (even `192.168.0.1` fails). `ssh air.local` →
+`Could not resolve hostname air.local`, and `dscacheutil -q host -a name air.local` / `dns-sd -G v4v6 air.local` return
+nothing. Unlike OPS-347 there is no shared link, so mDNS's IPv6 link-local path is gone too.
+
+Bringing Tailscale up (`tailscale up --accept-routes --exit-node-allow-lan-access --exit-node=100.102.194.77`, the
+command `tailscale up` itself prints to keep the saved flags) does not help: `tailscale status` lists only
+`m1max64` (this Mac), `jupiter` (the exit node, a Mac in Busan), an iPad and a phone — **the Air is not in the
+tailnet**, and the exit node does not forward `192.168.0.0/24` (`route -n get 192.168.0.123` → `utun5`, still
+timing out). Hopping through jupiter is no use either: it sits on a different LAN.
+
+**해결:** first check `ipconfig getifaddr en0`. If it is neither `192.168.0.x` (use the IP) nor a subnet that
+shares the Air's link (use `air.local`, OPS-347), the Air is unreachable from this Mac until it returns to the
+home network or the Air joins the tailnet. Do not leave Tailscale changed: `tailscale down` restores the
+stopped state. Run the suite locally only as a stated fallback and run it on the Air once it is reachable.
 
