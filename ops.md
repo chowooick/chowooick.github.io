@@ -7643,7 +7643,7 @@ sudo apt-get -o DPkg::Lock::Timeout=900 install -y docker-ce docker-ce-cli conta
 
 Or wait first: `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done`.
 
-## OPS-397 — Gmail asks for a passkey re-auth before it creates any filter, through the UI or through "필터 가져오기"; a copied browser profile cannot pass it
+## OPS-398 — Gmail asks for a passkey re-auth before it creates any filter, through the UI or through "필터 가져오기"; a copied browser profile cannot pass it
 
 `측정 2026-10-11 · Gmail web (ko UI) · Chrome for Testing (ms-playwright chromium-1243) with a copy of ~/.gstack/chromium-profile · account protected by a passkey`
 
