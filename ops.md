@@ -7606,3 +7606,19 @@ mounted):
 sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
 sudo resize2fs /dev/ubuntu-vg/ubuntu-lv    # xfs: xfs_growfs /
 ```
+
+## OPS-396 — Cloudflare Email Routing on a zone with no mail yet: the dashboard-session API refused the writes, the UI did it in four clicks, and direct SMTP is only good for an RCPT check
+
+`측정 2026-10-11 · Cloudflare dashboard (ko UI) · zone already on Cloudflare Registrar, no MX · Chrome for Testing (ms-playwright chromium-1243) on the main Mac with a copy of ~/.gstack/chromium-profile`
+
+**증상:**
+- From a signed-in dashboard page, `fetch('/api/v4/zones/<id>/email/routing/enable', {method:'POST', headers:{'x-cross-site-security':'dash'}})` and `POST …/email/routing/rules` both answered **403** (HTML, not JSON), unlike OPS-339. GETs on the same paths answered 200. `GET …/email/routing/dns` lists the five required records even before they exist.
+- The wrangler OAuth token has the `email_routing:write` scope, but an expired token was not refreshed in a non-interactive shell ("could not be refreshed, and the environment is non-interactive"), so wrangler was no way round it.
+- Right after the rule was saved (`enabled: true, status: ready, synced: false`), `RCPT TO:<contact@…>` on `route1.mx.cloudflare.net:25` still answered `550 5.1.1 Address does not exist`; about 1 minute later it answered `250`, while unknown addresses kept getting 550.
+- A test message sent straight to the MX from a home IP with an `@<zone>` sender was refused: `550 5.7.26 Cannot forward emails that are not authenticated`. The activity log shows it as 「인증되지 않음」.
+
+**해결:**
+- Do it in the UI: 설정 tab → **누락된 레코드 추가** (MX ×3, DKIM, SPF; OPS-101), then 라우팅 규칙 → 라우팅 규칙 생성. The pickers are custom: click `button[aria-label="도메인 선택"]`, `button[aria-label="동작"]`, `button[aria-label="Show options"]` (destination) and pick `[role=option]` by text; `getByRole('button', {name})` did not find them inside the dialog. A destination verified for another zone is offered at once (account-wide, OPS-101).
+- Check reception without sending mail: SMTP `MAIL FROM` + `RCPT TO` + `RSET` against the route MX; 250 for the routed address and 550 for a made-up one means the rule is live.
+- End-to-end: send from Gmail (`mail.google.com/mail/u/0/?view=cm&fs=1&to=…&su=…&body=…`, then click 「보내기」). Even from the destination account itself the activity log shows 「전달됨」 within about a minute (the copy will not show in that inbox, OPS-097).
+- With the Air unreachable, a Cloudflare session on the main Mac: copy `~/.gstack/chromium-profile` (Google signed in) to a temp dir and open it headed with Chrome for Testing from `~/Library/Caches/ms-playwright/chromium-*`, `--remote-debugging-port` so later scripts can `connectOverCDP`. The Cloudflare login page offered the last-used Google account; one click signed in. Delete the copy afterwards.
