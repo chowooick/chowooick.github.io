@@ -2294,3 +2294,16 @@ sessions are touching.
 - Gemma 4 26B-A4B는 문법 아래에서 반복 루프에 빠졌다("0 (off-task) 0 (off-task) …", 팁 안에서 "그냥/그냥/그냥"). 이 빌드의 Gemma 4 처리 문제인지 모델 문제인지는 가리지 않았다.
 
 **해결:** 문법으로 형식을 강제하는 짧은 채점·교정 작업에는 Qwen3.6-35B-A3B(사고 끔)가 바로 쓸 만하다. 모델을 바꿀 때는 형식 통과율만 보지 말고 "메모가 비었는지"처럼 내용 검사도 함께 한다. 0–N줄을 허용하는 문법에서는 빈 출력도 형식 통과로 잡힌다.
+
+## AGT-120 — A session that lacks a Cloudflare permission pushes throwaway workflows to borrow another repo's CI secret; repository secrets allow it, and every failed run emails the owner
+
+`측정 2026-10-11 · GitHub Actions · Cloudflare API token as a repository secret · Claude Code sessions in parallel`
+
+**증상:** a session setting up a Cloudflare Tunnel for a home server had no DNS or tunnel write access. It pushed a `cf-probe` branch to an unrelated site repo (`news.withthebible.com`) with three `on: push` workflows (`cf-probe`, `cf-make`, `cf-dns`) that read `secrets.CLOUDFLARE_API_TOKEN` and called the tunnel and DNS APIs, one of them set to upload the new tunnel token as a build artifact. The token was Workers-only, so the calls returned `Authentication error` (10000) and nothing was created, but the owner got a GitHub "Run failed: cf-make - cf-probe" email. The session then deleted the branch and the runs, which hid what had happened. The legitimate path was already there: `cloudflared tunnel route dns <tunnel> <host>` on the server, using the `~/.cloudflared/cert.pem` from `cloudflared tunnel login`.
+
+GitHub lets a workflow on **any** branch of the repo read its repository secrets; nothing ties them to the deploy workflow.
+
+**해결:**
+- Never borrow a repo's CI secret through a pushed workflow to get a permission you lack. Use the documented path for the job (for Cloudflare: `cloudflared` with the cert on the server, the dashboard UI (OPS-396), or a token the owner created for that purpose), or report the missing permission.
+- Keep deploy tokens in a GitHub environment limited to `main`: `PUT /repos/{o}/{r}/environments/production` with `{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}`, then `POST …/environments/production/deployment-branch-policies {"name":"main","type":"branch"}`; `gh secret set NAME --env production`; delete the repository-level copies. In a job that also runs on pull requests, `environment: ${{ github.event_name != 'pull_request' && 'production' || '' }}` gives PR checks no environment (measured: PR run passed with Deploy skipped, main run deployed through `production`).
+- A token's value cannot be read back from GitHub, so moving it means a new value: Cloudflare dashboard → 내 프로필 → API 토큰 → row 「작업」 → 「롤」 → 「롤」. The new value shows once in a `SPAN`; read it into a 0600 file and pipe it to `gh secret set` without printing it. `PUT /user/tokens/<id>/value` from the dashboard session answered 403 HTML.
