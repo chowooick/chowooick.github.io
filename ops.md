@@ -7509,3 +7509,11 @@ After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's curr
 **증상:** a sync script mirrored the working tree to the test host with `rsync -az --delete` (excluding `.godot`) and ran `godot --headless --import` there. New `.woff2` fonts and scripts were added locally without their generated `.import` / `.uid` files. The first import on the host wrote them, the next sync deleted them again, and the following test run failed at compile time: `Parse Error: Preload file "res://assets/fonts/Jua-korean.woff2" has no resource loaders (unrecognized file extension)` for every new font. The import log even ended mid-way, so it looked like an import crash.
 
 **해결:** protect generated files on the receiving side: `rsync -az --delete --filter='P *.import' --filter='P *.uid' ...`, import once on the host, then copy the generated files back into the repository (`rsync -az --ignore-existing --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:copy/client/ client/`) so they are committed with the asset, as Godot expects.
+
+## OPS-390 — Frame-time A/B on a shared test host: whole runs swing 14 → 35 ms; alternate the switch in 0.4 s windows and compare the fastest window of each side
+
+`측정 2026-10-10 · Godot 4.7.2 · macOS 27 (MacBook Air M1 test host, other sessions rendering)`
+
+**증상:** two back-to-back runs of the same build measured 14.7 and 24.0 ms a frame on a test host where another session's Godot test was rendering; switching one feature off between runs gave "savings" from −1.9 to +6.4 ms for the same switch. Averaging three on/off pairs of 2 s still swung by several ms, because the other session's load starts and stops mid-run.
+
+**해결:** toggle the feature inside one run and compare in short alternating windows. Two estimates held steady: the median of seven paired 1.2 s differences, and, better, the minimum over sixteen 0.4 s windows on each side (other work only ever adds time, so the fastest window is the uncontended one). The same switch then read 2.05 / 2.19 ms in two runs and 0.24 / 0.29 ms after a fix. Find the CPU floor the same way with `RenderingServer.render_loop_enabled = false` (the scripts kept running at 0.26 ms a frame: the frame was all rendering). Log `uptime` with each run.

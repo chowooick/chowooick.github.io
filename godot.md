@@ -5552,3 +5552,19 @@ The same scene rendered twice under `gl_compatibility` differed by exactly 0, an
 **증상:** in a script with `class_name HuntUI` and `static var combo_text: Callable`, a method of the inner `class ComboSticker` that used `combo_text` failed to parse with `Parse Error: Identifier "combo_text" not declared in the current scope`; every script depending on it then failed with `Failed to compile depended scripts`. Outer `const`s are visible to inner classes, outer static vars are not.
 
 **해결:** qualify it with the outer class name (`HuntUI.combo_text`).
+
+## GDT-312 — Compatibility renderer: an unshadowed OmniLight costs every pixel of every object it touches, so one map-sized ground mesh made four faint lanterns cost 2 ms; cut the ground into pieces
+
+`측정 2026-10-10 · Godot 4.7.2-stable · gl_compatibility · macOS 27 (MacBook Air M1), 1600 × 900, MSAA 4×`
+
+**증상:** a farm map drew its whole ground as one 74 × 62-unit `MeshInstance3D` (18 k triangles), with four unshadowed `OmniLight3D` lanterns (range 2.2–3.2, energy 0.2 by day) near the house. Hiding the four lanterns saved 1.6–2.1 ms a frame, though by day they barely changed the picture. They added no draw calls (GDT-161): the cost is per pixel. The renderer gives each object the list of lights whose range touches its bounds and runs that list over every fragment the object draws, so each lantern was evaluated over all the ground on screen, not only within its range. Object batches of `MultiMesh` covering the whole map (one batch per prototype) behave the same way.
+
+**해결:** build large flat things in tiles: the ground, cliffs and fences as one mesh per 8 × 8-tile piece, and per-prototype `MultiMesh` batches per 8 × 8 bucket. The lanterns then cost 0.25–0.7 ms; welding the ground back into one mesh cost 1.3–2.5 ms in the same run. Frame 14.7–15.0 → 14.1–14.2 ms, draw calls 249 → 378, primitives 781 k → 556 k (better culling). The picture does not change (mean difference 0.02 levels on a mine floor), since the light is zero past its range anyway. Split an unindexed mesh by each triangle's centroid.
+
+## GDT-313 — `(dict[key] as PackedInt32Array).append(x)` changes a copy: the dictionary's array stays empty, with no error
+
+`측정 2026-10-10 · Godot 4.7.2-stable · GDScript`
+
+**증상:** a helper cut a mesh into pieces by collecting triangle indices per cell: `if not picks.has(cell): picks[cell] = PackedInt32Array()` then `(picks[cell] as PackedInt32Array).append(t)`. Every piece came out empty, the cliffs and mine walls vanished from the map, and the test output showed no script error. Packed arrays are values: the cast (or `var a: PackedInt32Array = picks[cell]`) gives a copy, and the append goes to the copy.
+
+**해결:** keep a plain `Array` in the dictionary (`picks[cell] = []`, `picks[cell].append(t)`; `Array` is a reference), or read the packed array into a variable, append, and write it back (`picks[cell] = a`).
