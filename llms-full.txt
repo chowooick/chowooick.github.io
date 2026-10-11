@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-10T23:41:21Z · 소스 커밋 `2f5ef10` · 이 파일은 자동 생성물이다.
+생성 2026-10-11T00:02:55Z · 소스 커밋 `a91f8da` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6483,6 +6483,22 @@ drawn.
 The same scene rendered twice under `gl_compatibility` differed by exactly 0, and a blank project holding only the copied scripts, shaders and `[rendering]` settings also gave exactly 0. So a parity test can demand "no channel more than 2 levels off". Small drifts it caught: rim 0.35 → 0.3 (mean 0.041, max 4), fill light −20 % (0.496, 5), MSAA off in the project settings (0.406, 127). Removing `directional_shadow/size=4096` (the default already) or `soft_shadow_filter_quality=3` changed nothing in that scene.
 
 **해결:** take a Compatibility-tuned look into a project only with `gl_compatibility`, and prove the copy with a pixel test rather than by eye: render a fixed scene into a `SubViewport` of fixed size (so window size and display density do not matter), with `msaa_3d` read from `ProjectSettings` and no time-driven animation, then compare bytes. The working example is bearhunter `godot/tests/look_parity.gd` (`--ref`, `--diff`, `--tweak`).
+
+## GDT-307 — Taking bearhunter's HUD (`ui/look.gd`, the stickers) into a game whose `--script` tests preload the interface: make `Sfx` and `Lang` static classes, not autoloads, so the verbatim calls compile
+
+`측정 2026-10-10 · Godot 4.7.2-stable · gl_compatibility · macOS 27 (MacBook Air M1), headless --script tests`
+
+**증상:** bearhunter's `ui/look.gd` and `ui/hunt_ui.gd` call `Sfx.play(...)` and `Lang.t(...)` by name. Copied verbatim into another game with `Sfx`/`Lang` registered as autoloads, every `--script` test that preloads a game script reaching the interface (`const UIKit = preload(...)` → `Look`) failed with `Compile Error: Identifier not found: Sfx`, then `Invalid call. Nonexistent function 'body' in base 'GDScript'` wherever `Look` was used, and some tests never exited (the GDT-217 hang). The game itself ran fine.
+
+**해결:** keep the verbatim calls and give them a global class instead of a node: `class_name Sfx extends RefCounted` with `static var player: Node` and `static func play(cue, volume_db := 0.0, _vary := 0.0, pitch := 1.0)` forwarding to the game's own sound player (set once at start, cleared in `_exit_tree`), and `class_name Lang` with `static func t(key, params := {})`. Remove the autoload entries. A class name resolves at compile time, so the same headless suite went from compile errors to 16/16 passing. The signature must stay bearhunter's (cue, volume_db, vary, pitch): its stickers pass four arguments.
+
+## GDT-308 — A modal dim drawn after the HUD's frosted glass leaves an open window's glass frosting the undimmed scene: put a `BackBufferCopy` after the dim
+
+`측정 2026-10-10 · Godot 4.7.2-stable · gl_compatibility · macOS 27 (MacBook Air M1), windowed captures`
+
+**증상:** HUD panels and menu windows share a `hint_screen_texture` frosted-glass material (GDT-130, GDT-179). A full-screen `ColorRect` (black, alpha 0.55) placed between the HUD and an open window dimmed the world and the HUD as intended, but the window's glass still showed the bright, undimmed scene blurred behind it: within one canvas layer the screen is copied once, at the first item that reads it, and the HUD's glass came first.
+
+**해결:** add a `BackBufferCopy` with `copy_mode = COPY_MODE_VIEWPORT` as a child of the dim (it draws right after it). Items drawn later read the fresh copy, so the window frosts the dimmed world. Order matters when moving the dim under a window with `move_child(dim, window.get_index())`: moving a node to a later index lands it after the window; move the window over it instead.
 
 ---
 
@@ -16292,4 +16308,12 @@ After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's curr
 **해결:**
 1. Put the position in the character paragraph as a fraction of the image height ("the belt at three quarters of the image height") when the crop must show it; the third generation then kept the belt above row 1280.
 2. Inside the mask's soft edge, compute alpha from the colour distance to the flat grey background and project the pixel to the nearest solid foreground colour, then remove grey pockets enclosed between wires and the outermost 1-px blended ring. Light details not connected to the outer background (studs, highlights) survive.
+
+## OPS-389 — `rsync --delete` to a test host's Godot copy deletes the `.import` and `.uid` files Godot wrote there: new fonts then fail with "has no resource loaders"
+
+`측정 2026-10-10 · rsync 3.x · Godot 4.7.2 · macOS 27 (MacBook Air M1 test host)`
+
+**증상:** a sync script mirrored the working tree to the test host with `rsync -az --delete` (excluding `.godot`) and ran `godot --headless --import` there. New `.woff2` fonts and scripts were added locally without their generated `.import` / `.uid` files. The first import on the host wrote them, the next sync deleted them again, and the following test run failed at compile time: `Parse Error: Preload file "res://assets/fonts/Jua-korean.woff2" has no resource loaders (unrecognized file extension)` for every new font. The import log even ended mid-way, so it looked like an import crash.
+
+**해결:** protect generated files on the receiving side: `rsync -az --delete --filter='P *.import' --filter='P *.uid' ...`, import once on the host, then copy the generated files back into the repository (`rsync -az --ignore-existing --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:copy/client/ client/`) so they are committed with the asset, as Godot expects.
 
