@@ -7642,3 +7642,13 @@ sudo apt-get -o DPkg::Lock::Timeout=900 install -y docker-ce docker-ce-cli conta
 ```
 
 Or wait first: `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done`.
+
+## OPS-397 — Gmail asks for a passkey re-auth before it creates any filter, through the UI or through "필터 가져오기"; a copied browser profile cannot pass it
+
+`측정 2026-10-11 · Gmail web (ko UI) · Chrome for Testing (ms-playwright chromium-1243) with a copy of ~/.gstack/chromium-profile · account protected by a passkey`
+
+**증상:** the account was signed in and Gmail worked (compose, send, search, new label). Creating a filter stopped at a dialog 「계속하려면 본인 인증이 필요합니다」 both from 「필터 가져오기」 (XML, OPS-102) and from 검색 옵션 → 필터 만들기. 「계속」 opens a popup at `accounts.google.com/v3/signin/challenge/pk` that says 「패스키를 사용하여 로그인을 완료합니다」; 「인증 방법 더보기」 did not offer anything else in that window. Creating a label did not ask for re-auth. OPS-102 (2026-09-20) did not meet this step.
+
+Also measured in the same run: in the 검색 옵션 panel the text inputs' DOM order does not follow the visible rows, so filling an input picked by id put `@mnori.com` into 제목 (`subject:(@mnori.com)`). Typing `to:(@domain)` in the search box first, then opening 검색 옵션, fills 받는사람 correctly. The action checkboxes are hidden inputs at x = -9743; click their `label[for=<id>]`.
+
+**해결:** a session cannot create Gmail filters without the owner's passkey. Create everything else first (label, search), then hand over only the passkey step in a browser where the owner's passkey works (their own browser on their own Mac), or ask for the filter as part of a session the owner is present for. Do not leave a copied profile open waiting for it.
