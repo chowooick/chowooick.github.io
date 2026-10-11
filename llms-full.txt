@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-11T00:02:55Z · 소스 커밋 `a91f8da` · 이 파일은 자동 생성물이다.
+생성 2026-10-11T02:21:11Z · 소스 커밋 `b610ea8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6499,6 +6499,30 @@ The same scene rendered twice under `gl_compatibility` differed by exactly 0, an
 **증상:** HUD panels and menu windows share a `hint_screen_texture` frosted-glass material (GDT-130, GDT-179). A full-screen `ColorRect` (black, alpha 0.55) placed between the HUD and an open window dimmed the world and the HUD as intended, but the window's glass still showed the bright, undimmed scene blurred behind it: within one canvas layer the screen is copied once, at the first item that reads it, and the HUD's glass came first.
 
 **해결:** add a `BackBufferCopy` with `copy_mode = COPY_MODE_VIEWPORT` as a child of the dim (it draws right after it). Items drawn later read the fresh copy, so the window frosts the dimmed world. Order matters when moving the dim under a window with `move_child(dim, window.get_index())`: moving a node to a later index lands it after the window; move the window over it instead.
+
+## GDT-309 — A coroutine left waiting on `RenderingServer.frame_post_draw` in a headless run aborts the engine at exit (`recursive_mutex lock failed`, exit 134)
+
+`측정 2026-10-10 · Godot 4.7.2-stable · macOS 27 (MacBook Air M1) · godot --headless --script`
+
+**증상:** a node that bakes portraits on demand (`SubViewport` → `await RenderingServer.frame_post_draw` three times → `get_image()`) was asked for one during a headless test. The test passed and called `quit()`, then the process died with `libc++abi: terminating due to uncaught exception of type std::__1::system_error: recursive_mutex lock failed: Invalid argument` and exit code 134 instead of 0. Under `--headless` the dummy renderer never emits `frame_post_draw`, so the coroutine is still suspended when the engine tears down. The same test on the commit without the baker exited 0.
+
+**해결:** do not start such a bake when `DisplayServer.get_name() == "headless"` (return the fallback), and clear any static reference to the baker node in its `_exit_tree`. The suite went back to exit 0 (`REPLAY events=471 failures=0`).
+
+## GDT-310 — bearhunter's Korean font cuts (`Jua-korean.woff2`, `Pretendard-SemiBold.subset.woff2`) have no U+2060 or U+200B: a game that joins Hangul with word joiners (GDT-104) draws boxes
+
+`측정 2026-10-10 · fontTools 4.x · bearhunter commit a508cf6`
+
+**증상:** taking bearhunter's HUD faces into a game whose `L.t()` puts U+2060 between Hangul syllables (so Korean breaks only at spaces, GDT-104) and U+200B at Chinese/Japanese break points: both faces lack the two code points (`cmap` check), and bearhunter's other subsets are cut to bearhunter's own sentences (zh/ja missed hundreds of the other game's characters; Fredoka lacks → and ●).
+
+**해결:** after copying, map U+200B and U+2060 to the space glyph in every face's `cmap` (both are default-ignorable, so the shaper draws them with no advance), re-cut the non-Korean subsets from the game's own string table, and check coverage over the whole fallback chain rather than per face. Worked example: battlemarble `tools/look_fonts.py`.
+
+## GDT-311 — An inner class cannot read its outer class's `static var` by bare name: "Identifier "x" not declared in the current scope"
+
+`측정 2026-10-10 · Godot 4.7.2-stable`
+
+**증상:** in a script with `class_name HuntUI` and `static var combo_text: Callable`, a method of the inner `class ComboSticker` that used `combo_text` failed to parse with `Parse Error: Identifier "combo_text" not declared in the current scope`; every script depending on it then failed with `Failed to compile depended scripts`. Outer `const`s are visible to inner classes, outer static vars are not.
+
+**해결:** qualify it with the outer class name (`HuntUI.combo_text`).
 
 ---
 
