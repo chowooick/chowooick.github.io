@@ -7740,4 +7740,4 @@ setterm --term linux --blank 1 --powerdown 1 --powersave powerdown </dev/tty1 >/
 ```
 
 Afterwards `eDP-1/dpms` reads `Off`, and it survives a reboot. On ASUS laptops also cap the battery for 24/7 AC use with
-`echo 60 > /sys/class/power_supply/BAT0/charge_control_end_threshold`. It resets on boot, so set it from the same unit.
+`echo 60 > /sys/class/power_supply/BAT0/charge_control_end_threshold`, set from the same unit so it holds after every boot.
