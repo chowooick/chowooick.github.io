@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T07:46:22Z · 소스 커밋 `32fb83f` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T07:51:07Z · 소스 커밋 `d7a322d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16635,4 +16635,26 @@ Afterwards `eDP-1/dpms` reads `Off`, and it survives a reboot. On ASUS laptops a
 A locally managed tunnel is just its credentials JSON (`/etc/cloudflared/<tunnel-id>.json`, 175 bytes) plus `config.yml`. Copy each box's JSON to the other (base64 over ssh), rewrite `config.yml` with the other tunnel id and hostname, delete the old JSON, and restart cloudflared. The public hostnames then follow the names with no DNS or API call; each site was back at 200 within 6 s of the restart (while one box had no connector, its hostname returned 530).
 
 **해결:** Swap the credentials and config as above. Then restart `avahi-daemon` so mDNS announces the new name, and restart `docker` (or reboot) so the swarm node takes the new hostname. On a Dokploy single-node install the Dokploy database holds no hostname (a `pg_dump --data-only` had 0 matches for the domain), so nothing in Dokploy needs changing. After the swap, drop the old `*.local` entries from the client's `known_hosts` (`ssh-keygen -R nj1.local`), because each name now belongs to a different host key.
+
+## OPS-405 — Closing Dokploy's :3000 to the LAN while keeping it on a Cloudflare Tunnel needs two firewall paths: DOCKER-USER for IPv4, INPUT for IPv6
+
+`측정 2026-10-12 · Dokploy v0.30.8, Docker 29.9.0 (iptables backend, userland proxy on), Ubuntu 26.04.1, cloudflared 2026.10`
+
+**증상:** Dokploy publishes its panel as a swarm service port in **host** mode (`{"PublishedPort":3000,"PublishMode":"host"}`), so it listens on `0.0.0.0:3000` and `[::]:3000` on every interface. A server moved to another network serves the plain-HTTP login page to that whole LAN, and on IPv6 to its global address too. Swarm cannot bind a published port to one IP, and ufw rules do not apply to Docker's DNAT.
+
+The two families arrive differently. IPv4 from the LAN is DNATed in `nat/DOCKER` (`! -i docker_gwbridge --dport 3000 -j DNAT --to 172.18.0.x:3000`) and crosses `FORWARD`, where `DOCKER-USER` sees it. IPv6 goes to `docker-proxy` on `[::]:3000` through `INPUT`. cloudflared's `http://localhost:3000` arrives on `lo`, so rules scoped to `en+`/`wl+` leave the tunnel alone.
+
+**해결:** A oneshot unit with `After=docker.service`, `PartOf=docker.service` and `WantedBy=docker.service` that adds the rules idempotently (`iptables -C … || iptables -I …`), so they come back after every Docker restart and reboot:
+
+```sh
+for ifc in en+ wl+; do
+  iptables  -I DOCKER-USER -i "$ifc" -p tcp -m conntrack --ctorigdstport 3000 -j DROP
+  iptables  -I INPUT       -i "$ifc" -p tcp --dport 3000 -j DROP
+  ip6tables -I INPUT       -i "$ifc" -p tcp --dport 3000 -j DROP
+done
+```
+
+Match `--ctorigdstport` in `DOCKER-USER`, because after DNAT the packet's `--dport` is the container port. Here the two are the same, but they differ for any `-p 8080:3000` mapping. Measured from another host on the LAN, IPv4 and IPv6 `:3000` both time out, and the tunnel hostname still returns 200.
+
+For remote ssh through the same tunnel, add an ingress rule `hostname: <name>-ssh.<zone>` → `service: ssh://localhost:22` and `cloudflared tunnel route dns <id> <name>-ssh.<zone>`. On the client, set `ProxyCommand cloudflared access ssh --hostname %h`. Without a Cloudflare Access policy that hostname is open to anyone who has cloudflared, so set `PasswordAuthentication no` in `/etc/ssh/sshd_config.d/10-*.conf`. sshd keeps the first value it reads, and that file is read before Ubuntu's `50-cloud-init.conf` (`PasswordAuthentication yes`); confirm with `sshd -T`.
 
