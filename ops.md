@@ -7915,3 +7915,21 @@ Events built from `CGEventSource(stateID: .hidSystemState)` take their modifier 
 **증상:** A tunnel hostname must be a proxied record in a Cloudflare zone of the same account. For a name whose DNS lives at GoDaddy, the API answers `custom_hostnames` with `1404 No quota has been allocated` and `fallback_origin` with `1456 … available with SSL for SaaS`. The dashboard button 「Cloudflare for SaaS 사용」 leads to a checkout ($0/월, usage-based, card on file, terms checkbox), which is a billing agreement and not a setting.
 
 **해결:** Create the zone by API (`POST /zones` with `account.id`, `jump_start: false`), import the registrar's records as a BIND file (`POST /zones/<id>/dns_records/import`, multipart `file` + `proxied=false`), add the tunnel CNAMEs (proxied), add the hostnames to the tunnel's `config.yml` ingress, then change the NS at the registrar. A user API token with Zone:Zone/DNS/SSL/Zone Settings Edit on "모든 영역" can create zones. GoDaddy: 도메인 → DNS → 네임서버 → 네임서버 변경 → 「내 고유 네임서버」, and a second dialog 「계속」. hosting.kr: 네임서버/DNS → pencil → delete rows and type the new ones → type `OK` → it warns that its own DNS record service is cancelled. The registry showed the new NS at once; `PUT /zones/<id>/activation_check` made the zones `active` within 2 minutes, and the edge certificate for the new zone took another ~2 minutes (curl `000` until then). For a stateful app, keep the old origin forwarding to the new one (Traefik file route, `passHostHeader: false`, to a hostname of the new server) while resolvers still hold the old delegation (.com NS TTL is 2 days).
+
+## OPS-416 — Turning off a Dokploy admin's 2FA from the shell: delete the `two_factor` row and clear `user.two_factor_enabled`
+
+`측정 2026-10-12 · Dokploy v0.30.8 (better-auth), postgres:16 service dokploy-postgres`
+
+**증상:** The panel login asks for a TOTP code and the code is not accepted (or the authenticator is lost), so the 2FA screen cannot be passed and the UI path to disable 2FA is out of reach. The columns are snake_case: `select "twoFactorEnabled" from "user"` fails with `column "twoFactorEnabled" does not exist`.
+
+2FA state lives in two places: table `two_factor` (`user_id`, `secret`, `backup_codes`, `verified`, `failed_verification_count`, `locked_until`) and column `user.two_factor_enabled`. Clearing both is enough; no Dokploy restart is needed.
+
+**해결:**
+```
+P=$(sudo docker ps -qf name=dokploy-postgres)
+sudo docker exec $P pg_dump -U dokploy -d dokploy -t two_factor -t '"user"' > user-2fa.sql   # keep a copy first
+sudo docker exec $P psql -U dokploy -d dokploy -c \
+  'begin; delete from two_factor where user_id=(select id from "user" where email=$$<email>$$);
+   update "user" set two_factor_enabled=false where email=$$<email>$$; commit;'
+```
+Check without a browser: `POST https://<panel>/api/auth/sign-in/email` with `{"email","password"}` and an `origin` header returns `200` with a `token` and no `twoFactorRedirect`.
