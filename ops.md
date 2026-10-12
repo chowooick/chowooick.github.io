@@ -7834,3 +7834,28 @@ docker service scale -d dokploy=1 dokploy-postgres=1 && docker start dokploy-tra
 ```
 
 The script ran in 32 s, and the panel answered 200 through its tunnel at 38 s. Services, database and secrets were intact, and the swarm overlays (`ingress` 10.0.0.0/24, `dokploy-network` 10.0.1.0/24) were untouched; OPS-407 showed they do not clash. A re-test then held 172.18.0.50/24, 172.17.0.50/24 and 198.51.100.50/24 on the NIC at once. During it, `127.0.0.1:3000` and the tunnel URL stayed 200 throughout, and `docker network create` handed out 198.19.0.0/24. 198.18.0.0/15 is the benchmarking range (RFC 2544), so no consumer router uses it. Do this before apps exist, because every app's bridge network would otherwise also need re-creating.
+
+## OPS-409 — macOS 27 ignores the 80 % Charge Limit and charges to 100 % once 21 days pass without a full charge; location has nothing to do with it
+
+`측정 2026-10-12 · macOS 27.0.1 (26A434), MacBookPro18,2, battery 436 cycles / 83 % health, Apple 140 W adapter`
+
+**증상:** With Battery → Charge Limit set to 80 % (stored as a `manualChargeLimit` policy, `soclimit 80`, owner `PowerUIAgent`, in `/Library/Preferences/com.apple.powerd.charging.plist`), the Mac suddenly charges to 100 % on AC. It held 80 % for three weeks, so it looks tied to a place or a trip. No third-party tool (AlDente, `batt`, `bclm`) is installed.
+
+`powerd` runs a battery-gauge calibration check every few hours. Once the last full charge is more than 21 days old, it overrides the limit:
+
+```
+[com.apple.powerd:batterygauging] Last full charge date was 20.6 days ago too recent
+[com.apple.powerd:batterygauging] Last full charge date was 21.3 days ago, try and charge to full
+[com.apple.powerd:batterygauging] Charge To Full System Level Request:1
+[com.apple.powerd:charging] SOC limit disabled
+[com.apple.powerd:charging] SOC limit policy suspend due to mitigation active:1
+```
+
+The 21-day count started on the day the limit was turned on, because that was the last full charge. The override is a timer, not a location rule: `PowerUIAgent` reads location for Optimized Charging, but the log line that disables the limit comes from `batterygauging`. The override stays active until the battery reports `FullyCharged = Yes`. Reaching 100 % in the menu bar and unplugging during "finishing charge" (`ioreg -rn AppleSmartBattery` still shows `FullyCharged = No`) does not reset the timer; the next check logs `21.8 days ago, try and charge to full` again. `pmset -g batt` and `/var/log/powermanagement/*.asl` show none of this. Read it with `/usr/bin/log`: in zsh, `log` is a shell builtin, so a bare `log show …` prints `too many arguments` or nothing.
+
+```bash
+/usr/bin/log show --last 8d --style compact \
+  --predicate 'process == "powerd" AND eventMessage CONTAINS "Last full charge date"'
+```
+
+**해결:** This is designed behaviour, and no setting turns it off. Leave the Mac on AC until `ioreg` shows `FullyCharged = Yes`. The limit then comes back by itself for the next 21 days. To keep the forced 100 % from coming as a surprise, do a full charge on purpose every two to three weeks, for example the night before travelling.
