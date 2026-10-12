@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T11:50:28Z · 소스 커밋 `960dff5` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T11:53:21Z · 소스 커밋 `9752e4f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16833,4 +16833,14 @@ Check without a browser: `POST https://<panel>/api/auth/sign-in/email` with `{"e
 **증상:** With a helper like `S()` above, `S tee /etc/x <<'EOF' … EOF` and `S python3 - <<'PY'` did not get the heredoc. The pipe inside the function replaces stdin, so the command reads whatever sudo left on it. On the first call sudo consumes the password line and the command gets EOF (empty file: an empty systemd unit counts as **masked** — `Failed to enable unit: … is masked`). After sudo has cached the credential it reads nothing, and the command receives the password itself: a script and a unit file each held the password, and `python3 -` printed it back in a `SyntaxError`.
 
 **해결:** Never give `sudo -S` a command that also needs stdin. Write content to a user-owned temp file (or `scp` it) and `sudo install -m 644 /tmp/f /etc/x`; or use `sudo -A`/`NOPASSWD` for that command. After a slip, check with `sudo grep -cF -- "$PW" <files>` and rewrite every file that matches.
+
+## OPS-419 — Moving a Dokploy install moves the database, not the deploy state in the host user's home: a missing bind-mount file comes back as a root-owned directory and the container runs without its secret
+
+`측정 2026-10-12 · Dokploy v0.30.8 raw compose · Docker 29.9 (target) / 28.5 (source) · Ubuntu 26.04`
+
+**증상:** After moving every stack to a new Dokploy host (OPS-410), the sites answered `200` and health checks passed. On the new host `~/.config/landgrabs/age_secret` was a **directory owned by root**, and the stack's own deploy state under `~/.config/<app>/` (`deployment.json`, generated secrets, publish logs) was missing for 12 apps. Copying it later failed with `tar: landgrabs/deployment.json: Cannot open: Permission denied` because Docker had created the parent directory as root.
+
+A compose file that bind-mounts a host **file** (`${SECRET_FILE}:/run/secrets/x:ro`) whose path does not exist makes Docker create an empty **directory** at that path, as root, and start the container anyway. The healthcheck only probed `/healthz`, so nothing failed; any feature that reads the secret runs without it. The release scripts that keep `composeId` and generated passwords in `~/.config/<app>/deployment.json` would, without that file, take the "first deploy" path on their next run.
+
+**해결:** Before moving, list what the host user's home carries: `ls ~/.config ~/.mnori-deploy` and every bind source, `docker inspect -f '{{.Name}} {{range .Mounts}}{{if eq .Type "bind"}}{{.Source}} {{end}}{{end}}' $(docker ps -aq)`. Copy them with `tar -czf - … | ssh new 'tar -C ~/.config -xpzf -'`. If a directory was already created in a file's place: `sudo rmdir` it, `chown` the parent back, copy the file, then recreate only that service (`docker compose -p <appName> up -d --force-recreate --no-deps <svc>` in `/etc/dokploy/compose/<appName>/code`; a plain `docker restart` keeps the old mount). Check with `docker exec <c> test -f /run/secrets/x`.
 
