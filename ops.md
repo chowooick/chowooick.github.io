@@ -7715,3 +7715,29 @@ Afterwards `docker info` shows `NodeAddr 198.18.213.1` and 2377/7946 listen only
 **증상:** After adding a dummy interface (OPS-401), boot became 2 minutes slower. Timeline from the journal: DHCPv4 lease at 24 s, but `docker.service` and `cloudflared.service` (both `After=network-online.target`) started at 142–151 s. A dummy link never gets carrier, so `systemd-networkd-wait-online` waits for it until its 120 s timeout. Nothing logs an error; the box just comes up late.
 
 **해결:** Add `optional: true` to the dummy device. Measured on the next boot: DHCP 21 s, cloudflared connected 27 s, Docker 41 s, and the Dokploy site through its Cloudflare Tunnel answered 200 at 125 s after reboot (227 s before).
+
+## OPS-403 — Laptop as a lid-closed Linux server: the internal panel stays lit at full brightness, RAPL `psys` is not a wall-power meter, and a Turing dGPU on nouveau already reaches D3cold
+
+`측정 2026-10-12 · ASUS ROG Strix G712LU (i7-10750H, GTX 1660 Ti Mobile), Ubuntu 26.04.1, kernel 7.0.0-30, nouveau + i915`
+
+**증상:** With `HandleLidSwitch=ignore` (so the server does not suspend), closing the lid does not turn the screen off.
+`/sys/class/backlight/intel_backlight/brightness` was 24000/24000, `card2-eDP-1/dpms` was `On`, and
+`/sys/module/kernel/parameters/consoleblank` was `0` (Ubuntu server default). The panel burns power and heats the lid
+around the clock. Two things looked like more waste but were not:
+- `intel-rapl:1` (name `psys`) read 0.36–0.48 W while `intel-rapl:0` (package) read 2.2–2.3 W. On this board psys is
+  not wired as platform power, so it cannot stand in for a wall meter.
+- The dGPU showed `runtime_status=active` right after `lspci`, but that read woke it. `power_state` was `D3cold`, with
+  `runtime_suspended_time` 8.7 h against 25 s active. Its USB-C/UCSI functions (01:00.2/.3) being `active` did not stop
+  D3cold, so removing them is not needed.
+
+**해결:** turn the panel off at boot with a oneshot unit that runs after `systemd-backlight` (that unit restores the
+saved brightness), and add the kernel blank timeout:
+
+```bash
+for b in /sys/class/backlight/*/brightness; do echo 0 > "$b"; done
+setterm --term linux --blank 1 --powerdown 1 --powersave powerdown </dev/tty1 >/dev/tty1
+# /etc/default/grub: GRUB_CMDLINE_LINUX_DEFAULT="... consoleblank=60"; update-grub
+```
+
+Afterwards `eDP-1/dpms` reads `Off`, and it survives a reboot. On ASUS laptops also cap the battery for 24/7 AC use with
+`echo 60 > /sys/class/power_supply/BAT0/charge_control_end_threshold`. It resets on boot, so set it from the same unit.
