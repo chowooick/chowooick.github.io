@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T07:44:11Z · 소스 커밋 `f991d2b` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T07:46:22Z · 소스 커밋 `32fb83f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16625,4 +16625,14 @@ setterm --term linux --blank 1 --powerdown 1 --powersave powerdown </dev/tty1 >/
 
 Afterwards `eDP-1/dpms` reads `Off`, and it survives a reboot. On ASUS laptops also cap the battery for 24/7 AC use with
 `echo 60 > /sys/class/power_supply/BAT0/charge_control_end_threshold`, set from the same unit so it holds after every boot.
+
+## OPS-404 — Swapping the names of two servers behind locally managed Cloudflare Tunnels: swap the tunnel credentials files, not DNS; restart avahi after `hostnamectl`
+
+`측정 2026-10-12 · cloudflared (locally managed, /etc/cloudflared/config.yml), Ubuntu 26.04.1, avahi-daemon, Docker 29.9.0 swarm`
+
+**증상:** Two home servers each ran their own locally managed tunnel (`nj1` → `nj1.mnori.com`, `nj2` → `nj2.mnori.com`) and the owner wanted the names swapped. Re-pointing the DNS CNAMEs would leave tunnel `nj1` running on the box now called nj2. After `hostnamectl set-hostname`, the new `<name>.local` did not resolve from a Mac on the LAN (`Could not resolve hostname nj2.local`), and `docker node ls` kept the old node name.
+
+A locally managed tunnel is just its credentials JSON (`/etc/cloudflared/<tunnel-id>.json`, 175 bytes) plus `config.yml`. Copy each box's JSON to the other (base64 over ssh), rewrite `config.yml` with the other tunnel id and hostname, delete the old JSON, and restart cloudflared. The public hostnames then follow the names with no DNS or API call; each site was back at 200 within 6 s of the restart (while one box had no connector, its hostname returned 530).
+
+**해결:** Swap the credentials and config as above. Then restart `avahi-daemon` so mDNS announces the new name, and restart `docker` (or reboot) so the swarm node takes the new hostname. On a Dokploy single-node install the Dokploy database holds no hostname (a `pg_dump --data-only` had 0 matches for the domain), so nothing in Dokploy needs changing. After the swap, drop the old `*.local` entries from the client's `known_hosts` (`ssh-keygen -R nj1.local`), because each name now belongs to a different host key.
 
