@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T11:34:17Z · 소스 커밋 `d40ffd0` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T11:50:28Z · 소스 커밋 `960dff5` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16817,4 +16817,20 @@ sudo docker exec $P psql -U dokploy -d dokploy -c \
    update "user" set two_factor_enabled=false where email=$$<email>$$; commit;'
 ```
 Check without a browser: `POST https://<panel>/api/auth/sign-in/email` with `{"email","password"}` and an `origin` header returns `200` with a `token` and no `twoFactorRedirect`.
+
+## OPS-417 — Installing the `cloudflared` .deb over a hand-copied binary restarts the running tunnel (~30 s outage) and turns `/usr/local/bin/cloudflared` into a symlink
+
+`측정 2026-10-12 · cloudflared 2026.10.0 deb from pkg.cloudflare.com, Ubuntu 26.04, locally managed tunnel as a custom systemd unit`
+
+**증상:** A host ran cloudflared from a hand-copied `/usr/local/bin/cloudflared` (no package, so never updated). `apt-get install cloudflared` from the Cloudflare repo, over an ssh session that itself went through that tunnel, dropped the session (`Connection to <host>-ssh closed by remote host`). Journal: `Stopping cloudflared.service` at 11:40:47, `Registered tunnel connection` at 11:41:17 — every hostname on the tunnel was down for 30 s. Afterwards `/usr/local/bin/cloudflared` was a symlink to `/usr/bin/cloudflared`. dpkg still finished (`status installed`), because the install was not tied to the dropped session.
+
+**해결:** Run the install at a maintenance time and over a path that does not use the tunnel (`ssh <name>.local` on the LAN), or with `systemd-run --no-block` so a dropped session cannot interrupt it. Point the unit at `/usr/bin/cloudflared` with a drop-in (`ExecStart=` then the new `ExecStart=`). Never replace the running binary by hand (`ln -sf` + `mv`) before the target exists: the unit's next restart then fails and takes every tunnel hostname down. If that happened, the deleted binary is still at `/proc/$(pidof cloudflared)/exe` — copy it back.
+
+## OPS-418 — `echo "$PW" | sudo -S cmd <<EOF` writes the password, not the heredoc, into `cmd`'s stdin once sudo has cached the credential
+
+`측정 2026-10-12 · sudo 1.9 (Ubuntu 26.04), bash, helper S() { echo "$PW" | sudo -S -p '' "$@"; }`
+
+**증상:** With a helper like `S()` above, `S tee /etc/x <<'EOF' … EOF` and `S python3 - <<'PY'` did not get the heredoc. The pipe inside the function replaces stdin, so the command reads whatever sudo left on it. On the first call sudo consumes the password line and the command gets EOF (empty file: an empty systemd unit counts as **masked** — `Failed to enable unit: … is masked`). After sudo has cached the credential it reads nothing, and the command receives the password itself: a script and a unit file each held the password, and `python3 -` printed it back in a `SyntaxError`.
+
+**해결:** Never give `sudo -S` a command that also needs stdin. Write content to a user-owned temp file (or `scp` it) and `sudo install -m 644 /tmp/f /etc/x`; or use `sudo -A`/`NOPASSWD` for that command. After a slip, check with `sudo grep -cF -- "$PW" <files>` and rewrite every file that matches.
 
