@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T21:00:36Z · 소스 커밋 `1dcc629` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T23:05:04Z · 소스 커밋 `a611ea2` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16862,4 +16862,18 @@ A compose file that bind-mounts a host **file** (`${SECRET_FILE}:/run/secrets/x:
 Measured on the HP: `ethtool -s eno1 wol g` armed, a 15-minute RTC alarm set as fallback (`rtcwake -m no -s 900`), `systemctl poweroff` at 20:54:41; the other server sent a magic packet (UDP broadcast to port 9, socket bound to its NIC with `SO_BINDTODEVICE`) at 20:55:27, and the HP's next boot started at 20:55:37 — 10 s later, long before the RTC alarm.
 
 **해결:** Read the root port's S-state first; S5 means power-off wake is possible, S4 only from hibernate. Arm WoL persistently with netplan `wakeonlan: true` (it writes `WakeOnLan=magic` into the generated `.link`) and re-arm it periodically, since `powertop --auto-tune` can turn it off. A laptop with a dead battery goes off at any power blip; a peer that rides the cut out on its own battery can then wake it.
+
+## OPS-422 — Moving a Prometheus/Grafana stack to another host carries the old host's disk rules along: an `or on() vector(100)` "missing mount" rule fires on the new host, and dropping it from provisioning does not delete it
+
+`측정 2026-10-12 · Grafana 13.0.7 (file-provisioned alert rules) · Prometheus v3.14.0 · node-exporter v1.12.1 · Dokploy raw compose`
+
+**증상:** A day after the whole Dokploy install moved hosts (OPS-410), the e-mail alert "backup disk `/mnt/hdd` over 80 % or not mounted" fired. The old host's HDD was mounted and 1 % used. The monitoring stack had moved with everything else, and its node-exporter now read the new host, which has one NVMe and no `/mnt/hdd`. The rule's `… or on() vector(100)` (OPS-240 follow-up 4) is built to turn a missing mount into 100 %, so it fired exactly as designed. The static scrape label `instance: <old host>` had also come along, so every graph showed the new machine under the old name.
+
+**해결:** After moving a monitoring stack, grep its compose for the old host name and for host-specific mount points, and fix both with the move. To remove a file-provisioned Grafana rule, deleting its block is not enough; the stored rule stays. Add to the same provisioning file:
+```yaml
+deleteRules:
+  - orgId: 1
+    uid: <rule uid>
+```
+then apply it as in OPS-243 (patch `compose.one`'s `composeFile`, deploy, `up -d --force-recreate --no-deps grafana prometheus`). Check the result in a copy of `grafana.db` (`docker cp`, then `select uid from alert_rule`) when no admin password is at hand. Renaming the scrape label leaves the old series in instant queries for 5 minutes (Prometheus lookback), so per-instance rules see two series until then.
 
