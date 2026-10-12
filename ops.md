@@ -7859,3 +7859,31 @@ The 21-day count started on the day the limit was turned on, because that was th
 ```
 
 **해결:** This is designed behaviour, and no setting turns it off. Leave the Mac on AC until `ioreg` shows `FullyCharged = Yes`. The limit then comes back by itself for the next 21 days. To keep the forced 100 % from coming as a surprise, do a full charge on purpose every two to three weeks, for example the night before travelling.
+
+## OPS-410 — Moving a whole Dokploy install to another host: restore its Postgres dump, then set `ENCRYPTION_KEY`, re-save application domains, and copy images and volumes yourself
+
+`측정 2026-10-12 · Dokploy v0.30.8 → v0.30.8, Docker 29.9 swarm, 7 applications + 21 raw compose stacks + 1 Postgres service`
+
+**증상:** After `pg_restore` of the old host's `dokploy` database into a fresh install, every service's env would not decrypt (`enc:v1:` values), application domains returned Traefik's 19-byte `404 page not found`, and compose stacks failed on `image: game-web:${RELEASE}` that existed only on the old host. Login asked for TOTP, because the old admin had 2FA.
+
+Env values are encrypted with `sha256(ENCRYPTION_KEY ?? BETTER_AUTH_SECRET)`. An install without `BETTER_AUTH_SECRET` uses the literal default `better-auth-secret-123456789`; a newer install has `BETTER_AUTH_SECRET_FILE`, so the keys differ. Dokploy writes an application's Traefik file (`/etc/dokploy/traefik/dynamic/<app>.yml`) only when a domain is saved, not on deploy; compose domains become labels at deploy, so those work.
+
+**해결:** On the target: `docker service scale dokploy=0`, `drop database dokploy with (force)`, `pg_restore --no-owner`, copy the target admin's `account.password` hash back in, `delete from session`, then `docker service update --env-add ENCRYPTION_KEY=<old key or the default literal> dokploy` (it decrypts with the new key and the target's own secret) and scale to 1. The old host's API keys keep working, so scripts and GitLab hooks (`/api/deploy/<refreshToken>`) need only DNS. Call `domain.update` once per application domain to write the Traefik files. Move locally built images with one `docker save a b c … | zstd` (shared layers are sent once; 21 images were 2.17 GB, `docker load` 398 s over a 7 MB/s relay) and named volumes with `docker run --rm -v VOL:/v:ro … tar -cf - -C /v .` into a pre-created volume of the same name; compose then adopts it with only a warning. Per stateful stack: `compose.stop` on the old host, copy volumes, `compose.deploy` on the new one, check `curl -H 'Host: <domain>' http://<new-lan-ip>/`, then switch DNS. 18 stacks took 30-140 s of downtime each. Do not poll `composeStatus` for completion, it still reads `done` from the restored row; poll `deployment.allByCompose` for a deployment newer than your call.
+
+## OPS-411 — Cloudflare: creating `x.zone` turns off the `*.zone` wildcard for `a.x.zone`; two-level names go NXDOMAIN
+
+`측정 2026-10-12 · Cloudflare DNS, mnori.com with an unproxied `*.mnori.com` A record`
+
+**증상:** `admin.partners.mnori.com` and `api.farm.mnori.com` had always resolved through `*.mnori.com`. Minutes after explicit CNAMEs were created for `partners.mnori.com` and `farm.mnori.com`, both returned NXDOMAIN (`dig` empty, curl `000`).
+
+This is RFC 4592: once `partners.mnori.com` exists, it is the closest encloser of `admin.partners.mnori.com`, and only a `*.partners.mnori.com` record could match. Resolvers then cache the NXDOMAIN, so the local machine kept failing after the fix while `dig @1.1.1.1` already answered.
+
+**해결:** Before giving any name its own record, list deeper names that used the wildcard and create explicit records for them in the same step. A proxied two-level name also has no Universal SSL certificate, so keep such names DNS-only on a host with its own certificate (here misa's Traefik forwards them to the new host with `passHostHeader: false`).
+
+## OPS-412 — Cloudflare Browser Integrity Check answers Python `urllib` with `403` / `error code: 1010`; deploy scripts on the origin host can bypass Cloudflare with `/etc/hosts` and a local Let's Encrypt certificate
+
+`측정 2026-10-12 · Cloudflare proxied hostnames on mnori.com, Python 3 urllib, curl 8`
+
+**증상:** A Dokploy API script that worked against a DNS-only host failed after the host went behind a Cloudflare Tunnel: `HTTP Error 403: Forbidden`, body `error code: 1010`. With curl, only the user agent `Python-urllib/3.12` was blocked; `node`, `undici`, `python-requests/2.32`, `Go-http-client/1.1` and an empty agent got 200. The tunnel's own cert.pem token cannot change zone settings (`/settings/browser_check` → 403 `Unauthorized`).
+
+**해결:** For scripts that run on the server itself: `127.0.0.1 dokploy.<zone>` in `/etc/hosts`, plus a Traefik router for that host on `websecure` with `certResolver: letsencrypt`. HTTP-01 succeeds through the tunnel when the tunnel sends the hostname to `http://localhost:80` and the `web` router has no redirect-to-https. Python then reaches Dokploy locally with a valid certificate. From elsewhere, send a browser-like `User-Agent` or use a WAF skip rule in the dashboard.
