@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T10:51:42Z · 소스 커밋 `4e2d12a` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T10:52:45Z · 소스 커밋 `1c3e44c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16753,6 +16753,8 @@ The 21-day count started on the day the limit was turned on, because that was th
 Env values are encrypted with `sha256(ENCRYPTION_KEY ?? BETTER_AUTH_SECRET)`. An install without `BETTER_AUTH_SECRET` uses the literal default `better-auth-secret-123456789`; a newer install has `BETTER_AUTH_SECRET_FILE`, so the keys differ. Dokploy writes an application's Traefik file (`/etc/dokploy/traefik/dynamic/<app>.yml`) only when a domain is saved, not on deploy; compose domains become labels at deploy, so those work.
 
 **해결:** On the target: `docker service scale dokploy=0`, `drop database dokploy with (force)`, `pg_restore --no-owner`, copy the target admin's `account.password` hash back in, `delete from session`, then `docker service update --env-add ENCRYPTION_KEY=<old key or the default literal> dokploy` (it decrypts with the new key and the target's own secret) and scale to 1. The old host's API keys keep working, so scripts and GitLab hooks (`/api/deploy/<refreshToken>`) need only DNS. Call `domain.update` once per application domain to write the Traefik files. Move locally built images with one `docker save a b c … | zstd` (shared layers are sent once; 21 images were 2.17 GB, `docker load` 398 s over a 7 MB/s relay) and named volumes with `docker run --rm -v VOL:/v:ro … tar -cf - -C /v .` into a pre-created volume of the same name; compose then adopts it with only a warning. Per stateful stack: `compose.stop` on the old host, copy volumes, `compose.deploy` on the new one, check `curl -H 'Host: <domain>' http://<new-lan-ip>/`, then switch DNS. 18 stacks took 30-140 s of downtime each. Do not poll `composeStatus` for completion, it still reads `done` from the restored row; poll `deployment.allByCompose` for a deployment newer than your call.
+
+Behind a tunnel that sends hostnames to `http://localhost:80`, set `forwardedHeaders.insecure: true` on Traefik's `web` entrypoint. cloudflared passes Cloudflare's `X-Forwarded-Proto: https`, and Dokploy's `redirect-to-https` (`redirectScheme`) then does nothing. Measured through the tunnel: a `web` router with that middleware answered 200, not 301. Without that setting the same request loops. So a deploy script that flips a domain back to `https: true` does not break the site.
 
 ## OPS-411 — Cloudflare: creating `x.zone` turns off the `*.zone` wildcard for `a.x.zone`; two-level names go NXDOMAIN
 
