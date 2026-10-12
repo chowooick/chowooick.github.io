@@ -7959,3 +7959,22 @@ Check without a browser: `POST https://<panel>/api/auth/sign-in/email` with `{"e
 A compose file that bind-mounts a host **file** (`${SECRET_FILE}:/run/secrets/x:ro`) whose path does not exist makes Docker create an empty **directory** at that path, as root, and start the container anyway. The healthcheck only probed `/healthz`, so nothing failed; any feature that reads the secret runs without it. The release scripts that keep `composeId` and generated passwords in `~/.config/<app>/deployment.json` would, without that file, take the "first deploy" path on their next run.
 
 **해결:** Before moving, list what the host user's home carries: `ls ~/.config ~/.mnori-deploy` and every bind source, `docker inspect -f '{{.Name}} {{range .Mounts}}{{if eq .Type "bind"}}{{.Source}} {{end}}{{end}}' $(docker ps -aq)`. Copy them with `tar -czf - … | ssh new 'tar -C ~/.config -xpzf -'`. If a directory was already created in a file's place: `sudo rmdir` it, `chown` the parent back, copy the file, then recreate only that service (`docker compose -p <appName> up -d --force-recreate --no-deps <svc>` in `/etc/dokploy/compose/<appName>/code`; a plain `docker restart` keeps the old mount). Check with `docker exec <c> test -f /run/secrets/x`.
+
+## OPS-420 — A unit ordered `After=` a service that is itself `After=multi-user.target` must not be `WantedBy=multi-user.target`: systemd breaks the cycle by silently dropping it at boot
+
+`측정 2026-10-12 · systemd 259 (Ubuntu 26.04)`
+
+**증상:** A new service `nj-lid.service` (`After=nj-powersave.service`, `WantedBy=multi-user.target`) was `active` after `systemctl enable --now`, but after the next boot it was `inactive` with no failure. `systemctl --failed` is empty. Only the boot journal says so:
+`multi-user.target: Found ordering cycle: nj-lid.service/start after nj-powersave.service/start after multi-user.target/start - after nj-lid.service` and `Job nj-lid.service/start deleted to break ordering cycle`. `nj-powersave.service` had `After=multi-user.target`, and a target is implicitly ordered after every unit it wants.
+
+**해결:** Hang the unit on the service it follows: `[Install] WantedBy=nj-powersave.service` (plus `After=nj-powersave.service`), so `multi-user.target` no longer wants it. `systemd-analyze verify` did not report the cycle; test with a real reboot and `journalctl -b | grep "ordering cycle"`.
+
+## OPS-421 — Wake-on-LAN from soft-off works on an HP Pavilion (r8169) whose NIC root port lists S5 in `/proc/acpi/wakeup`; the ASUS with an S4 port is not a candidate
+
+`측정 2026-10-12 · HP Pavilion (BIOS F.80, r8169 100 Mb), ASUS ROG Strix G712LU (r8169 1 GbE), Ubuntu 26.04`
+
+**증상:** Whether a laptop server can be woken after a power cut is not in any spec sheet, and `ethtool` reports `Supports Wake-on: pumbg` on both machines either way. The column that differs is the S-state of the NIC's PCIe root port in `/proc/acpi/wakeup` (the port is the parent of `/sys/class/net/<nic>/device`): HP `RP09 S5 *enabled`, ASUS `RP15 S4 *enabled`.
+
+Measured on the HP: `ethtool -s eno1 wol g` armed, a 15-minute RTC alarm set as fallback (`rtcwake -m no -s 900`), `systemctl poweroff` at 20:54:41; the other server sent a magic packet (UDP broadcast to port 9, socket bound to its NIC with `SO_BINDTODEVICE`) at 20:55:27, and the HP's next boot started at 20:55:37 — 10 s later, long before the RTC alarm.
+
+**해결:** Read the root port's S-state first; S5 means power-off wake is possible, S4 only from hibernate. Arm WoL persistently with netplan `wakeonlan: true` (it writes `WakeOnLan=magic` into the generated `.link`) and re-arm it periodically, since `powertop --auto-tune` can turn it off. A laptop with a dead battery goes off at any power blip; a peer that rides the cut out on its own battery can then wake it.
