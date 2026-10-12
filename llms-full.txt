@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T07:51:07Z · 소스 커밋 `d7a322d` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T07:57:31Z · 소스 커밋 `8034496` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16657,4 +16657,37 @@ done
 Match `--ctorigdstport` in `DOCKER-USER`, because after DNAT the packet's `--dport` is the container port. Here the two are the same, but they differ for any `-p 8080:3000` mapping. Measured from another host on the LAN, IPv4 and IPv6 `:3000` both time out, and the tunnel hostname still returns 200.
 
 For remote ssh through the same tunnel, add an ingress rule `hostname: <name>-ssh.<zone>` → `service: ssh://localhost:22` and `cloudflared tunnel route dns <id> <name>-ssh.<zone>`. On the client, set `ProxyCommand cloudflared access ssh --hostname %h`. Without a Cloudflare Access policy that hostname is open to anyone who has cloudflared, so set `PasswordAuthentication no` in `/etc/ssh/sshd_config.d/10-*.conf`. sshd keeps the first value it reads, and that file is read before Ubuntu's `50-cloud-init.conf` (`PasswordAuthentication yes`); confirm with `sshd -T`.
+
+## OPS-406 — An old laptop HDD used as a server can be past its rated head-load count; `apm = 254` in `/etc/hdparm.conf` did not apply on Ubuntu 26.04, so set it from a systemd unit
+
+`측정 2026-10-12 · Ubuntu 26.04.1, hdparm package, HGST HTS541010A9E680 (1 TB 5400 rpm laptop drive)`
+
+**증상:** SMART on a repurposed 2016 laptop server read `Load_Cycle_Count` 661,055 (normalised 034) after 9,916 power-on hours, beyond the ~600k that laptop drives are rated for. SMART overall-health still said PASSED, with 0 pending or reallocated sectors, so nothing else warned. `hdparm -B` showed APM level 128, at which the drive unloads its heads when idle. Adding `/dev/disk/by-id/<disk> { apm = 254 }` to `/etc/hdparm.conf` changed nothing. Neither `udevadm trigger --action=add /dev/sda` nor running `/usr/lib/udev/hdparm` by hand applied it, and `hdparm -B` still read 128. The udev helper strips `-B` and leaves APM to `/usr/lib/pm-utils/power.d/95hdparm-apm`.
+
+**해결:** Check `Load_Cycle_Count` and `hdparm -B` on any laptop HDD that becomes a server. To stop further head parking, use a oneshot unit, `WantedBy=multi-user.target`, with `ExecStart=/usr/sbin/hdparm -B 254 /dev/disk/by-id/<disk>`. Use the by-id path so the unit survives `sdX` renaming. It read 254 after a reboot.
+
+## OPS-407 — A portable Docker Swarm host breaks on a LAN inside 172.18.0.0/16: the more specific LAN route hides `docker_gwbridge`, and host-mode published ports (Dokploy :3000) stop answering
+
+`측정 2026-10-12 · Docker 29.9.0 swarm (Dokploy v0.30.8), Ubuntu 26.04.1, cloudflared tunnel → http://localhost:3000, userland proxy on`
+
+**증상:** We checked a home server meant to work on any router by adding a second address to its NIC at runtime
+(`ip addr add <addr>/24 dev eno2`), the same thing a router on that subnet would do, while probing the public tunnel
+URL every 3 s:
+
+| LAN added | `curl 127.0.0.1:3000` | tunnel URL |
+|---|---|---|
+| none (192.168.1.0/24), or the IP changed .160 → .201 | 200 | 200 throughout |
+| 10.0.0.0/24 (Xfinity default; overlaps swarm `ingress` 10.0.0.0/24) | 200 | 200 |
+| 172.17.0.0/24 (overlaps `docker0`, which is linkdown) | 200 | 200 |
+| **172.18.0.0/24** (overlaps `docker_gwbridge` 172.18.0.0/16) | **000** | **502** for the whole 30 s |
+
+Docker DNATs host-mode published ports to the container's `docker_gwbridge` address (172.18.0.x). A LAN `/24` route
+inside 172.18.0.0/16 is more specific than the bridge's `/16`, so the host sends that traffic out of the NIC instead.
+Overlay networks (`ingress`, `dokploy-network` 10.0.1.0/24) live in their own namespaces and did not clash. The tunnel
+recovered as soon as the address was removed.
+
+**해결:** if the box may land on such a LAN, move `docker_gwbridge` (and `docker0` via `"bip"` / `"default-address-pools"`
+in daemon.json) to a range no router uses, e.g. 198.19.0.0/16 (benchmarking range). `docker_gwbridge` can only be
+recreated with no swarm containers attached, so this takes the services down briefly. Otherwise accept the risk:
+172.18.x home LANs are rare.
 
