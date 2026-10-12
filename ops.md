@@ -7676,3 +7676,12 @@ end tell
 
 For targets that are not focusable (table rows, divs with click handlers) post a real `CGEvent` mouse-down/up from a
 small Swift binary at the point mapped from a `screencapture` (Retina: screenshot pixels ÷ 2 = points).
+
+## OPS-400 — Renaming Dokploy's own panel domain without the UI: `webServerSettings.host` in Postgres plus the root-owned `dokploy.yml`, edited from inside the dokploy container
+`측정 2026-10-12 · Dokploy v0.30.8 (misa) · Traefik file provider · Let's Encrypt HTTP-01`
+
+**증상:** `sed -i` on `/etc/dokploy/traefik/dynamic/dokploy.yml` as a docker-group user fails with `sed: couldn't open temporary file /etc/dokploy/traefik/dynamic/sedXXXX: Permission denied` — the directory and file are `root:root 644`, and without sudo there is no host-side way to write them.
+
+The panel domain lives in two places: the `host` column of the single row in `"webServerSettings"` (Postgres, `docker exec <dokploy-postgres> psql -U dokploy -d dokploy`), and the two router rules in `dokploy.yml`. The DB value is what Dokploy uses when it regenerates `dokploy.yml` (saving the domain in Settings → Web Server, or an update), so changing only the file is undone later.
+
+**해결:** run the edit inside the dokploy container, which mounts `/etc/dokploy` as root: `docker exec $(docker ps -qf name=dokploy.1) sed -i 's/rule: Host(`old`)/rule: Host(`new`) || Host(`old`)/' /etc/dokploy/traefik/dynamic/dokploy.yml`, and `update "webServerSettings" set host='new'`. Traefik's file watcher picks it up and HTTP-01 issued one certificate with both names as SANs in under 30 s. Keeping `|| Host(old)` matters: GitLab push hooks (`https://<old>/api/deploy/<token>`) and deploy scripts in other repos still call the old name. better-auth sign-in from the new origin returned the normal `401 INVALID_EMAIL_OR_PASSWORD`, not an origin error. A later regeneration from the DB will drop the old alias.
