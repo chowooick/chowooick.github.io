@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T07:13:40Z · 소스 커밋 `e3b5710` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T07:33:03Z · 소스 커밋 `d4c14a1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16569,4 +16569,34 @@ small Swift binary at the point mapped from a `screencapture` (Retina: screensho
 The panel domain lives in two places: the `host` column of the single row in `"webServerSettings"` (Postgres, `docker exec <dokploy-postgres> psql -U dokploy -d dokploy`), and the two router rules in `dokploy.yml`. The DB value is what Dokploy uses when it regenerates `dokploy.yml` (saving the domain in Settings → Web Server, or an update), so changing only the file is undone later.
 
 **해결:** run the edit inside the dokploy container, which mounts `/etc/dokploy` as root: `docker exec $(docker ps -qf name=dokploy.1) sed -i 's/rule: Host(`old`)/rule: Host(`new`) || Host(`old`)/' /etc/dokploy/traefik/dynamic/dokploy.yml`, and `update "webServerSettings" set host='new'`. Traefik's file watcher picks it up and HTTP-01 issued one certificate with both names as SANs in under 30 s. Keeping `|| Host(old)` matters: GitLab push hooks (`https://<old>/api/deploy/<token>`) and deploy scripts in other repos still call the old name. better-auth sign-in from the new origin returned the normal `401 INVALID_EMAIL_OR_PASSWORD`, not an origin error. A later regeneration from the DB will drop the old alias.
+
+## OPS-401 — A single-node Docker Swarm (Dokploy) pins the LAN IP it was initialised on; move it to a netplan dummy address with `--force-new-cluster`, and expect the old address to stay in the raft member record
+
+`측정 2026-10-12 · Docker 29.9.0, Dokploy v0.30.8, Ubuntu 26.04.1, netplan 1.2`
+
+**증상:** Dokploy's installer runs `docker swarm init --advertise-addr <LAN IP>`. After the box got a different IP and rebooted, the swarm still elected itself leader and Dokploy came back (~2 min), but dockerd logged `agent: session failed … dial tcp 192.168.1.159:2377: connect: no route to host` before falling back to the local manager. Swarm ports 2377/7946 also listen on `0.0.0.0`, i.e. on whatever LAN the box is plugged into.
+
+To make the swarm independent of the network, give it an address that never changes — a dummy interface in netplan — and re-anchor the existing cluster on it. `--force-new-cluster` keeps services, secrets and overlay networks:
+
+```yaml
+  dummy-devices:
+    swarm0:
+      addresses: [198.18.213.1/32]   # 198.18.0.0/15: benchmarking range, never a home LAN
+      optional: true                 # see OPS-402
+```
+```bash
+docker swarm init --force-new-cluster --advertise-addr 198.18.213.1 --listen-addr 198.18.213.1:2377
+```
+
+Afterwards `docker info` shows `NodeAddr 198.18.213.1` and 2377/7946 listen only on that address. But `docker node inspect self --format '{{.ManagerStatus.Addr}}'` still says the old `192.168.1.159:2377`: it lives in the encrypted raft WAL, is copied back into `/var/lib/docker/swarm/state.json`, and was not updated by the re-init or by two reboots. The agent still dials it once per start (8 failed dials in one boot) and then uses the local manager; tasks were created 3 s after dockerd started, so it costs nothing measurable. Only `docker swarm leave --force` + a fresh init clears it, and that drops Dokploy's services and secrets.
+
+**해결:** Use the dummy address + `--force-new-cluster`; ignore the stale `ManagerStatus.Addr`. On a fresh install, create the dummy interface first and pass `--advertise-addr` to the installer's swarm init instead.
+
+## OPS-402 — A netplan `dummy-devices` entry without `optional: true` makes every boot wait the full 120 s `systemd-networkd-wait-online` timeout
+
+`측정 2026-10-12 · netplan 1.2, systemd-networkd, Ubuntu 26.04.1`
+
+**증상:** After adding a dummy interface (OPS-401), boot became 2 minutes slower. Timeline from the journal: DHCPv4 lease at 24 s, but `docker.service` and `cloudflared.service` (both `After=network-online.target`) started at 142–151 s. A dummy link never gets carrier, so `systemd-networkd-wait-online` waits for it until its 120 s timeout. Nothing logs an error; the box just comes up late.
+
+**해결:** Add `optional: true` to the dummy device. Measured on the next boot: DHCP 21 s, cloudflared connected 27 s, Docker 41 s, and the Dokploy site through its Cloudflare Tunnel answered 200 at 125 s after reboot (227 s before).
 
