@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-12T07:57:31Z · 소스 커밋 `8034496` · 이 파일은 자동 생성물이다.
+생성 2026-10-12T08:00:50Z · 소스 커밋 `d28c631` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16690,4 +16690,32 @@ recovered as soon as the address was removed.
 in daemon.json) to a range no router uses, e.g. 198.19.0.0/16 (benchmarking range). `docker_gwbridge` can only be
 recreated with no swarm containers attached, so this takes the services down briefly. Otherwise accept the risk:
 172.18.x home LANs are rare.
+
+## OPS-408 — Moving Docker Swarm's `docker_gwbridge` and `docker0` off 172.17/172.18 on a live Dokploy host: about 40 s of downtime, nothing lost
+
+`측정 2026-10-12 · Docker 29.9.0 swarm (Dokploy v0.30.8: services dokploy, dokploy-postgres + container dokploy-traefik), Ubuntu 26.04.1`
+
+**증상:** A LAN inside `docker_gwbridge`'s 172.18.0.0/16 breaks host-mode published ports (OPS-407). Docker's default pools also hand out 172.17–31/16 and 192.168.x/20 to new bridge networks, such as Dokploy compose apps, which can collide with a home LAN. `docker_gwbridge` cannot be edited in place. It can be removed only with no swarm container attached, and `bip` only changes on a daemon restart.
+
+**해결:** Run this as one detached script (`systemd-run`), because it restarts Docker:
+
+```bash
+cat > /etc/docker/daemon.json <<'J'
+{ "bip": "198.18.0.1/24", "default-address-pools": [{ "base": "198.19.0.0/16", "size": 24 }] }
+J
+docker service scale -d dokploy=0 dokploy-postgres=0
+docker stop dokploy-traefik            # standalone container on the attachable overlay also holds a gwbridge endpoint
+for c in $(docker network inspect docker_gwbridge -f '{{range $k,$v := .Containers}}{{$v.Name}} {{end}}'); do
+  docker network disconnect --force docker_gwbridge "$c"   # includes gateway_ingress-sbox
+done
+docker network rm docker_gwbridge
+docker network create --subnet 198.18.1.0/24 --gateway 198.18.1.1 \
+  -o com.docker.network.bridge.name=docker_gwbridge \
+  -o com.docker.network.bridge.enable_icc=false \
+  -o com.docker.network.bridge.enable_ip_masquerade=true docker_gwbridge
+systemctl restart docker
+docker service scale -d dokploy=1 dokploy-postgres=1 && docker start dokploy-traefik
+```
+
+The script ran in 32 s, and the panel answered 200 through its tunnel at 38 s. Services, database and secrets were intact, and the swarm overlays (`ingress` 10.0.0.0/24, `dokploy-network` 10.0.1.0/24) were untouched; OPS-407 showed they do not clash. A re-test then held 172.18.0.50/24, 172.17.0.50/24 and 198.51.100.50/24 on the NIC at once. During it, `127.0.0.1:3000` and the tunnel URL stayed 200 throughout, and `docker network create` handed out 198.19.0.0/24. 198.18.0.0/15 is the benchmarking range (RFC 2544), so no consumer router uses it. Do this before apps exist, because every app's bridge network would otherwise also need re-creating.
 
