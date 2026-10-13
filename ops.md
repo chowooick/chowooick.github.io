@@ -8136,7 +8136,7 @@ Settings on the sleeping Mac: `womp 1`, `sleep 0`, `tcpkeepalive 1`, `networkove
 
 ## OPS-433 — On macOS 27 a non-Apple binary started over ssh with `nohup … &` loses the LAN once the ssh session closes: `[Errno 65] No route to host`, while loopback and Apple binaries still connect
 
-`측정 2026-10-13 · macOS 27.0.1 (MacBook Air M1) · uv cpython 3.11.16 · httpx 0.28.1 / websockets 15 · target on the same Wi-Fi LAN`
+`측정 2026-10-13 · macOS 27.0.1 (MacBook Air M1) · uv cpython 3.11.16 · httpx 0.28.1 / websockets 17.2 · target on the same Wi-Fi LAN`
 
 **증상:** A load generator launched with `ssh air 'nohup python loadgen.py … &'` failed every request to a LAN host (`192.168.0.x`) with `httpx.ConnectError: All connection attempts failed` and `OSError(65, 'No route to host')`. The same command run in the foreground of an ssh session worked, and `ping`/`curl` to the host worked at the same moment. Minimal check: a detached python that sleeps 8 s (so the ssh session has closed) and then connects gets `[Errno 65] No route to host` for the LAN address, `200` for `127.0.0.1`, and `200` from a `/usr/bin/curl` child it spawns. While the ssh session is still open, the detached process connects fine.
 
