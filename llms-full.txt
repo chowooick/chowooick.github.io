@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T08:26:09Z · 소스 커밋 `a46cdf9` · 이 파일은 자동 생성물이다.
+생성 2026-10-13T08:28:09Z · 소스 커밋 `ff5d979` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16968,4 +16968,21 @@ Reboot test, same day: without sudo, `osascript -e 'tell application "loginwindo
 5. Check: `curl http://localhost:5000/v2/_catalog` and a `GET /v2/<repo>/manifests/latest` with the manifest `Accept` headers returned 200 for all five repositories.
 
 On a btrfs root (OrbStack VM), `df /` showed the same 55 GB used right after the GC; after `sync` it showed 41 GB. The macOS host freed the same 14 GB (99 GB to 85 GB used) because OrbStack mounts the disk with `discard`. Related: OPS-092, OPS-240.
+
+## OPS-430 — A macOS host with sudo needs no container for a Cloudflare Tunnel: run cloudflared as its own LaunchDaemon with `--token-file`; a user API token without Tunnel/Access scope lists them as empty with `success: true`
+
+`측정 2026-10-13 · cloudflared 2026.10.0 (Homebrew) · macOS 27.0.1 (Mac mini M6) · Cloudflare Zero Trust free`
+
+**증상:** two traps while giving a second Mac `ssh` from any network the same way as OPS-428:
+
+- `GET /accounts/<id>/cfd_tunnel`, `access/apps` and `access/service_tokens` with a user API token that has zone DNS rights but no Tunnel/Access scope answered `"success": true, "errors": [], "result": []`, although a tunnel, an Access app and a service token existed. Nothing says the token lacks the scope; the same calls through the dashboard session (OPS-301) listed them.
+- OPS-428 ran cloudflared in a colima VM because that Air has no sudo and runs LuLu. That costs a 1 GiB VM and a LaunchAgent that only starts after login.
+
+**해결:** treat an empty list from a user API token as "maybe no permission" and check through the dashboard session before creating duplicates. On a Mac where the account has sudo, skip the container:
+
+1. `brew install cloudflared`; write the tunnel token (`GET …/cfd_tunnel/<id>/token`) to `/etc/cloudflared/<name>.token`, root 0600, by piping it over ssh so it is never printed.
+2. Tunnel ingress `ssh://localhost:22` (no `host.docker.internal`); sshd then sees sessions from `::1` (`$SSH_CLIENT` = `::1 <port> 22`).
+3. `/Library/LaunchDaemons/com.<org>.<name>-tunnel.plist` with `ProgramArguments` `cloudflared tunnel --no-autoupdate run --token-file /etc/cloudflared/<name>.token`, `RunAtLoad`, `KeepAlive`, root:wheel 644, then `sudo launchctl bootstrap system <plist>`. The token stays out of the world-readable plist, which putting it on the command line would not do.
+
+Measured: four tunnel connections registered within 6 s of bootstrap. A full `ssh` round trip (connect, `hostname`, exit) took 0.56–0.74 s over three runs. After `sudo pkill` of cloudflared, launchd restarted it (`runs = 2`) and `ssh` through the tunnel answered on the first try 2 s later. Without the service token, `https://<host>/` answers 302 to the Access login, as in OPS-428. A reboot was not tested on this host.
 
