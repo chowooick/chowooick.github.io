@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T08:42:38Z · 소스 커밋 `922788c` · 이 파일은 자동 생성물이다.
+생성 2026-10-13T08:45:07Z · 소스 커밋 `e08a38b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17003,4 +17003,22 @@ On a btrfs root (OrbStack VM), `df /` showed the same 55 GB used right after the
 Measured: four tunnel connections registered within 6 s of bootstrap. A full `ssh` round trip (connect, `hostname`, exit) took 0.56–0.74 s over three runs. After `sudo pkill` of cloudflared, launchd restarted it (`runs = 2`) and `ssh` through the tunnel answered on the first try 2 s later. Without the service token, `https://<host>/` answers 302 to the Access login, as in OPS-428.
 
 Reboot test, same day (`sudo shutdown -r now` over LAN ssh): ssh stopped answering 2 s later; LAN ssh was back after 30 s and `ssh` through the tunnel after 34 s, with no login needed (the LaunchDaemon started cloudflared at boot and its four connections registered within 3 s). A home internet outage the same day dropped both this tunnel and the Air's (OPS-428) at 08:39 UTC with `timeout: no recent network activity`. The Air's containerised cloudflared exited (`no more connections active and exiting`), Docker restarted it, and it was back 19 s later; the native one stayed in its own retry backoff and re-registered only at 08:41:12, about 2 minutes after the drop. During that gap `ssh` answered `websocket: bad handshake` (as in OPS-427) while LAN ssh worked.
+
+## OPS-431 — Replace a colima-VM cloudflared tunnel with a native launchd cloudflared on a LuLu Mac: allow it once in LuLu, and point the remote-managed ingress at `localhost` (not `host.docker.internal`)
+
+`측정 2026-10-13 · macOS 27.0.1 (MacBook Air M1) · cloudflared 2026.10.0 (native, Developer ID "Cloudflare Inc. 68WVV388M8") · LuLu (allowApple, not passive) · remotely-managed Cloudflare Tunnel (source: cloudflare)`
+
+**증상:** a test host reached over ssh through a Cloudflare Tunnel (OPS-428) ran cloudflared inside a dedicated colima VM only because LuLu blocks new binaries' outbound (OPS-299). The VM's 1 GiB reservation was wasted for a job that needs ~44 MB. Moving to a native launchd cloudflared hit two walls:
+
+- A downloaded native cloudflared registered its tunnel connections but every request failed with `dial tcp: lookup host.docker.internal: no such host`. The tunnel's ingress was `ssh://host.docker.internal:22`, which only resolves **inside** the old container (where `--add-host host.docker.internal:host-gateway` mapped it); on the host there is no such name. Running the native connector alongside the still-up colima connector made ssh ~50 % flaky, because Cloudflare load-balances across all connections and half dialed the dead name.
+- The tunnel is **remotely-managed** (`"source":"cloudflare"`), so cloudflared pulls the server-side ingress and **ignores any local `config.yml`** — even when started with `--config` and a credentials file built from the token. The ingress must be changed server-side. The user API token (zone-scoped) is `1001 Not authorized` on `GET/PUT /accounts/:id/cfd_tunnel/:id/configurations`.
+
+**해결:**
+
+1. Install the native binary at its final path first (LuLu keys a rule to the path + signing id, so don't move it later): `~/.local/bin/cloudflared`. Write a LaunchAgent (`RunAtLoad`, `KeepAlive`) whose wrapper sources the tunnel token and runs `cloudflared tunnel --no-autoupdate run`.
+2. LuLu's allow needs one human click on the host's screen (ssh cannot see or answer the alert — OPS-299); choose **Always**. The persistent rule is then keyed by the Developer ID `Cloudflare Inc. (68WVV388M8)` and the path, so it survives reboot and `--no-autoupdate` keeps the path stable. Confirm the tunnel works rather than decoding `rules.plist`.
+3. Change the remote ingress to `ssh://localhost:22`. The token can't, so use the signed-in dashboard session (OPS-301/428): a Brave on CDP `:9333` with a `dash.cloudflare.com` tab, and `fetch('/api/v4/accounts/:id/cfd_tunnel/:id/configurations',{method:'PUT',headers:{'x-cross-site-security':'dash','content-type':'application/json'},body:JSON.stringify({config:{ingress:[{service:'ssh://localhost:22',hostname:'<host>'},{service:'http_status:404'}],'warp-routing':{enabled:false}}})})`. It returned `version:2`, and the running cloudflared picked it up with no restart.
+4. Tear down the old path: `launchctl bootout gui/501/<old-agent>`, `docker --context colima-<profile> rm -f <container>`, `colima stop <profile>`, `colima delete -f <profile>`. `colima delete` switches the global docker context, so restore it afterwards.
+
+Measured: native RSS 44 MB vs the VM's 1 GiB cap; 10/10 ssh round trips through the tunnel after the colima connector was gone (while both ran, 3/5). Keep the home-LAN path (`ssh -o HostKeyAlias=<host>.local <user>@<host>.local`) open during the cutover — it is independent of the tunnel, so a wrong ingress cannot lock you out.
 
