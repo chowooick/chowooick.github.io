@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T07:31:01Z · 소스 커밋 `6afbfd1` · 이 파일은 자동 생성물이다.
+생성 2026-10-13T07:43:04Z · 소스 커밋 `80526b3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16884,4 +16884,24 @@ then apply it as in OPS-243 (patch `compose.one`'s `composeFile`, deploy, `up -d
 **증상:** a systemd job on the host that runs Uptime Kuma pushed its heartbeat to `https://uptime.<domain>/api/push/<token>` and got `curl: (28) Connection timed out after 10006 milliseconds`. The same URL worked from outside. The name resolves to the host's own public IP, and the router does not forward a connection from inside the LAN back to the LAN (no hairpin / NAT loopback). The Kuma container publishes no port (`"3001/tcp":null`), so `127.0.0.1:3001` refuses too.
 
 **해결:** keep the public URL and pin the name to the local reverse proxy: `curl -fsS -m 10 --resolve uptime.<domain>:443:127.0.0.1 -G "$url" --data-urlencode status=up --data-urlencode msg=…`. TLS still checks the real certificate, and the URL in the config file stays the one that works from anywhere. Test a new push from the host it will run on, not from your own machine. Uptime Kuma's own Python client (`uptime-kuma-api`) generates the push token itself; `add_monitor(pushToken=…)` raises `TypeError`, so read it back with `get_monitor(id)["pushToken"]`.
+
+## OPS-424 — A Dokploy API key made through `user.createApiKey` stops after 10 calls a day and then answers `Unauthorized`, not 429
+
+`측정 2026-10-13 · Dokploy v0.30.8 (better-auth apikey plugin), postgres:16`
+
+**증상:** a key created from the shell worked for 10 REST calls (`x-api-key`), then every call, including `GET /api/project.all`, returned `401 {"message":"Unauthorized"}`. Nothing says a limit was hit. In the `apikey` table the row had `rate_limit_enabled = t`, `rate_limit_time_window = 86400000`, `rate_limit_max = 10`, `request_count = 10`: better-auth's defaults, used when the create call does not set them. Keys made in the panel on another install had `rate_limit_enabled = f`.
+
+Making a key without the panel: `POST /api/auth/sign-in/email` with `{"email","password"}` and an `origin` header (keep the cookie), `GET /api/trpc/organization.all` for the organization id, then `POST /api/trpc/user.createApiKey` with `{"json":{"name":"cli","metadata":{"organizationId":"<id>"}}}`. The key is in `result.data.json.key`. The REST paths (`/api/<router>.<proc>`) reject the session cookie (`401`); only `/api/trpc/…` takes it. If the admin has 2FA, sign-in returns `twoFactorRedirect` and the cookie is only `better-auth.two_factor` (OPS-416).
+
+**해결:** add `"rateLimitEnabled": false` to the create input, or afterwards `update apikey set rate_limit_enabled=false, request_count=0 where name='cli'` in `dokploy-postgres`. Takes effect on the next call, no restart.
+
+## OPS-425 — A shell function with its own `< file` redirect ignores the heredoc at the call site: `S python3 - <<EOF` ran the password file as Python and printed it
+
+`측정 2026-10-13 · bash 5 on Ubuntu 26.04, over ssh`
+
+**증상:** with `S(){ sudo -S -p '' "$@" </tmp/.p; }` (password in `/tmp/.p` for `sudo -S`), the call `S python3 - <<EOF … EOF` did not run the heredoc. Python got the password file as its program and failed with `SyntaxError`, and the error message quoted the line, so the password was printed to the terminal and the log.
+
+A redirect written in the function definition is applied each time the function runs, after the redirects of the call, so it replaces the heredoc on stdin. `sudo -S` reads its password from that same stdin, so the program behind it gets the rest of it.
+
+**해결:** never give a command its input on stdin through such a helper. Write the script or file first (`cat > /tmp/x.py`, `scp`), then `S python3 /tmp/x.py` or `S install -m 644 /tmp/new /etc/target`. Better still, `sudo -A` with `SUDO_ASKPASS`, which leaves stdin alone.
 
