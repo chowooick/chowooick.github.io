@@ -8020,3 +8020,31 @@ Making a key without the panel: `POST /api/auth/sign-in/email` with `{"email","p
 A redirect written in the function definition is applied each time the function runs, after the redirects of the call, so it replaces the heredoc on stdin. `sudo -S` reads its password from that same stdin, so the program behind it gets the rest of it.
 
 **해결:** never give a command its input on stdin through such a helper. Write the script or file first (`cat > /tmp/x.py`, `scp`), then `S python3 /tmp/x.py` or `S install -m 644 /tmp/new /etc/target`. Better still, `sudo -A` with `SUDO_ASKPASS`, which leaves stdin alone.
+
+## OPS-426 — GitLab: let a deploy key push to a protected `main` with one PATCH; it adds to the existing push rule
+
+`측정 2026-10-13 · gitlab.com (Free), REST API v4, glab 1.x`
+
+**증상:** a job on a home server had to push a commit to `main` of a GitLab.com project. `main` was protected with "Allowed to push: Maintainers", and a deploy key created with `can_push=true` still cannot push there until the protected branch names it.
+
+`PATCH /projects/:id/protected_branches/main` with a JSON body `{"allowed_to_push":[{"deploy_key_id":<id>}]}` adds the key and keeps the existing `Maintainers` level: the response listed both (`[('Maintainers', None), ('<title>', <id>)]`). No unprotect/re-protect, so there is no window with `main` unprotected. The first push from the key then went through and started a normal pipeline.
+
+**해결:**
+1. `glab api -X POST "projects/:id/deploy_keys" -f title=… -f key="$(cat key.pub)" -F can_push=true` → note `id`.
+2. `glab api -X PATCH "projects/:id/protected_branches/main" -H 'Content-Type: application/json' --input - <<<'{"allowed_to_push":[{"deploy_key_id":<id>}]}'`.
+3. On the host, push with `GIT_SSH_COMMAND="ssh -i <key> -o IdentitiesOnly=yes"`. Check the host key against GitLab's published fingerprint (`SHA256:eUXGGm1YGsMAS7vkcx6JOJdOGHPem5gQp4taiCfCLB8` for ed25519) before trusting `ssh-keyscan` output.
+
+## OPS-427 — `ssh` through a Cloudflare Tunnel says `websocket: bad handshake` while that host's cloudflared restarts; reach it from a LAN peer with `ssh -A`
+
+`측정 2026-10-13 · cloudflared access ssh (ProxyCommand), cloudflared systemd service on Ubuntu 26.04`
+
+**증상:** `ssh <host>` (ProxyCommand `cloudflared access ssh --hostname <host>-ssh.<domain>`) failed three times in a row, a minute after it had worked:
+
+```
+websocket: bad handshake
+Connection closed by UNKNOWN port 65535
+```
+
+The host was fine. Its `journalctl -u cloudflared` showed the service had just been restarted (`Started cloudflared.service` followed by new `Registered tunnel connection` lines); another session had restarted it. The edge answers the WebSocket upgrade with an error until the tunnel registers again, and the message names neither the tunnel nor the host.
+
+**해결:** do not retry in a tight loop or blame the ssh key. Reach the host from another machine on its LAN and look at cloudflared there. A peer usually has no key of its own for the host (`Permission denied (publickey)`), so forward yours: `ssh-add ~/.ssh/id_ed25519; ssh -A <peer> 'ssh -o BatchMode=yes <host>.local "journalctl -u cloudflared -n 20 --no-pager"'`. In this case the tunnel was back within about a minute and plain `ssh <host>` worked again.
