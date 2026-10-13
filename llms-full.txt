@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T21:52:14Z · 소스 커밋 `7a95a8a` · 이 파일은 자동 생성물이다.
+생성 2026-10-13T23:47:19Z · 소스 커밋 `ee402e4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8893,6 +8893,28 @@ GitHub lets a workflow on **any** branch of the repo read its repository secrets
 - 같은 기계의 llama-bench(pp512 / tg128, 토큰/초): Qwen3-30B-A3B Q2_K_XL 1265 / 75.3, Qwen3.6-35B-A3B IQ2_M 1201 / 60.4, Qwen3.5-9B Q4_K_M 780 / 25.3, Qwen3.5-4B Q6_K 1326 / 35.8, Gemma 4 12B QAT q4_0 603 / 18.7.
 
 **해결:** 메모리가 빠듯한 기계에서는 llama-server를 `--cache-ram 256`(또는 0)으로 띄운다. 스왑은 응답 시간보다 먼저 `vm_stat`의 Swapouts 증가로 드러나므로 그 값을 본다. 하루 내내 이 속도로 스왑하면 SSD 쓰기가 수 TB에 이른다.
+
+## AGT-122 — On a 16 GB Mac mini M6, llama-server's throughput for short chat turns stays at ~90 a minute whether `--parallel` is 2, 4 or 8; more slots only lengthen each request, and 8 slots swap
+
+`측정 2026-10-13 · llama.cpp b11429 (Homebrew) · Mac mini M6 16GB, macOS 27.0.1 · Qwen3.6-35B-A3B UD-IQ2_M (11.5GB, all layers on GPU, --flash-attn on, --cache-ram 256, --ctx-size 2048 per slot)`
+
+**증상:** Closed-loop clients, each sending one chat turn after another (≈330 prompt tokens, ≤110 generated, grammar-constrained, streamed), 45 s per level:
+
+| --parallel | clients | turns/min | first line p50 / p90 | whole reply p50 |
+| --- | --- | --- | --- | --- |
+| 2 | 1 | 75 | 0.44 / 0.46 s | 0.82 s |
+| 2 | 2 | 88 | 0.51 / 0.74 s | 1.39 s |
+| 2 | 8 | 88 | 4.58 / 5.15 s | 5.38 s |
+| 4 | 4 | 89 | 0.68 / 1.42 s | 2.66 s |
+| 4 | 8 | 93 | 3.20 / 3.78 s | 5.11 s |
+| 8 | 8 | 92 | 1.20 / 3.78 s | 5.16 s |
+| 8 | 16 | 88 | 6.51 / 7.46 s | 10.82 s |
+
+Longer review requests (≈1,100 prompt tokens, ≈80 generated) top out the same way: 79–88 a minute at 2, 4 or 8 slots. Generation speed per slot falls from ~60 tok/s alone to 16–42 tok/s with two slots busy, so batching buys almost nothing on this machine. `--parallel 4` swapped ~450 MB in 3 minutes and `--parallel 8` ~5 GB (free memory 13 % and 5 %).
+
+Also in the log with `--cache-ram 256`: `prompt state size 274.405 MiB exceeds cache size limit 256.000 MiB, skipping`. A 1,100-token prompt's state on this model is larger than the whole RAM cache, so it is never saved; when a slot was last used by a different prompt, the next review re-reads all 1,100 tokens (1.5 s instead of 0.25 s). In a mixed turn/review load 30–44 % of reviews did.
+
+**해결:** On this class of machine, size capacity by requests per minute, not by slots: keep `--parallel 2` and queue in the application, giving short interactive requests priority over long background ones. To keep a long shared prefix warm without raising `--cache-ram` (AGT-121), send that kind of request to a fixed slot (`"id_slot": 1` in the request body) so the slot's own KV still holds the prefix (not yet measured; the field exists on llama-server's completion endpoints).
 
 ---
 
