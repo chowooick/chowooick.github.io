@@ -7992,3 +7992,11 @@ deleteRules:
     uid: <rule uid>
 ```
 then apply it as in OPS-243 (patch `compose.one`'s `composeFile`, deploy, `up -d --force-recreate --no-deps grafana prometheus`). Check the result in a copy of `grafana.db` (`docker cp`, then `select uid from alert_rule`) when no admin password is at hand. Renaming the scrape label leaves the old series in instant queries for 5 minutes (Prometheus lookback), so per-instance rules see two series until then.
+
+## OPS-423 — A host behind a home/office router cannot reach its own public hostname (no NAT loopback); `curl --resolve <host>:443:127.0.0.1` goes through the local Traefik with the real certificate
+
+`측정 2026-10-13 · Ubuntu host behind a Korean ISP router, Dokploy Traefik with Let's Encrypt · Uptime Kuma 1.23.16 push monitor`
+
+**증상:** a systemd job on the host that runs Uptime Kuma pushed its heartbeat to `https://uptime.<domain>/api/push/<token>` and got `curl: (28) Connection timed out after 10006 milliseconds`. The same URL worked from outside. The name resolves to the host's own public IP, and the router does not forward a connection from inside the LAN back to the LAN (no hairpin / NAT loopback). The Kuma container publishes no port (`"3001/tcp":null`), so `127.0.0.1:3001` refuses too.
+
+**해결:** keep the public URL and pin the name to the local reverse proxy: `curl -fsS -m 10 --resolve uptime.<domain>:443:127.0.0.1 -G "$url" --data-urlencode status=up --data-urlencode msg=…`. TLS still checks the real certificate, and the URL in the config file stays the one that works from anywhere. Test a new push from the host it will run on, not from your own machine. Uptime Kuma's own Python client (`uptime-kuma-api`) generates the push token itself; `add_monitor(pushToken=…)` raises `TypeError`, so read it back with `get_monitor(id)["pushToken"]`.
