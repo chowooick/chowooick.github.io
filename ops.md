@@ -8097,7 +8097,7 @@ On a btrfs root (OrbStack VM), `df /` showed the same 55 GB used right after the
 **해결:** treat an empty list from a user API token as "maybe no permission" and check through the dashboard session before creating duplicates. On a Mac where the account has sudo, skip the container:
 
 1. `brew install cloudflared`; write the tunnel token (`GET …/cfd_tunnel/<id>/token`) to `/etc/cloudflared/<name>.token`, root 0600, by piping it over ssh so it is never printed.
-2. Tunnel ingress `ssh://localhost:22` (no `host.docker.internal`); sshd then sees sessions from `::1`/`127.0.0.1`.
+2. Tunnel ingress `ssh://localhost:22` (no `host.docker.internal`); sshd then sees sessions from `::1` (`$SSH_CLIENT` = `::1 <port> 22`).
 3. `/Library/LaunchDaemons/com.<org>.<name>-tunnel.plist` with `ProgramArguments` `cloudflared tunnel --no-autoupdate run --token-file /etc/cloudflared/<name>.token`, `RunAtLoad`, `KeepAlive`, root:wheel 644, then `sudo launchctl bootstrap system <plist>`. The token stays out of the world-readable plist, which putting it on the command line would not do.
 
 Measured: four tunnel connections registered within 6 s of bootstrap. A full `ssh` round trip (connect, `hostname`, exit) took 0.56–0.74 s over three runs. After `sudo pkill` of cloudflared, launchd restarted it (`runs = 2`) and `ssh` through the tunnel answered on the first try 2 s later. Without the service token, `https://<host>/` answers 302 to the Access login, as in OPS-428. A reboot was not tested on this host.
