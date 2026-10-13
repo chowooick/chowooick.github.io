@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T07:45:58Z · 소스 커밋 `416234e` · 이 파일은 자동 생성물이다.
+생성 2026-10-13T07:52:55Z · 소스 커밋 `f4eac62` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -16932,4 +16932,23 @@ Connection closed by UNKNOWN port 65535
 The host was fine. Its `journalctl -u cloudflared` showed the service had just been restarted (`Started cloudflared.service` followed by new `Registered tunnel connection` lines); another session had restarted it. The edge answers the WebSocket upgrade with an error until the tunnel registers again, and the message names neither the tunnel nor the host.
 
 **해결:** do not retry in a tight loop or blame the ssh key. Reach the host from another machine on its LAN and look at cloudflared there. A peer usually has no key of its own for the host (`Permission denied (publickey)`), so forward yours: `ssh-add ~/.ssh/id_ed25519; ssh -A <peer> 'ssh -o BatchMode=yes <host>.local "journalctl -u cloudflared -n 20 --no-pager"'`. In this case the tunnel was back within about a minute and plain `ssh <host>` worked again.
+
+## OPS-428 — Unattended ssh into a macOS host through a Cloudflare Tunnel with Access: turn on Zero Trust (free) first, create the service token through the dashboard session, and pass it to `cloudflared access ssh` as environment variables
+
+`측정 2026-10-13 · cloudflared 2026.10.0 (client, Homebrew) · cloudflare/cloudflared:latest in a colima 0.10.3 vz VM · Cloudflare Zero Trust free · macOS 27.0.1 (MacBook Air M1)`
+
+**증상:** a test host had to take `ssh` from automated sessions on any network. Its sshd allows passwords and the account has no sudo, so a tunnel hostname without Access would be open to anyone who has `cloudflared` (OPS-405). Three things stood in the way:
+
+- Every `/accounts/<id>/access/*` call answered `9999 access.api.error.not_enabled: Access is not enabled.` The account had never been through Zero Trust onboarding.
+- After onboarding, a user API token with zone DNS/SSL/settings edit could **read** `access/apps` and `access/service_tokens` but `POST access/service_tokens` answered `1010 auth.forbidden`. The `client_secret` is shown only in the create response, so a pipeline that fails after the POST loses it: delete the token and create a new one.
+- `cloudflared access ssh` without a token prints `A browser window should have opened at the following URL` and waits, which hangs an unattended session.
+
+**해결:**
+
+1. Zero Trust onboarding in the dashboard (signed-in Playwright profile): `one/overview` → 「시작하기」 → the free plan's 「요금제 선택」 → checkout page. 「활성화」 does nothing until both terms checkboxes are ticked; they are hidden `<input>`s, so click `getByRole('checkbox')`, not `input[type=checkbox]` (Playwright says "Element is outside of the viewport"). The plan is $0 and used the card already on file. A team domain `<random-words>.cloudflareaccess.com` is assigned with no prompt.
+2. Make the Access objects through the dashboard session (OPS-301: `fetch('/api/v4/…', {headers: {'x-cross-site-security': 'dash'}})`), writing the response straight to a 0600 file: `POST access/service_tokens {"name":…,"duration":"forever"}` (it returned `expires_at` 2126), then `POST access/apps` with `type: self_hosted`, `domain: <host>` and inline `policies`: `{"decision":"non_identity","include":[{"service_token":{"token_id":<id>}}]}` for sessions and `{"decision":"allow","include":[{"email":{"email":<owner>}}]}` for a person with email OTP.
+3. Tunnel: `POST cfd_tunnel {"config_src":"cloudflare"}`, `PUT …/configurations` with ingress `ssh://host.docker.internal:22`, `GET …/token` into an env file, CNAME `<tunnel-id>.cfargotunnel.com` proxied. On a Mac behind LuLu run it in its own colima profile (OPS-299) with `--add-host host.docker.internal:host-gateway`; sshd then sees the session from `127.0.0.1`.
+4. Client: `ProxyCommand /bin/sh -c 'set -a; . ~/.config/cloudflare/<host>-access.env; exec cloudflared access ssh --hostname %h'` with `TUNNEL_SERVICE_TOKEN_ID` and `TUNNEL_SERVICE_TOKEN_SECRET` in the file. Use `HostKeyAlias <host>.local` to reuse the LAN host key.
+
+Measured: a full `ssh` round trip (connect, run `hostname` and `node -v`, exit) took 1.49 s; `rsync -az` of 5 MB took 2.2 s. Without the token, plain `https://<host>/` answers 302 to the Access login and `cloudflared access ssh` stops at the browser prompt. After `colima stop`, a LaunchAgent (`RunAtLoad`, `StartInterval 300`) running `colima start` and `docker start` brought ssh back 32 s after `launchctl kickstart`. Save `docker context show` before `colima start` and restore it afterwards, or other sessions' `docker` commands land in the new VM.
 
