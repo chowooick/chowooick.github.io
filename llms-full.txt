@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T09:07:38Z · 소스 커밋 `4b0bfb0` · 이 파일은 자동 생성물이다.
+생성 2026-10-13T21:52:13Z · 소스 커밋 `f98c1b7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17033,4 +17033,14 @@ Settings on the sleeping Mac: `womp 1`, `sleep 0`, `tcpkeepalive 1`, `networkove
 **해결:** Give the waker an ssh key restricted to one command on the sleeping Mac — `restrict,command="/usr/bin/caffeinate -u -t 2" ssh-ed25519 …` in `authorized_keys`. The waker loops every ~6 s: magic packet (UDP broadcast to the subnet and 255.255.255.255, ports 9 and 7), `nc -z -G3 <ip> 22`, then `ssh -i <that key>`. The ssh lands inside a DarkWake, `caffeinate -u` declares user activity, and the log shows `Wake from Deep Idle [CDNVA]` (V/A = display/audio = full wake). Measured: sleep at 02:46:48, wake command at 02:47:40, full wake at 02:47:43, ssh through the Mac's own Cloudflare tunnel 11 s after the command; still awake 100 s later (`sleep 0`). Test for "up" with ssh or a TCP banner, never ping. Use `sudo pmset schedule wake "<MM/dd/yy HH:mm:ss>"` as a fallback while testing; without sudo there is none. The waker must be awake on the same LAN — a server on another subnet cannot send the broadcast.
 
 **재부팅 검증 (2026-10-13, 같은 날):** `osascript -e 'tell application "System Events" to restart'` over ssh (no sudo) restarted the Mac. LAN ssh answered ~37 s after the trigger; the native cloudflared auto-started from its LaunchAgent ~40 s after boot with **no LuLu prompt** (the Always rule held), picked up the remote `ssh://localhost:22` ingress, and tunnel ssh was 6/6. Every other `com.mnori.*` LaunchAgent and the speakout colima VM came back on their own.
+
+## OPS-433 — On macOS 27 a non-Apple binary started over ssh with `nohup … &` loses the LAN once the ssh session closes: `[Errno 65] No route to host`, while loopback and Apple binaries still connect
+
+`측정 2026-10-13 · macOS 27.0.1 (MacBook Air M1) · uv cpython 3.11.16 · httpx 0.28.1 / websockets 17.2 · target on the same Wi-Fi LAN`
+
+**증상:** A load generator launched with `ssh air 'nohup python loadgen.py … &'` failed every request to a LAN host (`192.168.0.x`) with `httpx.ConnectError: All connection attempts failed` and `OSError(65, 'No route to host')`. The same command run in the foreground of an ssh session worked, and `ping`/`curl` to the host worked at the same moment. Minimal check: a detached python that sleeps 8 s (so the ssh session has closed) and then connects gets `[Errno 65] No route to host` for the LAN address, `200` for `127.0.0.1`, and `200` from a `/usr/bin/curl` child it spawns. While the ssh session is still open, the detached process connects fine.
+
+This is Local Network privacy: once the session ends, the process is no longer attributed to sshd, and a non-Apple binary without a Local Network grant is refused LAN addresses. Apple-signed binaries (`curl`, `ssh`) are exempt. It is not a firewall (LuLu) block: there is no prompt, loopback works, and the errno is 65 rather than a timeout.
+
+**해결:** Keep the ssh session open for the whole run (run the remote command in the foreground and background the local `ssh` instead, with `-o ServerAliveInterval=15`), or reach the LAN host through an Apple binary, e.g. `ssh -L` to the target and connect to `127.0.0.1`. A LaunchAgent in the GUI session is attributed differently and needs its own Local Network grant.
 
