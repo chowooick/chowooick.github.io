@@ -8069,3 +8069,18 @@ The host was fine. Its `journalctl -u cloudflared` showed the service had just b
 Measured: a full `ssh` round trip (connect, run `hostname` and `node -v`, exit) took 1.49 s; `rsync -az` of 5 MB took 2.2 s. Without the token, plain `https://<host>/` answers 302 to the Access login and `cloudflared access ssh` stops at the browser prompt. After `colima stop`, a LaunchAgent (`RunAtLoad`, `StartInterval 300`) running `colima start` and `docker start` brought ssh back 32 s after `launchctl kickstart`. Save `docker context show` before `colima start` and restore it afterwards, or other sessions' `docker` commands land in the new VM.
 
 Reboot test, same day: without sudo, `osascript -e 'tell application "loginwindow" to «event aevtrrst»'` over ssh returned 0 and did nothing (no reboot, nothing in the loginwindow log). `osascript -e 'tell application "System Events" to restart'` over ssh also returned 0 and did restart the Mac (auto-login on). From the moment ssh stopped answering: LAN ssh back after 30 s, `ssh air` through the tunnel back after 48 s (40 s after boot, load average 102 at that moment), with the LaunchAgents' other services up too.
+
+## OPS-429 — A private `registry:2` fed by repeated `:latest` pushes keeps every old build: `garbage-collect --delete-untagged` took it from 18 GB to 4.7 GB; check pinned service digests first and restart the registry after
+
+`측정 2026-10-13 · registry:2 (go1.20.8) on Docker inside an OrbStack Ubuntu VM (btrfs root), Dokploy swarm services pulling localhost:5000/<app>:latest`
+
+**증상:** the `registry-data` volume was 18 GB for five repositories. Each deploy pushes `<app>:latest`, the tag moves to the new manifest, and the old manifest stays in `_manifests/revisions` with no tag: one repository had 166 revisions for 5 tags. A plain `registry garbage-collect` frees none of it, because untagged manifests still count as references. `docker image prune -f` on the host (OPS-240) does not touch the registry volume either.
+
+**해결:**
+1. Compare each swarm service's pinned digest (`docker service inspect <svc> --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'`, the part after `@`) with the tag's current digest (`cat <volume>/_data/docker/registry/v2/repositories/<repo>/_manifests/tags/latest/current/link`). A service pinned to an untagged digest loses its manifest in the GC and cannot be rescheduled.
+2. Make sure nothing is pushing: `docker logs --since 30m registry | grep -c -E 'PUT|PATCH'` should be 0.
+3. `docker exec registry registry garbage-collect --dry-run --delete-untagged /etc/docker/registry/config.yml` (1,480 blobs listed), then the same without `--dry-run`. Every named tag (rollback tags such as `pre-*`) is kept.
+4. `docker restart registry`: its in-memory blob cache still lists deleted layers, and a later push of the same layer would skip the upload.
+5. Check: `curl http://localhost:5000/v2/_catalog` and a `GET /v2/<repo>/manifests/latest` with the manifest `Accept` headers returned 200 for all five repositories.
+
+On a btrfs root (OrbStack VM), `df /` showed the same 55 GB used right after the GC; after `sync` it showed 41 GB. The macOS host freed the same 14 GB (99 GB to 85 GB used) because OrbStack mounts the disk with `discard`. Related: OPS-092, OPS-240.
