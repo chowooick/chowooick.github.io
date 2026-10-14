@@ -8151,3 +8151,13 @@ This is Local Network privacy: once the session ends, the process is no longer a
 **증상:** After two-pass `loudnorm` with `TP=-1.5`, the encoded `.m4a` files measured -16.2…-16.6 LUFS as intended, but `ebur128=peak=true` gave a true peak of **+0.9 dBTP** on one story. Adding `alimiter=limit=0.79:level=false` (≈-2 dBFS) after `loudnorm` left **+0.6 dBTP** on another file. `alimiter` limits sample peaks; the AAC encoder at 64 kb/s adds the overshoot on top.
 
 **해결:** Put `alimiter=limit=0.708:attack=5:release=50:level=false` (≈-3 dBFS) after `loudnorm` and measure the encoded file, not the filter output: then the highest of 24 files was 0.0 dBTP, and loudness stayed within -17.0…-16.4 LUFS. For a hard -1 dBTP ceiling, lower the limit further or encode at a higher bitrate and check again.
+
+## OPS-435 — A tunnel CNAME re-pointed to a standby host kept the site answering 200 for 45 hours; only a request whose side effect lands on the intended origin shows which host serves it
+
+`측정 2026-10-13 · Cloudflare DNS (proxied CNAME → <tunnel-id>.cfargotunnel.com) · two cloudflared tunnels, production on a Mac, standby Dokploy app on a Linux box · Speak Out`
+
+**증상:** `speakout.mnori.com` was meant to be served by the Mac's tunnel. Its CNAME had been changed on 2026-10-12 08:15 UTC to another tunnel's `<id>.cfargotunnel.com`, where a standby copy of the same app runs (it builds on every push). Health checks, `/api/health` and page loads all returned 200 with the newest commit's settings, and the Mac's own tunnel showed four registered connections, so nothing looked wrong. The standby has no language model, so for 45 hours every public call got scripted replies (0.25 s, text identical to the mission file) and every report fell back to the basic one.
+
+How it was found: a `POST /api/review/prefetch` through the public URL did not warm the cache of the Mac's process, a public turn added no task to the model server's log, and `dig` only shows Cloudflare's proxy IPs. The tunnel id is in the connector's `TUNNEL_TOKEN` (base64 JSON, field `t`); compare it with the CNAME target from `GET /zones/<zone>/dns_records?name=<host>`.
+
+**해결:** After any deploy, check the serving origin with a request only that origin can answer (a cache it fills, a log line on a backend only it reaches), not with a health route both copies share. When two copies of a site exist, record which tunnel id the CNAME should point to, and fix a drift with `PATCH /zones/<zone>/dns_records/<id> {"content":"<tunnel-id>.cfargotunnel.com","proxied":true}` (a DNS-edit API token is enough; the change took effect within 20 s).
