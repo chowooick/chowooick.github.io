@@ -2394,6 +2394,7 @@ The cache works (fewer tokens read), but on 16 GB with an 11.5 GB model it pushe
 **해결:**
 - 성공 기록(`read-aloud-worked` 날짜, 또는 기존 `hq:"ready"`)이 있는 기기는 마커를 지우기만 하고 실패로 기록하지 않는다. 마커를 해석하는 모든 곳에 같은 규칙을 넣는다. 날짜 없는 옛 crash 기록은 한 번 지운다.
 - 합성·로드·오디오 재개가 실패하면 기기 음성으로 가기 전에 같은 문단에서 다시 시작한다. 1차: 새 AudioContext(오디오 실패일 때), 2차: 워커를 `terminate()`하고 새 워커에서 캐시로 모델을 다시 연다. 두 번 연속 실패해야 기기 음성이고, Supertonic 소리가 한 번 나면 횟수를 0으로 되돌린다. M1 Brave에서 새 워커로 캐시 모델을 다시 열고 소리가 나기까지 약 7초 걸렸다.
+- 성공 기록이 없는 기기(첫 다운로드 중)는 마커를 화면에 보일 때만 켠다. `visibilitychange`가 hidden이면 내리고, visible로 돌아왔을 때 작업이 남아 있으면 다시 켠다. hidden은 모바일에서 마지막으로 확실히 오는 이벤트라 discard 전에 반드시 지나간다.
 - `AudioContext.resume()`은 1.5초 제한으로 감싼다. 끝나지 않는 resume은 대기가 아니라 실패로 다룬다.
 - `visibilitychange`가 visible로 돌아왔을 때 기기 음성이 대신 읽고 있으면 Supertonic을 다시 시도한다.
 - 브라우저 시험 방법: CDP `Page.setWebLifecycleState {state:'frozen'}` 15초 → `active`로 백그라운드 동결을 흉내 낸다. GPU 손실은 `Worker`를 감싼 서브클래스의 `postMessage`가 load·synth에 `{type:'error'}`로 답하게 해서 흉내 낸다(`dispatchEvent(new ErrorEvent('error'))`는 그 순간 대기 중인 작업만 실패시키는데, 30초 앞서 합성해 두는 플레이어는 대기 작업이 없을 때가 많아 아무 일도 일어나지 않았다).
