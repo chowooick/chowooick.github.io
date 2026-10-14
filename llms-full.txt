@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-14T05:19:25Z · 소스 커밋 `f4eb903` · 이 파일은 자동 생성물이다.
+생성 2026-10-14T05:45:15Z · 소스 커밋 `55f5bd9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8930,6 +8930,26 @@ Also in the log with `--cache-ram 256`: `prompt state size 274.405 MiB exceeds c
 Matching words to the script's own sentences works and ignores that junk: keep only Hangul, digits and Latin letters on both sides, spread each word's `[start, end]` over its letters, run `difflib.SequenceMatcher(None, script_letters, heard_letters, autojunk=False)`, and take a sentence's start from the word holding its first matched letter. Clamp every time to the file's duration. A sentence with under 60 % of its letters matched (transliterated Chinese names: "다인구이샹" heard as "따인꾸이생") still gets a time from the letters that did match. For a retake split across files, give each sentence to the last file that covers ≥60 % of it, and cut each file at its last owned sentence's end; the joined result re-transcribed with no repeated or junk text. In the app, tapping sentence 12 put the clock at 0:50 against an aligned start of 49.84 s.
 
 **해결:** Pass `word_timestamps=True, condition_on_previous_text=False`, align to the script (not to Whisper's text), and never trust a word's time beyond the file's duration. Cache transcripts by file hash; turbo transcribed the 21 minutes in about a minute on Apple Silicon.
+
+## AGT-124 — llama-server `--cache-ram 4096` on a 16 GB Mac removes prompt re-reads but swaps ~46 GB in 7 minutes under a mixed load, and every request then waits ~0.4 s for the cache copy
+
+`측정 2026-10-13 · llama.cpp b11429 · Mac mini M6 16GB, macOS 27.0.1 · Qwen3.6-35B-A3B UD-IQ2_M, --parallel 2 · Speak Out load test (16 and 20 players, turns ≈330 prompt tokens, reviews ≈1,100 with a shared 1,000-token head), 7 min per level`
+
+**증상:** Follow-up to AGT-121 and AGT-122. With the prompt cache raised from 256 MiB to 4096 MiB, each saved state is 195–275 MiB, so the cache holds ~15–20 prompts and the review head is restored instead of re-read:
+
+| per request (16 players) | `--cache-ram 256` | `--cache-ram 4096` |
+| --- | --- | --- |
+| turn prompt tokens read / time | 333 / 0.51 s | 178 / 0.55 s |
+| review prompt tokens read / time | 638 / 0.79 s | 134 / 0.45 s |
+| reviews re-reading the whole head | 51 % | 0 % |
+| time between slot pick and launch | 6 ms | 434 ms |
+| reply generation (turn) | 0.90 s | 1.22 s |
+| swap-outs in 7 min | ~21,000 pages (~0.3 GB) | ~3,000,000 pages (~46 GB) |
+| score p90 / coach report p50 | 2.37 s / 6.4 s | 5.05 s / 37 s |
+
+The cache works (fewer tokens read), but on 16 GB with an 11.5 GB model it pushes everything else out: free memory 7 %, ~95 GB written to swap over the two levels, and copying a 200–275 MiB state in and out of RAM per request costs ~0.4 s. Net effect: twice the turn latency.
+
+**해결:** On a 16 GB machine keep `--cache-ram 256` (AGT-121). The gain is real only where the cache fits in free RAM: budget ~250 MiB per distinct prompt you want kept (here ~4–6 GB for 33 turn prompts plus the review head), on top of model, KV and the rest of the stack. A ~3 GB swap-free budget was not available on 16 GB.
 
 ---
 
