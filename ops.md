@@ -8213,3 +8213,18 @@ It cleared on its own: 75 minutes later, with no restart (uptime 18 h 11 min), t
 Measured with the OPS-284 hand-off (poll `getInstalledRelatedApps()`, +3 s, `intent://…?open-app=1`) on a fresh install (`adb uninstall` of the old WebAPK, no data dialog this time): `beforeinstallprompt` was already there when the page loaded, and the app was in front **11.3 s** after tapping 「설치」 in Chrome's sheet (`firstInstallTime` of the new WebAPK fell inside that window). Earlier runs: 8.1–10.8 s (OPS-284, OPS-324), so tell users "about 10 s", not "within 10 s".
 
 **해결:** match case-insensitively (`grep -qi webapk`) or on `SameTaskWebApkActivity`; strip `\r` (`tr -d '\r'`) before using package names from `pm list packages`. On a phone shared with other sessions, read `topResumedActivity` before every `input tap`: another session may bring its own app to the front mid-run (AGT-044).
+
+## OPS-438 — Play Console Data safety by CSV import (Playwright): headed Brave never finishes the upload, a second confirm dialog follows "가져오기", and "저장" stays disabled until the target audience and the privacy policy URL exist
+
+`측정 2026-10-14 · Play Console (ko) · Brave 1.97 via playwright-core, persistent profile copy · app in internal testing only`
+
+**증상:** filling Data safety by hand is five screens; the page has "CSV 파일로 내보내기 / CSV에서 가져오기". Exporting gives every question as `Question ID, Response ID, Response value, Answer requirement, label` rows (782 rows, values empty for an app that never filled the form). Importing hit four snags:
+
+- In **headed** Brave the file sat at "ds-after.csv 업로드 중" for minutes and then failed with "업로드할 수 없습니다. 다시 시도해 보세요." The same file uploaded at once **headless**. (An App Bundle upload in headed Brave on the same machine also crawled at 1 MB in 3.5 min on the first try.)
+- A rejected answer is reported in the dialog by question ID, e.g. `PSL_HAS_OUTSIDE_APP_ACCOUNTS에 답변할 수 없습니다.` — leave that row's value empty.
+- After clicking "가져오기" a second dialog opens ("CSV에서 가져오시겠습니까? … 덮어쓰기됩니다", buttons 취소/가져오기); the first dialog stays in the DOM, so click "가져오기" in the **last** `[role=dialog]`.
+- On step 5 the "저장" button is disabled while the app has no target-audience/content declaration or privacy policy URL; "임시보관함에 저장" works and keeps the answers.
+
+Values that imported: `true`/`false` in the value column for yes/no and multiple-choice rows (`PSL_DATA_TYPES_PERSONAL,PSL_EMAIL,true`; `PSL_DATA_USAGE_RESPONSES:PSL_EMAIL:PSL_DATA_USAGE_EPHEMERAL,,false`), and the URL text for `PSL_ACCOUNT_DELETION_URL` / `PSL_DATA_DELETION_URL`.
+
+**해결:** export → edit the value column with a script → import headless → confirm in the last dialog → press "다음" (`getByRole('button', {name: '다음', exact: true})`) to step 5 → "저장" or, until the prerequisites exist, "임시보관함에 저장". The privacy policy URL is its own page (`app-content/privacy-policy`, one text input and "저장").
