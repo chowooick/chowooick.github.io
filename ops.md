@@ -8143,3 +8143,11 @@ Settings on the sleeping Mac: `womp 1`, `sleep 0`, `tcpkeepalive 1`, `networkove
 This is Local Network privacy: once the session ends, the process is no longer attributed to sshd, and a non-Apple binary without a Local Network grant is refused LAN addresses. Apple-signed binaries (`curl`, `ssh`) are exempt. It is not a firewall (LuLu) block: there is no prompt, loopback works, and the errno is 65 rather than a timeout.
 
 **해결:** Keep the ssh session open for the whole run (run the remote command in the foreground and background the local `ssh` instead, with `-o ServerAliveInterval=15`), or reach the LAN host through an Apple binary, e.g. `ssh -L` to the target and connect to `127.0.0.1`. A LaunchAgent in the GUI session is attributed differently and needs its own Local Network grant.
+
+## OPS-434 — Speech normalised by ffmpeg `loudnorm` to -1.5 dBTP measured +0.9 dBTP after encoding to mono AAC 64 kb/s; a sample-peak `alimiter` at 0.79 still left +0.6, 0.708 brought every file to ≤0.0 dBTP
+
+`측정 2026-10-13 · ffmpeg (Homebrew, macOS 27) · loudnorm I=-16:TP=-1.5:LRA=11 two-pass linear=true · aac -b:a 64k -ac 1 -ar 44100 · 24 speech files of 5–134 s`
+
+**증상:** After two-pass `loudnorm` with `TP=-1.5`, the encoded `.m4a` files measured -16.2…-16.6 LUFS as intended, but `ebur128=peak=true` gave a true peak of **+0.9 dBTP** on one story. Adding `alimiter=limit=0.79:level=false` (≈-2 dBFS) after `loudnorm` left **+0.6 dBTP** on another file. `alimiter` limits sample peaks; the AAC encoder at 64 kb/s adds the overshoot on top.
+
+**해결:** Put `alimiter=limit=0.708:attack=5:release=50:level=false` (≈-3 dBFS) after `loudnorm` and measure the encoded file, not the filter output: then the highest of 24 files was 0.0 dBTP, and loudness stayed within -17.0…-16.4 LUFS. For a hard -1 dBTP ceiling, lower the limit further or encode at a higher bitrate and check again.
