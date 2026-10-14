@@ -2398,3 +2398,22 @@ The cache works (fewer tokens read), but on 16 GB with an 11.5 GB model it pushe
 - `AudioContext.resume()`은 1.5초 제한으로 감싼다. 끝나지 않는 resume은 대기가 아니라 실패로 다룬다.
 - `visibilitychange`가 visible로 돌아왔을 때 기기 음성이 대신 읽고 있으면 Supertonic을 다시 시도한다.
 - 브라우저 시험 방법: CDP `Page.setWebLifecycleState {state:'frozen'}` 15초 → `active`로 백그라운드 동결을 흉내 낸다. GPU 손실은 `Worker`를 감싼 서브클래스의 `postMessage`가 load·synth에 `{type:'error'}`로 답하게 해서 흉내 낸다(`dispatchEvent(new ErrorEvent('error'))`는 그 순간 대기 중인 작업만 실패시키는데, 30초 앞서 합성해 두는 플레이어는 대기 작업이 없을 때가 많아 아무 일도 일어나지 않았다).
+
+## AGT-126 — Supertonic 3 (fp32 ONNX, 398 MB) on a Pixel 7 Pro with onnxruntime-android 1.22: a 5.85 s sentence in 2.1 s at 8 steps, 1.5 s at 5; XNNPACK is slower and more threads are not faster; during a call the same work ran 3-4x slower
+
+`측정 2026-10-14 · Pixel 7 Pro (Tensor G2), Android 16 · onnxruntime-android 1.22.0, CPU EP, ALL_OPT · Supertone/supertonic-3 @724fb5a · voice M3, speed 0.9`
+
+**증상:** porting the server's `supertonic` pipeline (duration predictor → text encoder → N flow-matching steps of the vector estimator → vocoder, 44.1 kHz) to Kotlin and timing one sentence (5.85 s of audio) after a warm-up run, phone idle on its home screen:
+
+| session | 8 steps | 5 steps |
+| --- | --- | --- |
+| CPU, 4 intra-op threads | 2.07-2.12 s | 1.47-1.51 s |
+| CPU, 2 threads | 2.20-2.26 s | 1.53-1.54 s |
+| CPU, 6 threads | 2.94-2.95 s | 2.05-2.09 s |
+| XNNPACK EP (4 threads, intra-op 1) | 3.83-3.90 s | 2.58-2.58 s |
+
+So ~0.36 s per second of speech at 8 steps; the work is memory-bound (2 threads ≈ 4) and 6 threads lose to contention. Measured twice more on a warm phone (LITTLE cluster at 71 °C) the same sentence took 4.4 s at 4 threads. Inside a running call (WebView animating the call screen, native mic service open) three sentences of 1.5/2.1/3.2 s took 9.1 s in all: sentences arrived faster than the phone made them and left 1.2-1.6 s of silence between them.
+
+The pipeline ports directly; the details that matter: text is NFKD-normalised and wrapped as `<en>…</en>`, each code point maps through `unicode_indexer.json` (a code point with index -1 is unsupported: raise and let the server speak), the latent length rounds the *float* sample count up while the latent mask rounds the *integer* count up (they can differ by one), and `current_step`/`total_step` are float tensors of shape [1].
+
+**해결:** use 2 threads (same speed, leaves cores to the UI and audio), make lines one at a time in order, and measure each line on the device: when two lines in a row take longer than 0.9× their own duration, hand the rest of the session back to the server's voice. Download the model after install (DownloadManager, unmetered only, SHA-256 per file) rather than shipping 398 MB in the bundle.
