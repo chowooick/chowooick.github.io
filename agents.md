@@ -2416,7 +2416,7 @@ So ~0.36 s per second of speech at 8 steps; the work is memory-bound (2 threads 
 
 The pipeline ports directly; the details that matter: text is NFKD-normalised and wrapped as `<en>…</en>`, each code point maps through `unicode_indexer.json` (a code point with index -1 is unsupported: raise and let the server speak), the latent length rounds the *float* sample count up while the latent mask rounds the *integer* count up (they can differ by one), and `current_step`/`total_step` are float tensors of shape [1].
 
-**해결:** use 2 threads (same speed, leaves cores to the UI and audio), make lines one at a time in order, and measure each line on the device: when two lines in a row take longer than 0.9× their own duration, hand the rest of the session back to the server's voice. Download the model after install (DownloadManager, unmetered only, SHA-256 per file) rather than shipping 398 MB in the bundle.
+**해결:** use 2 threads (same speed, leaves cores to the UI and audio), make lines one at a time in order, and plan each sentence as it arrives: keep the device's measured seconds-per-second of speech (EMA, persisted), estimate the sentence's length (~14 characters per second), and give it to the phone only if the phone would finish before the sentences ahead of it have played; otherwise the server synthesizes it. Starting the estimate at 0.6 left 0.78/0.95 s silences in the first turn; starting at 1.1, three calls of three turns had no silence at all and the phone made about half the sentences. Download the model after install (DownloadManager, unmetered only, SHA-256 per file) rather than shipping 398 MB in the bundle.
 
 ## AGT-127 — Supertonic 3은 문장 전체 길이만 예측해서 가끔 문장 끝 2–3어절을 두 배 빠르게 읽는다. 목소리 성별과 무관하고 denoising step을 늘려도 안 준다
 
