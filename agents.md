@@ -2417,3 +2417,25 @@ So ~0.36 s per second of speech at 8 steps; the work is memory-bound (2 threads 
 The pipeline ports directly; the details that matter: text is NFKD-normalised and wrapped as `<en>…</en>`, each code point maps through `unicode_indexer.json` (a code point with index -1 is unsupported: raise and let the server speak), the latent length rounds the *float* sample count up while the latent mask rounds the *integer* count up (they can differ by one), and `current_step`/`total_step` are float tensors of shape [1].
 
 **해결:** use 2 threads (same speed, leaves cores to the UI and audio), make lines one at a time in order, and measure each line on the device: when two lines in a row take longer than 0.9× their own duration, hand the rest of the session back to the server's voice. Download the model after install (DownloadManager, unmetered only, SHA-256 per file) rather than shipping 398 MB in the bundle.
+
+## AGT-127 — Supertonic 3은 문장 전체 길이만 예측해서 가끔 문장 끝 2–3어절을 두 배 빠르게 읽는다. 목소리 성별과 무관하고 denoising step을 늘려도 안 준다
+
+`측정 2026-10-14 · Supertonic 3(fp32, HF 리비전 3cadd1e) · onnxruntime-web 1.30.0 WebGPU · Brave 1.96(M1) · 판정: mlx-whisper large-v3-turbo 단어 타임스탬프 · who.withthebible.com 낭독`
+
+**증상:** 낭독에서 "가끔 2~3단어가 빨리 발음된다"(운영자 보고, 여성 목소리). 우리 코드(speed 1.0, 1.0×에서 WSOLA 미적용, 오디오 스케줄)에는 원인이 없었다.
+
+- duration predictor의 출력은 **문장당 숫자 하나**(`duration` 텐서 `[batch]`)다. 그 안에서 음절을 어디에 놓을지는 vector estimator가 `Math.random` 노이즈에서 정한다. 그래서 같은 문장도 시드에 따라 템포 분포가 달라지고, 뒤쪽이 압축된다: 문장 뒤 절반이 앞 절반보다 15–25% 빠르다(모든 조건 중앙값 1.15–1.26).
+- 가끔 문장 끝 서술부("~했을 수도 있습니다", "~읽어야 합니다")가 문장 중앙값의 1.4–2배(초당 9–12음절, 평소 약 5음절)로 몰린다. 판정: 연속 3어절 창의 음절 속도가 문장 중앙값의 1.4배 이상이고 초당 8음절 이상.
+
+| 텍스트 · 조건 (시드 2–3개) | 몰림 발생 | 평균 속도(음절/초) |
+| --- | --- | --- |
+| 패널 대사 56문장 · 여성 F2–F5 · 5 step | 5/112 (4.5%) | 5.02 |
+| 같은 문장 · 남성 M2 | 8/112 (7.1%) | 4.84 |
+| 같은 문장 · 여성 · 10 step | 4/112 (3.6%, 같은 문장들) | 5.02 |
+| 같은 문장 · 여성 · duration +0.3초 | 3/112 (2.7%) | 4.69 |
+| 같은 문장 · 여성 · speed 0.9(duration ×1.11) | 1/112 (0.9%) | 4.52 |
+| KLB 성경 66문장 · F1 / M1 | 1/198 / 9/198 | 4.71 / 4.71 |
+
+- **성별 효과는 없다**(남성이 더 많다). **step 10은 효과가 없고** 합성 시간만 1.73배다. duration 여유(speed 0.9)가 가장 줄였지만 표본이 작아 유의하지 않다(5/112 대 1/112, Fisher p=0.21). 짧은 성경 절은 거의 안 몰린다.
+
+**해결:** 확정 해법은 아직 없다. 후보는 duration에 여유를 주는 것(speed 0.9 또는 +0.3초)이며 전체 속도가 7–10% 느려진다. step을 올리는 것은 효과가 없다. 측정 스크립트는 Air `~/work/who-rush/`(synth*.mjs, analyze*.py, score.py).
