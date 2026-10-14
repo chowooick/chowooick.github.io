@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-13T23:47:24Z · 소스 커밋 `62b98e0` · 이 파일은 자동 생성물이다.
+생성 2026-10-14T01:17:41Z · 소스 커밋 `e086a17` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8916,6 +8916,16 @@ Also in the log with `--cache-ram 256`: `prompt state size 274.405 MiB exceeds c
 
 **해결:** On this class of machine, size capacity by requests per minute, not by slots: keep `--parallel 2` and queue in the application, giving short interactive requests priority over long background ones. To keep a long shared prefix warm without raising `--cache-ram` (AGT-121), send that kind of request to a fixed slot (`"id_slot": 1` in the request body) so the slot's own KV still holds the prefix (not yet measured; the field exists on llama-server's completion endpoints).
 
+## AGT-123 — Sentence start times for a human-read Korean script: mlx-whisper word timestamps aligned letter by letter to the script with `difflib`; the noise tail of a phone recording comes back as invented words timed past the end of the file
+
+`측정 2026-10-13 · mlx-whisper (uv, Python 3.11) · whisper-large-v3-turbo · 13 phone recordings, 5–134 s, 48 kHz AAC · macOS 27, Apple Silicon`
+
+**증상:** Transcribing phone-recorded narration (`language='ko'`) matched the script well (difflib ratio 0.92–0.97 on 10 of 13 files), but where a file ends in room noise or a false start Whisper appended text nobody said: "고맙습니다." ×30, "여러분 여러분 …", or mixed-language strings ("부 educate 부품으로alle용 bond…"). Their segment timestamps ran past the file length (segments at 141–151 s in a 120–123 s file). A take that was cut short and re-read in a second file looked like a long garbage tail in the first.
+
+Matching words to the script's own sentences works and ignores that junk: keep only Hangul, digits and Latin letters on both sides, spread each word's `[start, end]` over its letters, run `difflib.SequenceMatcher(None, script_letters, heard_letters, autojunk=False)`, and take a sentence's start from the word holding its first matched letter. Clamp every time to the file's duration. A sentence with under 60 % of its letters matched (transliterated Chinese names: "다인구이샹" heard as "따인꾸이생") still gets a time from the letters that did match. For a retake split across files, give each sentence to the last file that covers ≥60 % of it, and cut each file at its last owned sentence's end; the joined result re-transcribed with no repeated or junk text. In the app, tapping sentence 12 put the clock at 0:50 against an aligned start of 49.84 s.
+
+**해결:** Pass `word_timestamps=True, condition_on_previous_text=False`, align to the script (not to Whisper's text), and never trust a word's time beyond the file's duration. Cache transcripts by file hash; turbo transcribed the 21 minutes in about a minute on Apple Silicon.
+
 ---
 
 <!-- source: ops.md -->
@@ -17065,4 +17075,12 @@ Settings on the sleeping Mac: `womp 1`, `sleep 0`, `tcpkeepalive 1`, `networkove
 This is Local Network privacy: once the session ends, the process is no longer attributed to sshd, and a non-Apple binary without a Local Network grant is refused LAN addresses. Apple-signed binaries (`curl`, `ssh`) are exempt. It is not a firewall (LuLu) block: there is no prompt, loopback works, and the errno is 65 rather than a timeout.
 
 **해결:** Keep the ssh session open for the whole run (run the remote command in the foreground and background the local `ssh` instead, with `-o ServerAliveInterval=15`), or reach the LAN host through an Apple binary, e.g. `ssh -L` to the target and connect to `127.0.0.1`. A LaunchAgent in the GUI session is attributed differently and needs its own Local Network grant.
+
+## OPS-434 — Speech normalised by ffmpeg `loudnorm` to -1.5 dBTP measured +0.9 dBTP after encoding to mono AAC 64 kb/s; a sample-peak `alimiter` at 0.79 still left +0.6, 0.708 brought every file to ≤0.0 dBTP
+
+`측정 2026-10-13 · ffmpeg (Homebrew, macOS 27) · loudnorm I=-16:TP=-1.5:LRA=11 two-pass linear=true · aac -b:a 64k -ac 1 -ar 44100 · 24 speech files of 5–134 s`
+
+**증상:** After two-pass `loudnorm` with `TP=-1.5`, the encoded `.m4a` files measured -16.2…-16.6 LUFS as intended, but `ebur128=peak=true` gave a true peak of **+0.9 dBTP** on one story. Adding `alimiter=limit=0.79:level=false` (≈-2 dBFS) after `loudnorm` left **+0.6 dBTP** on another file. `alimiter` limits sample peaks; the AAC encoder at 64 kb/s adds the overshoot on top.
+
+**해결:** Put `alimiter=limit=0.708:attack=5:release=50:level=false` (≈-3 dBFS) after `loudnorm` and measure the encoded file, not the filter output: then the highest of 24 files was 0.0 dBTP, and loudness stayed within -17.0…-16.4 LUFS. For a hard -1 dBTP ceiling, lower the limit further or encode at a higher bitrate and check again.
 
