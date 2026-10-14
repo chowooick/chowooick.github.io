@@ -5600,3 +5600,27 @@ The same scene rendered twice under `gl_compatibility` differed by exactly 0, an
 **증상:** a turn-based puzzle mode (one player action, then a fixed-rule opponent reply) used an iterative-deepening search over the player's legal actions, with a `Dictionary` of failed positions keyed by a formatted string. Sparse stages (2–4 pieces, depth 1–3) solved in 1–40 ms. A stage with ten pieces and two long-range movers (branching about 20–25) took 0.8 s to depth 4, about 30 s to prove par at depth 5, and counting which of 22 first moves still win within 6 turns took 327 s — about 15 s per first move. Run on the main thread from an arbitrary position (a "show me the next move" hint), the same search would freeze the frame for seconds. No error; the game simply stops drawing.
 
 **해결:** solve offline only. A test script proves every stage, finds its par and writes the best line into the stage's data; the client's hint replays that stored line while the player's own moves match its prefix, and once they leave it, points at the undo button instead. No search runs on the device. A per-stage `--quick` flag in the test skips the slow "how many first moves still win" count when the suite only needs the par.
+
+## GDT-318 — Web export: a second `.pck` fetched after start mounts only if you write the response body yourself; `HTTPRequest.download_file` + `load_resource_pack` fails
+
+`측정 2026-10-14 · Godot 4.7.2-stable Web export (nothreads), Brave 1.96 on a MacBook Air M1`
+
+**증상:** to shrink a first visit, files were left out of `index.pck` with the Web preset's
+`exclude_filter` and packed alone by a second Web preset (`export_filter="resources"` plus
+`export_files=PackedStringArray(...)`) with `godot --headless --export-pack <Preset> build/web/extras.pck`.
+At run time an `HTTPRequest` with `download_file = "user://extras.pck"` fetched it (code 200), but
+`ProjectSettings.load_resource_pack("user://extras.pck")` followed by
+`ResourceLoader.exists("res://…/home.ogg")` failed. The same `.pck` mounted fine natively in an
+empty project (`exists=true`, the `AudioStreamOggVorbis` loaded), so the pack itself was right.
+
+Two facts about that pack worth knowing: it carries the `.import` remaps and the
+`.godot/imported/*` data (the import is what loads, not the source file), and it also carries
+`project.binary`, `.godot/uid_cache.bin`, `global_script_class_cache.cfg` and the autoload scripts —
+identical to the main pack when both come from one export, so mounting with the default
+`replace_files=true` is harmless; mixing packs from two different builds is not.
+
+**해결:** leave `download_file` empty, take the `body` from `request_completed`, write it with
+`FileAccess.open("user://extras.pck", WRITE).store_buffer(body)`, close it, then
+`load_resource_pack`. Set `body_size_limit` above the pack size. Measured: 5.0 MB `index.pck`
+became 2.31 MB plus a 2.76 MB `extras.pck` (music and CJK font subsets) fetched after the engine
+starts; the browser's HTTP cache serves the second fetch on a return visit.

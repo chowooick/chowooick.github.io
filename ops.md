@@ -8243,3 +8243,23 @@ Values that imported: `true`/`false` in the value column for yes/no and multiple
 1. Run pocket clearing only on figures with hair spikes, strands or wires, and list every enclosed hole afterwards (alpha ≤ 128 inside the hole-filled silhouette, with its bounding box), then compare each box with the raw image. Holes between an arm and the body are real; holes on cloth, buttons or props mean: cut again without pocket clearing.
 2. Fill such a mask hole by hand: fill enclosed holes of the thresholded mask (`binary_fill_holes(m > 128) & ~(m > 128)`) only inside a box around the hole, save the mask, and cut again.
 3. Name a visible piece of the hidden thing: "a big round lump swells the cloth halfway up the forearm, and the red rim of a fourth hidden cup peeks out of that sleeve's cuff" drew both on the third generation.
+
+## OPS-442 — GitLab push webhook silently not sent for some pushes; check `hooks/:id/events`, re-fire with the test endpoint
+
+`측정 2026-10-14 · gitlab.com (during its announced 15:00–19:00 UTC rate-limit preview window), Dokploy deploy webhook`
+
+**증상:** `git push origin main` succeeded and the project's events API listed the pushes
+(`pushed to d8c6b51a`, `pushed to f6bcb615` at 15:01 UTC), but Dokploy never deployed: the hook's
+delivery log had **no entry at all** for either push — not a failed delivery, nothing — while the
+previous deliveries (10/10) were all `200 Application deployed successfully`. A later push at
+15:15 was delivered 58 s after it. The site kept serving a 2-day-old build with no error anywhere.
+
+Check it from the API, not the site: `glab api projects/<ns>%2F<repo>/hooks` for the hook id,
+then `glab api "projects/<ns>%2F<repo>/hooks/<id>/events?per_page=6"` — each delivery shows its
+time, response status, response body and the `after` commit. A push with no row there was never
+sent.
+
+**해결:** re-fire the hook for the branch head: `glab api -X POST
+"projects/<ns>%2F<repo>/hooks/<id>/test/push_events"` (returns `201 Created`, the delivery appears
+in the events list, and Dokploy deploys the latest commit). After any push-to-deploy, confirm the
+served build changed (a string only the new build has, or `last-modified`) rather than assuming it.
