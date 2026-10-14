@@ -8203,3 +8203,13 @@ The same gate passed on the same tree about an hour earlier. A separate isolated
 It cleared on its own: 75 minutes later, with no restart (uptime 18 h 11 min), the same gate passed 8 of 8 windowed runs.
 
 **해결:** before debugging your own change, run the same gate on the last known-good commit in a second isolated copy. If that fails too, the host's GPU state is the cause: keep the evidence (both logs) and retry an hour later; it does not need a restart. Do not loosen the gate's `^ERROR:` match to get past it.
+
+## OPS-439 — Timing a PWA's install-to-open hand-off on Android over adb: the opened app shows as Chrome's `SameTaskWebApkActivity`, not as the WebAPK package
+
+`측정 2026-10-14 · Pixel 7 Pro (Android 17) · Chrome 154.0.8037.127 · adb 1.0.41`
+
+**증상:** a loop waiting for the freshly installed app with `dumpsys activity activities | grep topResumedActivity | grep -q webapk` never stopped, although the app was on screen. While a WebAPK runs, `topResumedActivity` names `com.android.chrome/org.chromium.chrome.browser.webapps.SameTaskWebApkActivity` (capital A, k): the `org.chromium.webapk.*` package appears only in `dumpsys activity recents` as the task's `baseIntent` (`cmp=org.chromium.webapk.<hash>_v2/...SplashActivity`, `dat=` the start URL). `adb shell pm list packages` lines end in `\r`, so `dumpsys package $p` with an unstripped name finds nothing and the new WebAPK looks missing.
+
+Measured with the OPS-284 hand-off (poll `getInstalledRelatedApps()`, +3 s, `intent://…?open-app=1`) on a fresh install (`adb uninstall` of the old WebAPK, no data dialog this time): `beforeinstallprompt` was already there when the page loaded, and the app was in front **11.3 s** after tapping 「설치」 in Chrome's sheet (`firstInstallTime` of the new WebAPK fell inside that window). Earlier runs: 8.1–10.8 s (OPS-284, OPS-324), so tell users "about 10 s", not "within 10 s".
+
+**해결:** match case-insensitively (`grep -qi webapk`) or on `SameTaskWebApkActivity`; strip `\r` (`tr -d '\r'`) before using package names from `pm list packages`. On a phone shared with other sessions, read `topResumedActivity` before every `input tap`: another session may bring its own app to the front mid-run (AGT-044).
