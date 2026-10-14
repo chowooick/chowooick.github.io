@@ -2439,3 +2439,17 @@ The pipeline ports directly; the details that matter: text is NFKD-normalised an
 - **성별 효과는 없다**(남성이 더 많다). **step 10은 효과가 없고** 합성 시간만 1.73배다. duration 여유(speed 0.9)가 가장 줄였지만 표본이 작아 유의하지 않다(5/112 대 1/112, Fisher p=0.21). 짧은 성경 절은 거의 안 몰린다.
 
 **해결:** 확정 해법은 아직 없다. 후보는 duration에 여유를 주는 것(speed 0.9 또는 +0.3초)이며 전체 속도가 7–10% 느려진다. step을 올리는 것은 효과가 없다. 측정 스크립트는 Air `~/work/who-rush/`(synth*.mjs, analyze*.py, score.py).
+
+## AGT-128 — 브라우저 Supertonic 3 낭독이 "쇠소리"로 들린다면 모델보다 먼저 같은 기기에서 두 페이지가 함께 읽고 있는지 본다. 폰 WebGPU 출력 자체는 M1과 같다
+
+`측정 2026-10-14 · Supertonic 3(fp32, HF 리비전 3cadd1e) · onnxruntime-web 1.30.0 · Pixel 7 Pro(Android 16, Chrome 154, 설치된 웹앱) · Brave 1.96(M1) · who.withthebible.com 낭독`
+
+**증상:** 운영자 보고: "음성에 쇠소리가 나면서 품질이 떨어졌다". 합성 코드는 일주일째 그대로였다.
+
+- **모델 출력은 정상이었다.** M1에서 같은 시드(`Math.random` 고정)로 WebGPU와 WASM 출력을 비교하면 SNR 73–79dB로 같다. 폰(설치된 웹앱, WebGPU)에서 실제로 재생되는 버퍼를 `AudioBuffer.prototype.copyToChannel`을 감싸 6문장 가져와 M1 기준(같은 문장·목소리, 시드 3개)과 스펙트로그램과 대역 에너지를 비교해도 차이가 시드 사이 차이 안에 들었다.
+- **같은 폰에서 Supertonic 워커가 두 개 떠 있었다.** 브라우저 탭 `/studies/`(모든 글 이어 듣기)가 "다시 준비 중"에 걸린 채 남아 있었고, 설치된 웹앱이 같은 시각에 다른 글을 읽고 있었다. 두 페이지 모두 `visibilityState`가 `visible`로 보였다(CDP로 붙인 상태의 측정). 남은 메모리 913MB, 스왑 4.5GB 사용. 같은 목소리를 두 페이지가 몇 ms 차이로 함께 내면 콤 필터가 되어 금속성 소리가 난다.
+- **`new AudioContext()` 기본값(`latencyHint: "interactive"`)은 Pixel 7 Pro Chrome에서 `baseLatency` 2.67ms(128프레임)다.** 바쁜 폰에서 끊김에 약하다. `latencyHint: "playback"`은 M1 Brave에서 21.3ms였다. 낭독 같은 긴 재생에는 이것이 맞다.
+- **함정: scrcpy(5.0.1, `--audio-dup`)로 폰 출력을 녹음하면 Chrome Web Audio는 무음으로 녹음된다.** Chrome이 AAudio MMAP 경로로 내보내 원격 믹스에 잡히지 않는다. 실제 재생 버퍼는 페이지 안에서 `copyToChannel`을 감싸 가져오고, 끊김은 `ctx.getOutputTimestamp()`의 contextTime과 performanceTime 증가량을 비교해 본다(30초 동안 오차 3ms 이내면 끊김 없음).
+- 폰 상태 확인: `adb shell dumpsys media.aaudio`(스트림 수와 XRuns), `adb shell dumpsys audio | grep AAudio`(재생 중인 AudioContext 수), `adb forward tcp:9333 localabstract:chrome_devtools_remote` 후 Playwright `connectOverCDP`로 각 탭의 플레이어 상태를 읽는다.
+
+**해결:** 한 기기에서 한 페이지만 읽게 한다. 읽기를 시작하는 페이지가 `BroadcastChannel("read-aloud")`로 알리면 다른 페이지는 그 자리에서 멈추고 AudioContext를 닫고 워커를 `terminate()`해 모델 메모리를 놓는다. 그쪽에서 재생을 누르면 캐시에서 모델을 다시 열어(M1 3.1–3.7초) 같은 문단부터 읽고, 반대쪽이 멈춘다. 첫 다운로드 중인 페이지의 워커는 끄지 않는다(실패로 기록된다). M1 Brave 실제 모델로 확인: 두 번째 페이지가 읽기 시작하고 0.25초 안에 첫 페이지가 멈추고 워커가 0개가 됐다. 출력은 `latencyHint: "playback"`으로 연다.
