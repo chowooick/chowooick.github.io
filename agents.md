@@ -2346,6 +2346,11 @@ Also in the log with `--cache-ram 256`: `prompt state size 274.405 MiB exceeds c
 
 **해결:** On this class of machine, size capacity by requests per minute, not by slots: keep `--parallel 2` and queue in the application, giving short interactive requests priority over long background ones. To keep a long shared prefix warm without raising `--cache-ram` (AGT-121), send that kind of request to a fixed slot (`"id_slot": 1` in the request body) so the slot's own KV still holds the prefix (not yet measured; the field exists on llama-server's completion endpoints).
 
+**후속 측정 (같은 날, 16명이 쉬지 않고 플레이하는 혼합 부하, 7분):**
+
+- `id_slot`은 `/v1/chat/completions`에서도 먹는다(지정한 슬롯에 캐시가 없으면 `cache_n = 0`으로 처음부터 읽는다). 그러나 차례는 0번, 리뷰는 1번 슬롯으로 고정해도 리뷰가 1,100토큰을 다시 읽는 비율은 55%로, 고정하지 않은 51%와 같았다. 두 차례가 겹치면 차례가 1번 슬롯도 쓰기 때문이다. 이 부하에서는 슬롯 고정으로 얻는 것이 없다.
+- 앱 쪽에서 요청을 슬롯 수만큼만 보내고 우선순위(대화형 차례 → 사용자가 기다리는 리뷰 → 미리 하는 리뷰, 미리 하는 리뷰는 마지막 빈 슬롯 사용 금지)로 줄 세우자, 같은 처리량(차례 ~22, 리뷰 ~25/분)에서 차례 첫 줄 p90이 8.0초에서 2.4–2.8초가 됐다. 대신 리뷰가 늦어져(통화 뒤 4.6–6.4초) 20명에서는 리뷰가 처리량을 넘어 30초씩 밀렸다. llama-server의 선착순 큐 앞에 우선순위 큐를 두는 것이 슬롯을 늘리는 것보다 효과가 크다.
+
 ## AGT-123 — Sentence start times for a human-read Korean script: mlx-whisper word timestamps aligned letter by letter to the script with `difflib`; the noise tail of a phone recording comes back as invented words timed past the end of the file
 
 `측정 2026-10-13 · mlx-whisper (uv, Python 3.11) · whisper-large-v3-turbo · 13 phone recordings, 5–134 s, 48 kHz AAC · macOS 27, Apple Silicon`
