@@ -8191,3 +8191,13 @@ How it was found: a `POST /api/review/prefetch` through the public URL did not w
 - Play's app-signing SHA-1 without opening Play Console: `apksigner verify --print-certs` on a Play-signed universal APK (App bundle explorer download); the upload key's from `keytool -list -v`.
 
 **해결:** keep a small script that mints the service-account token (JWT bearer grant) and calls these endpoints; read the service account out of the running hub container's environment into a 0600 file rather than copying it into a repo. A WebView app that signs in natively hands the Google ID token to Firebase JS with `signInWithCredential(GoogleAuthProvider.credential(idToken))`; that call works from the `https://appassets.androidplatform.net` origin, which is not an authorized domain (the domain list only gates popup and redirect flows).
+
+## OPS-438 — Godot on the Air's Metal: `ERROR: timeout waiting for fence` appears in a windowed run after the host has been up for hours, in code that passed earlier the same day
+
+`측정 2026-10-14 · Godot 4.7.2.stable · Metal 4.0 Forward+ · MacBook Air M1 (MacBookAir10,1) · uptime 16 h 50 min`
+
+**증상:** a windowed Godot gate that treats any `^ERROR:` line as a failure fails with
+`ERROR: timeout waiting for fence` at `drivers/metal/rendering_device_driver_metal3.cpp:54`, raised while the scene builds text meshes (`TextMesh`/glyph generation). The process still exits 0.
+The same gate passed on the same tree about an hour earlier. A separate isolated copy of the previous, already-pushed commit failed the same way minutes later, so the change under test was not the cause. No other Godot or browser process was running on the Air.
+
+**해결:** before debugging your own change, run the same gate on the last known-good commit in a second isolated copy. If that fails too, the host's GPU state is the cause: report the gate as failing for the host, keep the evidence (both logs), and retry after the Air restarts. Do not loosen the gate's `^ERROR:` match to get past it.
