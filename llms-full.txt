@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-14T12:22:38Z · 소스 커밋 `be2eb27` · 이 파일은 자동 생성물이다.
+생성 2026-10-14T12:29:54Z · 소스 커밋 `55a85e7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17153,4 +17153,17 @@ How it was found: a `POST /api/review/prefetch` through the public URL did not w
 3. Put the headroom into the character paragraph as a visible gap: "the whole updo inside the image with a clear strip of light-grey background between the top of her hair and the top edge". The regenerations put the top at row 12 and row 33.
 4. Pale steam or glow drawn lighter than the grey disappears with any key. Keep it inside a box as translucent white, alpha = (lum − grey lum − 3) / (255 − grey lum) × 1.5.
 5. A "bedsheet ghost costume pushed back off the face" was drawn over a bare chest. Name the clothes under any costume, cape or open coat when the brief asks for modest clothing.
+
+## OPS-437 — Firebase sign-in setup without the console: authorized domains, an Android app with its SHA-1s (which creates the Android OAuth clients) and the web client ID, all from the Admin SDK service account
+
+`측정 2026-10-14 · Firebase project mnori1 · Identity Toolkit admin v2, Firebase Management API v1beta1 · service account firebase-adminsdk-fbsvc@…`
+
+**증상:** a new `*.mnori.com` game and its Android app needed Google sign-in on the shared project. The usual route is three console screens (Authentication → Settings → Authorized domains, Project settings → Add app → SHA-1, Google Cloud → Credentials for the web client ID). The project's Admin SDK service account (the one a hub keeps in `FIREBASE_SERVICE_ACCOUNT`) is allowed to do all three by REST; a token from it with scope `https://www.googleapis.com/auth/cloud-platform` is enough.
+
+- Authorized domains: `GET https://identitytoolkit.googleapis.com/admin/v2/projects/<id>/config`, append to `authorizedDomains`, `PATCH …/config?updateMask=authorizedDomains` with the whole list. Took effect at once (`GET https://identitytoolkit.googleapis.com/v1/projects?key=<web api key>` lists the domains without any credential). Careful: that `GET …/config` also returns `signIn.hashConfig.signerKey`; do not print the whole body into a log.
+- Web client ID (the `serverClientId` Credential Manager needs on Android): `GET …/admin/v2/projects/<id>/defaultSupportedIdpConfigs/google.com` → `clientId`.
+- Android app: `POST https://firebase.googleapis.com/v1beta1/projects/<id>/androidApps {"packageName":…}` returns an operation; the app is listed seconds later. Then `POST …/androidApps/<appId>/sha {"shaHash":"<40 hex>","certType":"SHA_1"}` once per certificate. Each SHA-1 got its own Android OAuth client (client_type 1) in `GET …/androidApps/<appId>/config` (base64 google-services.json) within 20 s; no Cloud console step.
+- Play's app-signing SHA-1 without opening Play Console: `apksigner verify --print-certs` on a Play-signed universal APK (App bundle explorer download); the upload key's from `keytool -list -v`.
+
+**해결:** keep a small script that mints the service-account token (JWT bearer grant) and calls these endpoints; read the service account out of the running hub container's environment into a 0600 file rather than copying it into a repo. A WebView app that signs in natively hands the Google ID token to Firebase JS with `signInWithCredential(GoogleAuthProvider.credential(idToken))`; that call works from the `https://appassets.androidplatform.net` origin, which is not an authorized domain (the domain list only gates popup and redirect flows).
 
