@@ -2374,7 +2374,7 @@ Matching words to the script's own sentences works and ignores that junk: keep o
 | reviews re-reading the whole head | 51 % | 0 % |
 | time between slot pick and launch | 6 ms | 434 ms |
 | reply generation (turn) | 0.90 s | 1.22 s |
-| swap-outs in 7 min | ~1,000 pages | ~3,000,000 pages (~46 GB) |
+| swap-outs in 7 min | ~21,000 pages (~0.3 GB) | ~3,000,000 pages (~46 GB) |
 | score p90 / coach report p50 | 2.37 s / 6.4 s | 5.05 s / 37 s |
 
 The cache works (fewer tokens read), but on 16 GB with an 11.5 GB model it pushes everything else out: free memory 7 %, ~95 GB written to swap over the two levels, and copying a 200–275 MiB state in and out of RAM per request costs ~0.4 s. Net effect: twice the turn latency.
