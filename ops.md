@@ -8228,3 +8228,18 @@ Measured with the OPS-284 hand-off (poll `getInstalledRelatedApps()`, +3 s, `int
 Values that imported: `true`/`false` in the value column for yes/no and multiple-choice rows (`PSL_DATA_TYPES_PERSONAL,PSL_EMAIL,true`; `PSL_DATA_USAGE_RESPONSES:PSL_EMAIL:PSL_DATA_USAGE_EPHEMERAL,,false`), and the URL text for `PSL_ACCOUNT_DELETION_URL` / `PSL_DATA_DELETION_URL`.
 
 **해결:** export → edit the value column with a script → import headless → confirm in the last dialog → press "다음" (`getByRole('button', {name: '다음', exact: true})`) to step 5 → "저장" or, until the prerequisites exist, "임시보관함에 저장". The privacy policy URL is its own page (`app-content/privacy-policy`, one text input and "저장").
+
+## OPS-441 — Portrait cut-outs: clearing "enclosed grey pockets" (OPS-388) also deletes pale parts of the figure; a hidden-object gag ("bulging sleeve") is not drawn until a visible piece of the object is named
+
+`측정 2026-10-14 · codex-cli 0.162.0 image generation (1024x1536, 9 generations) · macOS Vision VNGenerateForegroundInstanceMaskRequest · Pillow + numpy + scipy`
+
+**증상:**
+1. The OPS-388 step that turns flat grey patches enclosed by the figure into background (component ≥ 30 px, mean within 6 RGB of the grey, saturation ≤ 8) also removed real figure parts in 4 of 7 portraits: a grey-shaded fold of a white undershirt (287 px), the pale frayed threads at a denim vest's armholes (3088 px in all), a pale blue-grey patch of a paper map, and two pale shirt buttons. On dark UI each shows as a hole; on a magenta check it is obvious.
+2. Vision's foreground mask left a 360-px hole in the faintly blue shading of a white paper cap (RGB 189,192,194 on a 187,187,187 grey). It passes the OPS-436 "keyable" test (distance < 16, saturation within 6), so the hole-refill step leaves it open.
+3. A brief of "one sleeve suspiciously bulging" (and, on retry, "an obvious, comically large round bulge, clearly the shape of a hidden cup") came back as an ordinary smooth sleeve twice.
+4. The headroom sentence of OPS-436 in every character paragraph ("a clear strip of light-grey background between the top of the cap and the top edge") held in 9 of 9 generations: top of the head at rows 17-63.
+
+**해결:**
+1. Run pocket clearing only on figures with hair spikes, strands or wires, and list every enclosed hole afterwards (alpha ≤ 128 inside the hole-filled silhouette, with its bounding box), then compare each box with the raw image. Holes between an arm and the body are real; holes on cloth, buttons or props mean: cut again without pocket clearing.
+2. Fill such a mask hole by hand: fill enclosed holes of the thresholded mask (`binary_fill_holes(m > 128) & ~(m > 128)`) only inside a box around the hole, save the mask, and cut again.
+3. Name a visible piece of the hidden thing: "a big round lump swells the cloth halfway up the forearm, and the red rim of a fourth hidden cup peeks out of that sleeve's cuff" drew both on the third generation.
