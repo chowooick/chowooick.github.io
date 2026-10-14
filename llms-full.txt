@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-14T12:00:09Z · 소스 커밋 `c460fb9` · 이 파일은 자동 생성물이다.
+생성 2026-10-14T12:22:38Z · 소스 커밋 `be2eb27` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17136,4 +17136,21 @@ This is Local Network privacy: once the session ends, the process is no longer a
 How it was found: a `POST /api/review/prefetch` through the public URL did not warm the cache of the Mac's process, a public turn added no task to the model server's log, and `dig` only shows Cloudflare's proxy IPs. The tunnel id is in the connector's `TUNNEL_TOKEN` (base64 JSON, field `t`); compare it with the CNAME target from `GET /zones/<zone>/dns_records?name=<host>`.
 
 **해결:** After any deploy, check the serving origin with a request only that origin can answer (a cache it fills, a log line on a backend only it reaches), not with a health route both copies share. When two copies of a site exist, record which tunnel id the CNAME should point to, and fix a drift with `PATCH /zones/<zone>/dns_records/<id> {"content":"<tunnel-id>.cfargotunnel.com","proxied":true}` (a DNS-edit API token is enough; the change took effect within 20 s).
+
+## OPS-436 — Projection un-blending (OPS-388) cuts a seam inside ink outlines on white or light cloth; Vision's foreground mask drops tinted folds of white cloth; tall hair and hats still touch the top edge
+
+`측정 2026-10-14 · codex-cli 0.162.0 image generation (1024x1536, 11 generations) · macOS Vision VNGenerateForegroundInstanceMaskRequest · Pillow + numpy + scipy`
+
+**증상:**
+1. With the OPS-388 edge method (alpha from projecting each edge pixel onto the line from the background grey to the outline ink), the anti-aliased pixels on the **inner** side of the outline lost their alpha: a pixel blending black ink (40) with white cloth (208) reads 145, which on grey channels is also a blend of ink with the grey (181). A chef's toque and jacket came out with 544 small enclosed holes along the outline (counted as alpha ≤ 128 inside the filled silhouette). A global flood fill "from the background, not through ink" does not fix it: it leaks through any gap in the outline and reaches the whole figure.
+2. Ink pixels themselves blocked that flood, so the outline's own outer anti-aliased pixel (lum ~100, half ink, half grey) stayed at full alpha and showed as a light dotted fringe on dark UI.
+3. On a white bedsheet costume, Vision's foreground mask set an enclosed pale-blue shaded fold (RGB 157,158,172 on a 160,159,160 background) to background: an 800-px hole. A plain colour key (RGB distance < 16) also took it for the grey.
+4. The shared portrait prompt's "the top of the head (including any hat) sits a little below the top edge" still let a hair updo be cut by the top edge (53 mask pixels on row 0) and a paper-bag hat touch it, in 2 of 8 first generations.
+
+**해결:**
+1. Give the measured alpha only to pixels the background reaches in a few 4-connected steps (4 worked) without crossing ink (lum more than 60 below the grey), plus one step into the ink for the outline's outer pixel. Everything else on the edge band stays solid. Holes along the outline: 544 → 21 (chef), 189 → 0 (robot), 0-20 on the other six. The few remaining are real background pockets.
+2. Fill the enclosed holes of the Vision mask whose pixels are mostly not "keyable". Count a pixel as background only if its RGB distance to the grey is < 16 **and** its saturation (max − min) is within 6 of the grey's. The tinted shading fails the second test.
+3. Put the headroom into the character paragraph as a visible gap: "the whole updo inside the image with a clear strip of light-grey background between the top of her hair and the top edge". The regenerations put the top at row 12 and row 33.
+4. Pale steam or glow drawn lighter than the grey disappears with any key. Keep it inside a box as translucent white, alpha = (lum − grey lum − 3) / (255 − grey lum) × 1.5.
+5. A "bedsheet ghost costume pushed back off the face" was drawn over a bare chest. Name the clothes under any costume, cape or open coat when the brief asks for modest clothing.
 
