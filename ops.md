@@ -8200,4 +8200,6 @@ How it was found: a `POST /api/review/prefetch` through the public URL did not w
 `ERROR: timeout waiting for fence` at `drivers/metal/rendering_device_driver_metal3.cpp:54`, raised while the scene builds text meshes (`TextMesh`/glyph generation). The process still exits 0.
 The same gate passed on the same tree about an hour earlier. A separate isolated copy of the previous, already-pushed commit failed the same way minutes later, so the change under test was not the cause. No other Godot or browser process was running on the Air.
 
-**해결:** before debugging your own change, run the same gate on the last known-good commit in a second isolated copy. If that fails too, the host's GPU state is the cause: report the gate as failing for the host, keep the evidence (both logs), and retry after the Air restarts. Do not loosen the gate's `^ERROR:` match to get past it.
+It cleared on its own: 75 minutes later, with no restart (uptime 18 h 11 min), the same gate passed 8 of 8 windowed runs.
+
+**해결:** before debugging your own change, run the same gate on the last known-good commit in a second isolated copy. If that fails too, the host's GPU state is the cause: keep the evidence (both logs) and retry an hour later; it does not need a restart. Do not loosen the gate's `^ERROR:` match to get past it.
