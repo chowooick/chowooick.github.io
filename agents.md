@@ -2380,3 +2380,20 @@ Matching words to the script's own sentences works and ignores that junk: keep o
 The cache works (fewer tokens read), but on 16 GB with an 11.5 GB model it pushes everything else out: free memory 7 %, ~95 GB written to swap over the two levels, and copying a 200–275 MiB state in and out of RAM per request costs ~0.4 s. Net effect: twice the turn latency.
 
 **해결:** On a 16 GB machine keep `--cache-ram 256` (AGT-121). The gain is real only where the cache fits in free RAM: budget ~250 MiB per distinct prompt you want kept (here ~4–6 GB for 33 turn prompts plus the review head), on top of model, KV and the rest of the stack. A ~3 GB swap-free budget was not available on 16 GB.
+
+## AGT-125 — 브라우저 TTS의 "합성 중 탭이 죽으면 이 기기는 불가" 표시(localStorage 마커)는 폰에서 화면 꺼짐·앱 전환 뒤 OS가 탭을 정리할 때도 남아, 잘 되던 기기를 영구히 기기 음성으로 떨어뜨린다
+
+`측정 2026-10-14 · who.withthebible.com read-aloud(Supertonic 3, onnxruntime-web WebGPU) · Brave 1.96(Chromium 154) headless, MacBook Air M1`
+
+**증상:** 운영자 보고: 폰에서 화면이 꺼지거나 다른 앱을 쓰고 돌아오면 Supertonic 3이 기기 음성으로 바뀐다. 코드는 메모리 부족으로 탭이 죽는 기기(AGT-104)를 잡으려고 모델 로드·합성 동안 `localStorage`에 마커를 켜 두고, 다음 방문에 마커가 남아 있으면 `{hq:"failed", reason:"crash"}`로 영구 기록했다. 모바일 OS가 백그라운드 탭을 정리(discard)할 때는 `pagehide`가 오지 않으므로(Page Lifecycle: discarded 상태에는 이벤트가 없다) 마커가 그대로 남는다. 그래서 정상 기기가 "메모리가 모자라 페이지가 다시 열렸습니다"를 보고 이후 계속 기기 음성으로 읽었다.
+
+같은 페이지 안에서도 두 경로가 더 있었다. ① 화면이 꺼진 동안 워커의 WebGPU 세션이 깨지면 다음 합성이 실패하고, 실패 한 번에 그 페이지 전체가 기기 음성으로 고정된다. ② iOS가 `interrupted`로 둔 AudioContext는 탭으로 다시 재생할 때 `resume()`이 거부되거나 끝나지 않는다.
+
+함정 하나 더: 마커를 해석하는 코드가 플레이어 모듈과 사이트 공통 스크립트(듣기 전에 안내 카드를 띄우려고) **두 곳**에 있었다. 플레이어만 고쳤을 때 브라우저 시험에서 새로고침 뒤 기록이 여전히 `failed`로 바뀌었고, `Storage.prototype.setItem`을 감싸 스택을 찍어서야 다른 파일이 쓰는 것을 찾았다.
+
+**해결:**
+- 성공 기록(`read-aloud-worked` 날짜, 또는 기존 `hq:"ready"`)이 있는 기기는 마커를 지우기만 하고 실패로 기록하지 않는다. 마커를 해석하는 모든 곳에 같은 규칙을 넣는다. 날짜 없는 옛 crash 기록은 한 번 지운다.
+- 합성·로드·오디오 재개가 실패하면 기기 음성으로 가기 전에 같은 문단에서 다시 시작한다. 1차: 새 AudioContext(오디오 실패일 때), 2차: 워커를 `terminate()`하고 새 워커에서 캐시로 모델을 다시 연다. 두 번 연속 실패해야 기기 음성이고, Supertonic 소리가 한 번 나면 횟수를 0으로 되돌린다. M1 Brave에서 새 워커로 캐시 모델을 다시 열고 소리가 나기까지 약 7초 걸렸다.
+- `AudioContext.resume()`은 1.5초 제한으로 감싼다. 끝나지 않는 resume은 대기가 아니라 실패로 다룬다.
+- `visibilitychange`가 visible로 돌아왔을 때 기기 음성이 대신 읽고 있으면 Supertonic을 다시 시도한다.
+- 브라우저 시험 방법: CDP `Page.setWebLifecycleState {state:'frozen'}` 15초 → `active`로 백그라운드 동결을 흉내 낸다. GPU 손실은 `Worker`를 감싼 서브클래스의 `postMessage`가 load·synth에 `{type:'error'}`로 답하게 해서 흉내 낸다(`dispatchEvent(new ErrorEvent('error'))`는 그 순간 대기 중인 작업만 실패시키는데, 30초 앞서 합성해 두는 플레이어는 대기 작업이 없을 때가 많아 아무 일도 일어나지 않았다).
