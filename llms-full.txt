@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-14T16:13:45Z · 소스 커밋 `afd3450` · 이 파일은 자동 생성물이다.
+생성 2026-10-14T18:30:06Z · 소스 커밋 `2a88bde` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6571,6 +6571,30 @@ The same scene rendered twice under `gl_compatibility` differed by exactly 0, an
 **증상:** a turn-based puzzle mode (one player action, then a fixed-rule opponent reply) used an iterative-deepening search over the player's legal actions, with a `Dictionary` of failed positions keyed by a formatted string. Sparse stages (2–4 pieces, depth 1–3) solved in 1–40 ms. A stage with ten pieces and two long-range movers (branching about 20–25) took 0.8 s to depth 4, about 30 s to prove par at depth 5, and counting which of 22 first moves still win within 6 turns took 327 s — about 15 s per first move. Run on the main thread from an arbitrary position (a "show me the next move" hint), the same search would freeze the frame for seconds. No error; the game simply stops drawing.
 
 **해결:** solve offline only. A test script proves every stage, finds its par and writes the best line into the stage's data; the client's hint replays that stored line while the player's own moves match its prefix, and once they leave it, points at the undo button instead. No search runs on the device. A per-stage `--quick` flag in the test skips the slow "how many first moves still win" count when the suite only needs the par.
+
+## GDT-318 — Web export: a second `.pck` fetched after start mounts only if you write the response body yourself; `HTTPRequest.download_file` + `load_resource_pack` fails
+
+`측정 2026-10-14 · Godot 4.7.2-stable Web export (nothreads), Brave 1.96 on a MacBook Air M1`
+
+**증상:** to shrink a first visit, files were left out of `index.pck` with the Web preset's
+`exclude_filter` and packed alone by a second Web preset (`export_filter="resources"` plus
+`export_files=PackedStringArray(...)`) with `godot --headless --export-pack <Preset> build/web/extras.pck`.
+At run time an `HTTPRequest` with `download_file = "user://extras.pck"` fetched it (code 200), but
+`ProjectSettings.load_resource_pack("user://extras.pck")` followed by
+`ResourceLoader.exists("res://…/home.ogg")` failed. The same `.pck` mounted fine natively in an
+empty project (`exists=true`, the `AudioStreamOggVorbis` loaded), so the pack itself was right.
+
+Two facts about that pack worth knowing: it carries the `.import` remaps and the
+`.godot/imported/*` data (the import is what loads, not the source file), and it also carries
+`project.binary`, `.godot/uid_cache.bin`, `global_script_class_cache.cfg` and the autoload scripts —
+identical to the main pack when both come from one export, so mounting with the default
+`replace_files=true` is harmless; mixing packs from two different builds is not.
+
+**해결:** leave `download_file` empty, take the `body` from `request_completed`, write it with
+`FileAccess.open("user://extras.pck", WRITE).store_buffer(body)`, close it, then
+`load_resource_pack`. Set `body_size_limit` above the pack size. Measured: 5.0 MB `index.pck`
+became 2.31 MB plus a 2.76 MB `extras.pck` (music and CJK font subsets) fetched after the engine
+starts; the browser's HTTP cache serves the second fetch on a return visit.
 
 ---
 
@@ -17281,4 +17305,24 @@ Values that imported: `true`/`false` in the value column for yes/no and multiple
 1. Run pocket clearing only on figures with hair spikes, strands or wires, and list every enclosed hole afterwards (alpha ≤ 128 inside the hole-filled silhouette, with its bounding box), then compare each box with the raw image. Holes between an arm and the body are real; holes on cloth, buttons or props mean: cut again without pocket clearing.
 2. Fill such a mask hole by hand: fill enclosed holes of the thresholded mask (`binary_fill_holes(m > 128) & ~(m > 128)`) only inside a box around the hole, save the mask, and cut again.
 3. Name a visible piece of the hidden thing: "a big round lump swells the cloth halfway up the forearm, and the red rim of a fourth hidden cup peeks out of that sleeve's cuff" drew both on the third generation.
+
+## OPS-442 — GitLab push webhook silently not sent for some pushes; check `hooks/:id/events`, re-fire with the test endpoint
+
+`측정 2026-10-14 · gitlab.com (during its announced 15:00–19:00 UTC rate-limit preview window), Dokploy deploy webhook`
+
+**증상:** `git push origin main` succeeded and the project's events API listed the pushes
+(`pushed to d8c6b51a`, `pushed to f6bcb615` at 15:01 UTC), but Dokploy never deployed: the hook's
+delivery log had **no entry at all** for either push — not a failed delivery, nothing — while the
+previous deliveries (10/10) were all `200 Application deployed successfully`. A later push at
+15:15 was delivered 58 s after it. The site kept serving a 2-day-old build with no error anywhere.
+
+Check it from the API, not the site: `glab api projects/<ns>%2F<repo>/hooks` for the hook id,
+then `glab api "projects/<ns>%2F<repo>/hooks/<id>/events?per_page=6"` — each delivery shows its
+time, response status, response body and the `after` commit. A push with no row there was never
+sent.
+
+**해결:** re-fire the hook for the branch head: `glab api -X POST
+"projects/<ns>%2F<repo>/hooks/<id>/test/push_events"` (returns `201 Created`, the delivery appears
+in the events list, and Dokploy deploys the latest commit). After any push-to-deploy, confirm the
+served build changed (a string only the new build has, or `last-modified`) rather than assuming it.
 
