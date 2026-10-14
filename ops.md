@@ -8214,7 +8214,7 @@ Measured with the OPS-284 hand-off (poll `getInstalledRelatedApps()`, +3 s, `int
 
 **해결:** match case-insensitively (`grep -qi webapk`) or on `SameTaskWebApkActivity`; strip `\r` (`tr -d '\r'`) before using package names from `pm list packages`. On a phone shared with other sessions, read `topResumedActivity` before every `input tap`: another session may bring its own app to the front mid-run (AGT-044).
 
-## OPS-438 — Play Console Data safety by CSV import (Playwright): headed Brave never finishes the upload, a second confirm dialog follows "가져오기", and "저장" stays disabled until the target audience and the privacy policy URL exist
+## OPS-440 — Play Console Data safety by CSV import (Playwright): headed Brave never finishes the upload, a second confirm dialog follows "가져오기", and "저장" stays disabled until the target audience and the privacy policy URL exist
 
 `측정 2026-10-14 · Play Console (ko) · Brave 1.97 via playwright-core, persistent profile copy · app in internal testing only`
 
