@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-14T14:14:46Z · 소스 커밋 `4c64609` · 이 파일은 자동 생성물이다.
+생성 2026-10-14T14:15:33Z · 소스 커밋 `5eb08c4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -8986,7 +8986,7 @@ So ~0.36 s per second of speech at 8 steps; the work is memory-bound (2 threads 
 
 The pipeline ports directly; the details that matter: text is NFKD-normalised and wrapped as `<en>…</en>`, each code point maps through `unicode_indexer.json` (a code point with index -1 is unsupported: raise and let the server speak), the latent length rounds the *float* sample count up while the latent mask rounds the *integer* count up (they can differ by one), and `current_step`/`total_step` are float tensors of shape [1].
 
-**해결:** use 2 threads (same speed, leaves cores to the UI and audio), make lines one at a time in order, and measure each line on the device: when two lines in a row take longer than 0.9× their own duration, hand the rest of the session back to the server's voice. Download the model after install (DownloadManager, unmetered only, SHA-256 per file) rather than shipping 398 MB in the bundle.
+**해결:** use 2 threads (same speed, leaves cores to the UI and audio), make lines one at a time in order, and plan each sentence as it arrives: keep the device's measured seconds-per-second of speech (EMA, persisted), estimate the sentence's length (~14 characters per second), and give it to the phone only if the phone would finish before the sentences ahead of it have played; otherwise the server synthesizes it. Starting the estimate at 0.6 left 0.78/0.95 s silences in the first turn; starting at 1.1, three calls of three turns had no silence at all and the phone made about half the sentences. Download the model after install (DownloadManager, unmetered only, SHA-256 per file) rather than shipping 398 MB in the bundle.
 
 ## AGT-127 — Supertonic 3은 문장 전체 길이만 예측해서 가끔 문장 끝 2–3어절을 두 배 빠르게 읽는다. 목소리 성별과 무관하고 denoising step을 늘려도 안 준다
 
@@ -17206,7 +17206,7 @@ How it was found: a `POST /api/review/prefetch` through the public URL did not w
 - Android app: `POST https://firebase.googleapis.com/v1beta1/projects/<id>/androidApps {"packageName":…}` returns an operation; the app is listed seconds later. Then `POST …/androidApps/<appId>/sha {"shaHash":"<40 hex>","certType":"SHA_1"}` once per certificate. Each SHA-1 got its own Android OAuth client (client_type 1) in `GET …/androidApps/<appId>/config` (base64 google-services.json) within 20 s; no Cloud console step.
 - Play's app-signing SHA-1 without opening Play Console: `apksigner verify --print-certs` on a Play-signed universal APK (App bundle explorer download); the upload key's from `keytool -list -v`.
 
-**해결:** keep a small script that mints the service-account token (JWT bearer grant) and calls these endpoints; read the service account out of the running hub container's environment into a 0600 file rather than copying it into a repo. A WebView app that signs in natively hands the Google ID token to Firebase JS with `signInWithCredential(GoogleAuthProvider.credential(idToken))`; whether that call is accepted from the `https://appassets.androidplatform.net` origin, which is not an authorized domain, was not yet measured on 2026-10-14 (the domain list is documented to gate popup and redirect flows; the project's web API key had no referrer restriction).
+**해결:** keep a small script that mints the service-account token (JWT bearer grant) and calls these endpoints; read the service account out of the running hub container's environment into a 0600 file rather than copying it into a repo. A WebView app that signs in natively hands the Google ID token to Firebase JS with `signInWithCredential(GoogleAuthProvider.credential(idToken))`; that call is accepted from the `https://appassets.androidplatform.net` origin, which is not an authorized domain (measured 2026-10-14 on a Pixel 7 Pro: Credential Manager account chooser → ID token → `signInWithCredential` → signed in, and the ID token then verified on the game server; the project's web API key had no referrer restriction). A debug build with an `applicationIdSuffix` needs its own Firebase Android app with the debug keystore's SHA-1, or the chooser never returns a credential.
 
 ## OPS-438 — Godot on the Air's Metal: `ERROR: timeout waiting for fence` appears in a windowed run after the host has been up for hours, in code that passed earlier the same day
 
