@@ -2453,3 +2453,17 @@ The pipeline ports directly; the details that matter: text is NFKD-normalised an
 - 폰 상태 확인: `adb shell dumpsys media.aaudio`(스트림 수와 XRuns), `adb shell dumpsys audio | grep AAudio`(재생 중인 AudioContext 수), `adb forward tcp:9333 localabstract:chrome_devtools_remote` 후 Playwright `connectOverCDP`로 각 탭의 플레이어 상태를 읽는다.
 
 **해결:** 한 기기에서 한 페이지만 읽게 한다. 읽기를 시작하는 페이지가 `BroadcastChannel("read-aloud")`로 알리면 다른 페이지는 그 자리에서 멈추고 AudioContext를 닫고 워커를 `terminate()`해 모델 메모리를 놓는다. 그쪽에서 재생을 누르면 캐시에서 모델을 다시 열어(M1 3.1–3.7초) 같은 문단부터 읽고, 반대쪽이 멈춘다. 첫 다운로드 중인 페이지의 워커는 끄지 않는다(실패로 기록된다). M1 Brave 실제 모델로 확인: 두 번째 페이지가 읽기 시작하고 0.25초 안에 첫 페이지가 멈추고 워커가 0개가 됐다. 출력은 `latencyHint: "playback"`으로 연다.
+
+## AGT-129 — 음성 대화의 말끝을 고정 침묵(0.8초)으로 정하면 천천히 말하는 학습자가 문장 중간에 잘린다. 쉴 때 지금까지의 말을 전사해 "끝날 수 없는 단어"로 멈췄는지 보고 더 기다린다
+
+`측정 2026-10-14 · Silero VAD v5(onnxruntime-web) · SenseVoice int8(sherpa-onnx, M1 Air) · Brave 1.96 가짜 마이크(--use-file-for-fake-audio-capture=<wav>%noloop) · speakout.mnori.com`
+
+**증상:** 사용자 보고: "말을 느리게 하면 중간에 끊긴다", "대답을 다 하기 전에 다음으로 넘어간다". 0.8초 침묵이면 턴을 끝내고 전송하는 구조였다. 1.3초·2.0초를 쉬며 말한 "Stay calm. / Hide behind a car and / stay very quiet."를 가짜 마이크로 넣으면 운영 화면은 "Stay calm."만 받았다.
+
+- 침묵 기준만 늘리면(예: 1.6초) 빠른 사람은 매 차례 기다리고, 2초 넘게 생각하며 말하는 사람은 여전히 잘린다.
+- 쉴 때마다 서버에 지금까지의 오디오를 전사시키면 SenseVoice는 짧은 문장을 수십 ms에 끝낸다. 소켓으로 `check`를 보내고 답이 올 때까지 왕복 80–160ms였다.
+- 판정은 단순 규칙으로 충분했다: 마지막 단어가 접속사·전치사·관사·주어 대명사·필러(and, to, the, a, I, um …)이거나 쉼표로 끝나면 "열림"(2.8초 더), 한두 단어면 "짧음"(1.6초 더), 나머지는 바로 끝. on/in/out/up 같은 불변화사와 조동사("Yes, I can.")는 목록에서 뺀다. 문장을 끝낼 때가 많다.
+- 답이 1.2초 안에 안 오면 1.6초 고정 대기로 넘어간다. 다시 말하기 시작하면 다음 쉼에서 새로 확인한다. 쉼 길이(말이 이어진 쉼만)를 기기에 기억해 확인 시점을 최대 1.4초까지 늦춘다.
+- 연습처럼 말할 문장을 아는 경우는 "기준 문장의 마지막 단어에 닿았는가"로 판정한다.
+
+**해결:** 말끝 = 침묵 + 문장 완결 확인. 같은 가짜 마이크 입력에서 check 3번(short → open → done) 뒤 문장 전체가 전사됐다. 마지막 check의 전사를 샘플 수로 기억해 두면 end 때 다시 전사하지 않는다. 서버의 턴 길이 상한(이 경우 15초)도 같이 늘려야 한다.

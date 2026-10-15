@@ -8263,3 +8263,13 @@ sent.
 "projects/<ns>%2F<repo>/hooks/<id>/test/push_events"` (returns `201 Created`, the delivery appears
 in the events list, and Dokploy deploys the latest commit). After any push-to-deploy, confirm the
 served build changed (a string only the new build has, or `last-modified`) rather than assuming it.
+
+## OPS-443 — CSS `color-mix()`의 두 비율 합이 100%보다 작으면 결과 색이 반투명해진다. 원 버튼 뒤의 선이 비쳐 보인다
+
+`측정 2026-10-14 · Brave 1.96(Chromium 154)`
+
+**증상:** `radial-gradient(color-mix(in srgb, var(--accent) 70%, #fff 6%), …)`로 칠한 불투명해야 할 원 버튼 위로, 뒤에 그린 SVG 경로 선이 비쳐 보였다. z-index와 쌓임 맥락을 먼저 의심했지만 원인이 아니었다.
+
+명세상 두 비율의 합이 100% 미만이면 섞은 색에 그 합만큼의 알파가 곱해진다(70% + 6% → 알파 0.76). 합이 100%를 넘으면 정규화될 뿐 알파는 1이다.
+
+**해결:** 비율을 하나만 적거나(`color-mix(in srgb, var(--accent) 88%, #fff)`) 합을 100%로 맞춘다. 반투명이 의도가 아니면 `color-mix`의 두 번째 비율을 쓰지 않는다.
