@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-15T00:23:50Z · 소스 커밋 `f68f83c` · 이 파일은 자동 생성물이다.
+생성 2026-10-15T02:21:28Z · 소스 커밋 `8e43b1c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17349,4 +17349,14 @@ served build changed (a string only the new build has, or `last-modified`) rathe
 명세상 두 비율의 합이 100% 미만이면 섞은 색에 그 합만큼의 알파가 곱해진다(70% + 6% → 알파 0.76). 합이 100%를 넘으면 정규화될 뿐 알파는 1이다.
 
 **해결:** 비율을 하나만 적거나(`color-mix(in srgb, var(--accent) 88%, #fff)`) 합을 100%로 맞춘다. 반투명이 의도가 아니면 `color-mix`의 두 번째 비율을 쓰지 않는다.
+
+## OPS-444 — Android WebView app: a web page can own the system Back button with `history.pushState`, because the activity's `canGoBack()` counts same-document entries
+
+`측정 2026-10-14 · androidx.webkit 1.14 (WebViewAssetLoader, https://appassets.androidplatform.net origin) · Android 15 emulator (API 35, arm64) · MainActivity.onBackPressed = if (webView.canGoBack()) goBack() else super`
+
+**증상:** a WebView game wanted Back to go from its game screen to its own title screen and only then leave the app, without changing the Kotlin code and shipping a new native handler. With the usual `onBackPressed` (`canGoBack() ? goBack() : finish`), Back on the page's only entry closed the app.
+
+A same-document `history.pushState({...}, '')` made by the page (on leaving its title screen) is a back-forward list entry for the WebView: the next Back made `canGoBack()` true, `goBack()` fired `popstate` in the page, and the page put its title screen back. A second Back on the title (no entry left) closed the app as before. Re-pushing an entry inside the `popstate` handler made Back do nothing on screens that must not be left by Back (an active call) — measured: Back during the call left the activity resumed and the call on screen, ending the call and pressing Back showed the title, Back again returned to the launcher.
+
+**해결:** give the page one pushed entry above its root screen and handle `popstate` in JS; no native change is needed for a "Back returns to the title, then exits" flow. Track whether this page load pushed the entry (a flag, not `history.state`, which survives reloads): calling `history.back()` to return to the root when nothing was pushed leaves the site.
 
