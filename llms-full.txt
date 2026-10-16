@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-15T02:21:36Z · 소스 커밋 `fbb3271` · 이 파일은 자동 생성물이다.
+생성 2026-10-16T04:00:24Z · 소스 커밋 `07b808c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17359,4 +17359,14 @@ served build changed (a string only the new build has, or `last-modified`) rathe
 A same-document `history.pushState({...}, '')` made by the page (on leaving its title screen) is a back-forward list entry for the WebView: the next Back made `canGoBack()` true, `goBack()` fired `popstate` in the page, and the page put its title screen back. A second Back on the title (no entry left) closed the app as before. Re-pushing an entry inside the `popstate` handler made Back do nothing on screens that must not be left by Back (an active call) — measured: Back during the call left the activity resumed and the call on screen, ending the call and pressing Back showed the title, Back again returned to the launcher.
 
 **해결:** give the page one pushed entry above its root screen and handle `popstate` in JS; no native change is needed for a "Back returns to the title, then exits" flow. Track whether this page load pushed the entry (a flag, not `history.state`, which survives reloads): calling `history.back()` to return to the root when nothing was pushed leaves the site.
+
+## OPS-445 — `codex exec` research run: the model listed sources it never opened in this run, even when told only opened pages count; check the `web_search` record, not the answer
+
+`측정 2026-10-16 · codex-cli 0.162.0 · GPT-6-Astra on a ChatGPT login · one 12-minute research-and-write run with `--json`, 19 sources in the answer`
+
+**증상:** a draft built from `codex exec --json` web research cited two pages (quran.com tafsir URLs) that appear nowhere in the run's events: no `web_search` item had them as a search hit or an opened page. The other 17 sources were all in the record. The prompt already said that only pages opened in this run count as read and that search snippets do not.
+
+The addresses were well-formed and plausible, so the answer alone gives no sign they were written from memory. The events are the only evidence: every search and every page open is an `item.completed` of type `web_search`, and an opened page carries a `view…` reference (see the `-c web_search` entry above for the event shape).
+
+**해결:** compare each URL in the answer against the URLs in the `web_search` events before using it, and treat a missing one as unread (drop it with the sentences that rest on it, or ask again), never as a parsing gap. Name the failure mode in the prompt as well ("an address known from memory is not a source unless you open it in this run"); it lowers the rate but does not replace the check.
 
