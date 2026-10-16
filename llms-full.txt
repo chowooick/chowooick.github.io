@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-16T04:00:24Z · 소스 커밋 `07b808c` · 이 파일은 자동 생성물이다.
+생성 2026-10-16T04:11:57Z · 소스 커밋 `b4c99eb` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17362,6 +17362,8 @@ A same-document `history.pushState({...}, '')` made by the page (on leaving its 
 
 ## OPS-445 — `codex exec` research run: the model listed sources it never opened in this run, even when told only opened pages count; check the `web_search` record, not the answer
 
+> **무효 (2026-10-16):** the diagnosis below is most likely wrong. Codex records a page such as `quran.com/36:14/…` as `quran.com/36%3A14/…`, and the runner compared exact strings, so pages the run did open looked unopened. See OPS-446. The advice to check the record still holds; compare URLs in a canonical form.
+
 `측정 2026-10-16 · codex-cli 0.162.0 · GPT-6-Astra on a ChatGPT login · one 12-minute research-and-write run with `--json`, 19 sources in the answer`
 
 **증상:** a draft built from `codex exec --json` web research cited two pages (quran.com tafsir URLs) that appear nowhere in the run's events: no `web_search` item had them as a search hit or an opened page. The other 17 sources were all in the record. The prompt already said that only pages opened in this run count as read and that search snippets do not.
@@ -17369,4 +17371,14 @@ A same-document `history.pushState({...}, '')` made by the page (on leaving its 
 The addresses were well-formed and plausible, so the answer alone gives no sign they were written from memory. The events are the only evidence: every search and every page open is an `item.completed` of type `web_search`, and an opened page carries a `view…` reference (see the `-c web_search` entry above for the event shape).
 
 **해결:** compare each URL in the answer against the URLs in the `web_search` events before using it, and treat a missing one as unread (drop it with the sentences that rest on it, or ask again), never as a parsing gap. Name the failure mode in the prompt as well ("an address known from memory is not a source unless you open it in this run"); it lowers the rate but does not replace the check.
+
+## OPS-446 — `codex exec --json` `web_search` records percent-encode `:` in a URL path: `quran.com/36:14/…` comes back as `quran.com/36%3A14/…`, so an exact-string check calls a page you opened "never opened"
+
+`측정 2026-10-16 · codex-cli 0.162.0 · GPT-6-Astra and Sonnet (Claude Code WebFetch) · 2 runs each opening https://quran.com/36:14/tafsirs/en-tafisr-ibn-kathir and …/36:29/…`
+
+**증상:** a provenance gate that compares the URLs in a model's answer with the URLs in the run's tool record refused two sources as "not in the record / never read". The model's answer wrote `https://quran.com/36:14/…`; Codex's `item.completed` `web_search` results for the page it opened (a `view…` ref) carried `https://quran.com/36%3A14/…`, in both runs. Claude Code's WebFetch tool record kept the `:` as given. `new URL()` does not unify the two: `%3A` and `:` stay different in `href`.
+
+A filter that keeps only record URLs equal to an answer URL also throws the encoded entries away, so the saved record no longer shows that the page was opened, and the failure looks like the model citing from memory (see OPS-445, now marked invalid).
+
+**해결:** compare in a canonical form: parse with `new URL()`, drop the fragment and the trailing slash, and decode percent-escapes of characters a path may carry literally (`%3A %40 %2C %21 %24 %26 %27 %28 %29 %2A %2B %3B %3D`), but never `%2F`. Keep the answer's spelling when you pass the record on, so a later exact-string check on the server still matches. Keep the raw tool transcript of a refused run until someone has looked at it; without it the two causes cannot be told apart.
 
