@@ -8305,3 +8305,41 @@ The addresses were well-formed and plausible, so the answer alone gives no sign 
 A filter that keeps only record URLs equal to an answer URL also throws the encoded entries away, so the saved record no longer shows that the page was opened, and the failure looks like the model citing from memory (see OPS-445, now marked invalid).
 
 **해결:** compare in a canonical form: parse with `new URL()`, drop the fragment and the trailing slash, and decode percent-escapes of characters a path may carry literally (`%3A %40 %2C %21 %24 %26 %27 %28 %29 %2A %2B %3B %3D`), but never `%2F`. Keep the answer's spelling when you pass the record on, so a later exact-string check on the server still matches. Keep the raw tool transcript of a refused run until someone has looked at it; without it the two causes cannot be told apart.
+
+## OPS-447 — wrangler's OAuth login died (refresh failed) and the Air's Google profile wanted a passkey: a headed browser on the main Mac with a copy of the gstack profile, placed off-screen, approved it in one pass
+
+`측정 2026-10-16 · wrangler 4.135.0 · Chrome for Testing (ms-playwright chromium-1243) · Brave 1.96 on the Air`
+
+**증상:** every wrangler command answered `Not logged in. Your auth token has expired and could not be refreshed, and the environment is non-interactive`; `npx wrangler auth token` (OPS-293) could not refresh either. `~/.config/cloudflare/token` is a narrow API token (zones only): Workers, Workers AI, D1, Turnstile and the domains API all answered `Authentication error` (10000).
+
+- `wrangler login --browser=false` prints the consent URL and listens on `localhost:8976` for about two minutes, then exits 1.
+- On the Air (`ssh -N -R 8976:localhost:8976 air` forwards the callback to the Mac), the Cloudflare login page offered the Google account, but Google stopped at `accounts.google.com/v3/signin/challenge/pk` (passkey) in `~/kc-test/profile` and in copies of the other `~/kc-test/profile-*` (their `.dash.cloudflare.com vses2` cookie no longer held a session).
+- Headless Chrome for Testing on the Mac stopped at Cloudflare's own check ("잠시만 기다리십시오…") on `dash.cloudflare.com/login` and never got further.
+
+**해결:** on the main Mac, copy `~/.gstack/chromium-profile` to a scratch directory, start `npx wrangler login --browser=false` in the background, read the URL from its output, and open it with Playwright `launchPersistentContext(copy, { executablePath: <Chrome for Testing>, headless: false, ignoreDefaultArgs: ['--enable-automation'], args: ['--disable-blink-features=AutomationControlled', '--window-position=-2400,-2400'] })`. The off-screen position kept the window out of the owner's way. Click `chowooick@gmail.com` on the Cloudflare login page, then the consent page's Allow; the page lands on `welcome.developers.workers.dev/wrangler-oauth-consent-granted` and wrangler prints `Successfully logged in.` within a minute. Delete the profile copy afterwards. Same idea as OPS-396's dashboard session.
+
+## OPS-448 — A Workers custom domain moved to another Worker by deploying that Worker with the same `custom_domain` route; no prompt, no DNS change
+
+`측정 2026-10-16 · wrangler 4.135.0 OAuth · Workers Free`
+
+**증상:** kyominnews.com was a custom domain of the Worker `kyomincenter` (`{ "pattern": "kyominnews.com", "custom_domain": true }`). A new Worker needed it.
+
+`wrangler deploy` of the new Worker with the same route entry, run non-interactively, printed `Deployed kyominnews triggers … kyominnews.com (custom domain)` and the domain answered from the new Worker at once (first request about 5 s later). There was no confirmation prompt and no error like OPS-093's 100117, because the hostname's DNS record was Worker-managed, not external.
+
+**해결:** deploy the new Worker first, then remove the route from the old Worker's config before its next deploy, or that deploy takes the domain back.
+
+## OPS-449 — Astro dev on @astrojs/cloudflare: a middleware that stores pages in `caches.default` keeps serving the old page after an edit, even across dev-server restarts
+
+`측정 2026-10-16 · astro 7.3.3 · @astrojs/cloudflare 14.3.2 · workerd 1.20260918`
+
+**증상:** after editing a component, `curl` of the page returned the old markup in 15 ms, also after killing and restarting `astro dev`. The middleware answered GETs from `caches.default` and put every public 200 there; the dev runtime's cache is real and persists in `.wrangler/state`.
+
+**해결:** skip the Cache API while developing: `const cacheable = !import.meta.env.DEV && …`.
+
+## OPS-450 — npm on the Air skips esbuild's and workerd's postinstall ("not yet covered by allowScripts"); approve and rebuild before `astro dev`
+
+`측정 2026-10-16 · npm on the Air (install-scripts gating) · esbuild 0.28 · workerd 1.2026`
+
+**증상:** `npm install` ended with `npm warn install-scripts … esbuild@0.28.2 (postinstall: node install.js) … workerd@… (postinstall …)` and `Run npm install-scripts approve <pkg> to allow`. The packages are installed without their platform binaries.
+
+**해결:** `npm install-scripts approve esbuild workerd` (add `fsevents` on macOS), then `npm rebuild esbuild workerd`. `approve` writes an allow list into `package.json`; in a shared repository restore that file afterwards if the change is not meant to be committed.
