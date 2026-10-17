@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T19:06:25Z · 소스 커밋 `a647678` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T19:07:27Z · 소스 커밋 `f361478` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17787,4 +17787,23 @@ labels every article `PressRelease`.
 `YYYY.MM.DD HH:MM:SS` as America/New_York (DST-aware). 5 parallel requests copied the whole site with images (604 MB) in
 18 minutes with no failures. Map old addresses with 301s: `article.html?no=N` and `mobile/article.html?no=N` → the new
 article, `section_list_all.html?sec_no=X` → the new section, `/data/photos/…` → the migrated image.
+
+## OPS-472 — Telling whether a job posting is still open without a browser: each ATS needs its own signal, and UCHealth's closed page still answers 200
+
+`측정 2026-10-17 · Greenhouse · Workday · UKG Pro (recruiting.ultipro.com) · ADP Workforce Now · SuccessFactors career site · plain curl/fetch and PocketBase 0.40.4 $http.send from AWS us-west-2`
+
+**증상:** an automatic "close the post when the source closes" check that looks only at the HTTP status of the posting URL marks almost nothing closed. Several boards are single-page apps that answer 200 with the same shell for open, closed and invented job IDs; Greenhouse redirects a gone job to `/{board}?error=true` (200); UCHealth's careers site shows "This job posting is no longer active." on a 200 page in a browser and answers 403 to curl, Node fetch and WebFetch (and tarpits curl until timeout from a home network).
+
+Signals that held for real open postings and invented IDs:
+
+| Board | Ask | Open | Closed |
+| --- | --- | --- | --- |
+| Greenhouse `job-boards.greenhouse.io/{board}/jobs/{id}` | `https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{id}` | 200 JSON | 404 `Job not found` |
+| Workday `{tenant}.wdN.myworkdayjobs.com/[locale/]{site}/job/{path}` | GET `https://{host}/wday/cxs/{tenant}/{site}/job/{path}` | 200 with `jobPostingInfo` | 404 |
+| UKG Pro `…/OpportunityDetail?opportunityId={uuid}` | the page itself | HTML embeds `CandidateOpportunityDetail({"Id":"{uuid}",…` | 200 page (~42 KB) without it |
+| ADP `…/recruitment.html?cid=…&ccId=…&jobId={id}` | `https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions/{id}?cid=…&lang=en_US&ccId=…` | 200 with `"itemID":"{id}"` | 200 skeleton (`postingInstructions` but no `itemID`) |
+| SuccessFactors career site `/job/{slug}/{number}/` | the page | page contains the number | redirect to `/errorpage/?errortype=…` (200) |
+| County / small-employer WordPress pages | the page | 200 | 404 |
+
+**해결:** pick the signal per board, treat 403/429/5xx/network errors as "unknown" (never closed), and close only after two "closed" answers at least ~20 hours apart. For a careers page that lists several jobs on one URL, store the job as a text fragment (`…/careers#:~:text=Teller%20(Olympic%20Branch)`) and treat "text gone from the page" as closed; readers' browsers also jump to that line. When every post on one board answers closed in the same run, assume the board changed its markup and close none. Run the check from a server: PocketBase's pure-Go `$http.send` on a macOS home network (the Air) spent 6–8 s per DNS lookup and hit its timeout on most hosts, while the same hook on the Linux host answered all of them.
 
