@@ -8500,3 +8500,86 @@ Model choice for Korean form-filling (JSON fields from a short Korean note, and 
 - 페이지가 `location.href = 'kakaotalk://web/openExternal?url=…'`을 실행하면 카톡은 특정 브라우저가 아닌 일반 VIEW 인텐트를 보낸다. 그 사이트가 WebAPK(설치된 PWA)로 깔린 폰에서는 Chrome 탭이 아니라 `org.chromium.chrome.browser.webapps.SameTaskWebApkActivity`가 앞에 왔다. 이어서 페이지가 hidden이 된 뒤 `location.href = 'kakaotalk://inappbrowser/close'`를 실행하면 `InAppBrowserActivity`가 카톡 태스크의 히스토리에서 사라진다(남은 것은 `ChatRoomHolderActivity`·`MainActivity`). 앱 화면에서 뒤로 가도 빈 인앱 창이 남지 않는다.
 
 **해결:** 인앱 탈출 버튼을 실기기에서 검증할 때는 주소창에 직접 입력해 페이지를 연다. 탭 뒤에는 `dumpsys window | grep mCurrentFocus`(누가 앞에 왔는지)와 `dumpsys activity activities | grep -E 'Hist.*kakao'`(인앱 창이 닫혔는지)로 판정한다. WebAPK가 깔려 있으면 "Chrome에서 열기"가 설치된 앱을 연다는 점을 버튼 문구와 기대 결과에 반영한다. iOS의 `kakaoweb://closeBrowser`는 이 측정에 포함되지 않았다.
+
+## OPS-463 — Google 지도 길찾기 URL로 "평일 오전 8시 출발"을 고정하는 법: `data=` 안의 `!8j`는 현지 벽시계 시각을 UTC인 것처럼 적은 epoch다
+
+`측정 2026-10-17 · Google Maps 웹 (hl=en) · Brave 1.96 (Chromium 154) on macOS · 67개 동네 출퇴근 측정`
+
+**증상:** 동네별 출근 시간을 "평일 오전 8시 출발" 같은 같은 조건으로 재야 하는데, `maps/dir/?api=1&…` 형식에는 출발 시각 파라미터가 없다. UI에서 "Depart at"을 매번 고르면 67곳을 재는 동안 실수가 생긴다.
+
+길찾기 URL의 `data=` 조각에 출발 시각을 넣을 수 있다:
+`https://www.google.com/maps/dir/<lat,lng>/<목적지>/data=!4m6!4m5!2m3!6e0!7e2!8j<초>!3e<모드>?hl=en`
+- `6e0` = Depart at (`6e1`은 Arrive by), `3e3` = 대중교통, `3e0` = 운전.
+- `8j` 값은 **그 지역 현지 시각 08:00을 UTC 08:00인 것처럼** 계산한 epoch 초다. 2026-10-20 08:00은 뉴저지·LA·댈러스·덴버·애틀랜타 어디서나 `8j1792483200`이고, 화면에 "Depart at 8:00 AM, Tue, Oct 20"이 그 지역 시각으로 뜬다. 진짜 UTC epoch(예: EDT 08:00 = 12:00Z)를 넣으면 4~7시간 어긋난다.
+- 운전은 "typically 30–55 min" 범위로 나온다. 대중교통은 여러 출발 시각이 섞여 나오므로 "08:00~08:30 출발 중 최단"처럼 기준을 정해 고른다.
+
+함정: 한 곳(텍사스 Coppell)은 화요일로 고정해도 토요일 새벽 경로만 돌려줬다. 다른 날로 다시 재도 같았다. 이런 값은 버린다. ZIP 중심 좌표가 시가지 밖에 떨어지는 경우는 OPS-466을 본다.
+
+**해결:** 출발 시각은 `!8j<현지 벽시계 시각을 UTC로 친 epoch>`로 URL에 고정한다. 측정마다 화면의 "Depart at …" 문구를 스크린샷으로 남겨 실제로 적용됐는지 확인한다.
+
+## OPS-464 — H마트 매장 좌표는 hmart.com의 공개 VTEX 픽업 지점 API에서 한 번에 받는다
+
+`측정 2026-10-17 · www.hmart.com (VTEX) · 미국 5개 권역 매장`
+
+**증상:** hmart.com/stores 매장 목록은 주소만 화면에 그린다. 좌표를 얻으려고 주소마다 지오코딩을 하면 느리고, 상가 주소에서 수십 m씩 어긋난다.
+
+사이트가 쓰는 VTEX 엔드포인트가 인증 없이 열려 있다:
+`https://www.hmart.com/api/checkout/pub/pickup-points?geoCoordinates=<경도>;<위도>&page=1&pageSize=50`
+기준점 주변 매장이 이름·주소·좌표·영업 여부와 함께 JSON으로 온다. **좌표 순서는 경도;위도다.** 뉴저지 매장 3곳을 Nominatim과 대조했더니 30m 안이었다. 콜로라도에는 H마트가 없다(2026-10-17).
+
+**해결:** 매장 좌표는 이 API로 받고, 출처로 hmart.com 매장 페이지를 함께 적는다. 다른 한인 마트(시온마켓, 갤러리아 등)는 각자 공식 사이트에서 따로 확인한다.
+
+## OPS-465 — overseas.mofa.go.kr(재외공관 사이트)는 curl에 307 + 쿠키를 무한히 돌려준다: 쿠키 저장소와 브라우저 UA가 있으면 열린다
+
+`측정 2026-10-17 · overseas.mofa.go.kr · curl 8.x`
+
+**증상:** 영사관 주소나 관할을 확인하려고 `curl -L`로 공관 페이지를 받으면 `307` 응답과 `Set-Cookie: TMOSHCooKie=…`이 반복되다가 리디렉트 한도에 걸려 끝난다. 본문은 받지 못한다.
+
+**해결:** 쿠키를 저장하고 다시 보내면 된다. `curl -L -c jar -b jar -A "Mozilla/5.0 …"`처럼 쿠키 저장소(`-c`/`-b`)와 브라우저 User-Agent를 함께 주면 두 번째 요청에서 200이 온다. 공관 관할은 외교부 공관 목록표를 기준으로 삼는다. 예를 들어 콜로라도는 주샌프란시스코 총영사관 관할이고, 콜로라도 안에는 공관이 없다.
+
+## OPS-466 — ZIP(ZCTA) 중심 좌표가 시가지 밖에 떨어지는 ZIP이 있다: 어바인 92618의 중심은 자연보호구역 안이다
+
+`측정 2026-10-17 · api.zippopotam.us · Google Maps`
+
+**증상:** ZIP 중심점에서 출근 시간과 마트 거리를 쟀더니, 어바인(92618)만 운전 85–150분에 대중교통 경로 없음이 나왔다. Google은 그 점을 "Limestone Canyon Nature Preserve, Silverado 92676"으로 읽었다. 넓은 ZIP은 면적 중심이 사람이 사는 곳과 동떨어질 수 있다.
+
+**해결:** 넓은 교외 ZIP은 중심 좌표를 지도에서 한 번 열어 본다. 시가지 밖이면 그 ZIP 안의 대표 지점(92618은 Irvine Spectrum Center, 33.6506,-117.7435)으로 바꾸고, 바꿨다는 사실을 데이터 옆에 남긴다.
+
+## OPS-467 — Android Chrome에서 CDP `Runtime.evaluate`로 누른 버튼은 Google 로그인 팝업을 못 연다: `Input.dispatchTouchEvent`는 사용자 탭으로 친다
+
+`측정 2026-10-17 · Pixel 7 Pro · Chrome for Android · adb forward tcp:9333 localabstract:chrome_devtools_remote`
+
+**증상:** 실기기 Chrome에서 사이트의 "Google로 로그인"을 `element.click()`(CDP `Runtime.evaluate`)으로 누르면 아무 일도 없다. 화면에는 "팝업을 허용해 주세요"만 남는다. 사용자 제스처가 없는 `window.open`이라 막힌 것이다.
+
+**해결:** 버튼의 `getBoundingClientRect()` 중심(CSS px)을 구해 같은 탭에 CDP `Input.dispatchTouchEvent`(`touchStart` → `touchEnd`)로 보낸다. 이것은 사용자 탭으로 처리되어 Google 계정 선택 탭이 새로 열린다. 그 탭의 `[data-email="…"]` 위치를 같은 방법으로 탭하면 로그인이 끝난다. `json/list`에는 기기 주인의 개인 탭도 다 나오니, 대상 탭 id만 골라 쓰고 목록을 출력하지 않는다.
+
+함께 확인한 것: 이 공유 Pixel의 Chrome은 Android 알림 권한(`POST_NOTIFICATIONS`)이 `granted=false, flags=[USER_SET|USER_FIXED]`였다(`dumpsys package com.android.chrome`). 이 경우 `Notification.permission`이 사이트와 상관없이 `denied`이고, 사이트 설정에는 알림 항목이 보이지도 않는다. 기기 주인이 끈 설정이므로 세션이 바꾸지 않는다. 웹 푸시 실기기 확인은 다른 브라우저로 한다(OPS-468).
+
+## OPS-468 — Astro dev: a second server in the same project is refused, and a copy with a symlinked node_modules breaks both
+
+`측정 2026-10-17 · Astro 7.3.3 · Vite (rolldown) · @astrojs/cloudflare 14.3.2 · MacBook Air M1 (공유 테스트 호스트)`
+
+**증상:** on a shared test host another session's `astro dev` was still running in the project directory. A second
+`npx astro dev --port 4337` in the same directory exited at once:
+
+```
+Another astro dev server is already running.
+  URL:  http://127.0.0.1:4331
+Run `astro dev stop` to stop it, or use `astro dev --force` to replace it.
+```
+
+`--force` would kill the other session's server. A copy of the project with `node_modules` as a symlink to the original
+started, but after `astro check` ran in the copy, its pages answered 500 with:
+
+```
+[ERROR] [vite] Internal server error: The file does not exist at ".../node_modules/.vite/deps_ssr/path-DB-KzNNv.js?v=30b6fb21"
+which is in the optimize deps directory.
+```
+
+The dependency-optimizer cache (`node_modules/.vite`) lives inside `node_modules`, so every server and `astro check`
+sharing that `node_modules` rewrites the same cache under the others.
+
+**해결:** run your own server from your own copy with its own `node_modules`. On APFS a clone is instant and takes no
+space: `rsync -a --exclude node_modules --exclude .astro --exclude dist <project>/ <copy>/ && cp -cR <project>/node_modules
+<copy>/node_modules && rm -rf <copy>/node_modules/.vite`, then `npx astro dev --port <your port>` in the copy. Never
+symlink `node_modules`, and never `--force` a server you did not start.
