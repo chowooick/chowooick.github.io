@@ -8409,3 +8409,16 @@ ZIP(정확히는 ZCTA)은 `86000US` 접두사로 읽힌다. 16개를 한 요청�
 `3501`은 실제 값이 아니라 ACS 상한값(top-code)이다. "3,500달러 이상"으로 표시해야 하며, 이때는 오차가 `null`로 온다. 작은 ZIP은 오차가 크다(예: 07626 중위 2,599 ± 1,033). 오차/값이 0.2를 넘으면 "표본 적음"으로 표시하는 것이 안전하다. 5년 평균이라 현재 호가보다 낮다.
 
 **해결:** geo id를 `86000US<5자리 ZIP>`로 쓰고, 표는 2개씩 나눠 요청한다. `3501`은 "3,500+"로 바꾸고, 오차가 큰 값에는 표시를 붙인다.
+
+## OPS-456 — Workers Free with all five cron triggers taken: a SQLite Durable Object that sets its own alarm every hour is the clock
+
+`측정 2026-10-17 · Cloudflare Workers Free · wrangler 4.135.0 · Durable Objects with `new_sqlite_classes` · compatibility_date 2026-09-18`
+
+**증상:** a new job (a 7 a.m. web-push alert) needed an hourly schedule, but the account's five cron triggers were all in use; a sixth `triggers.crons` entry cannot be added on the free plan.
+
+**해결:** one Durable Object instance (`idFromName('hub')`) on the free plan's SQLite backend does the scheduling:
+- wrangler: `"durable_objects": { "bindings": [{ "name": "HUB", "class_name": "PushHub" }] }` and `"migrations": [{ "tag": "v1", "new_sqlite_classes": ["PushHub"] }]`. Deploy needs no cron and no route; other Workers reach it through a service binding.
+- In every `fetch` of the object, `if (await ctx.storage.getAlarm() === null) await ctx.storage.setAlarm(nextTopOfHour + 5000)`, so the first request after a deploy starts the clock.
+- `alarm()` does the hour's work, then `setAlarm()` for the next hour, or for `Date.now() + 2000` when it stopped early to stay under the 50-subrequest limit (OPS-263): an alarm is its own invocation with its own budget.
+- Measured: the alarm set at 14:4x for 15:00:05 UTC ran, and `getAlarm()` read 16:00:05 UTC at 15:00:35.
+- Keep "done today" state in the object's SQLite (`ctx.storage.sql.exec`), not in memory: an object can be evicted between alarms.
