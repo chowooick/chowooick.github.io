@@ -8680,3 +8680,21 @@ The local server never listens, so a test that waits for the port only sees `ERR
 4. Create the Access app **before** deploying the Worker on that hostname, so the first request already meets the login.
 
 Measured: unauthenticated `https://<host>/` answered 302 to `<team>.cloudflareaccess.com/cdn-cgi/access/login/<host>`; the copied profile then reached the page signed in with no clicks, and the Worker saw a valid `Cf-Access-Jwt-Assertion` (RS256, verified against `/cdn-cgi/access/certs`).
+
+---
+
+## OPS-475 — Cloudflare Workers 정시 크론이 보낸 Web Push는 27분 열어 둔 Brave 세션에 그대로 도착한다: 크론 정각에서 55초 뒤 표시
+
+`측정 2026-10-17 · Brave 1.96 (Chromium 154) · playwright-core · macOS (MacBook Air M1) · Cloudflare Workers cron "0 * * * *"`
+
+**증상:** OPS-330 방식(구독·발송·표시를 한 브라우저 세션 안에서)으로는 서버가 **나중에** 보내는 푸시(매시 크론, 배치 알림)를
+시험하기 어렵다. 세션을 닫았다 다시 열면 구독이 사라진 것처럼 보이기 때문이다.
+
+이 측정에서는 headed Brave(프로필 복사본 + `brave.gcm.channel_status=true`)를 띄웠다. 운영 사이트에서 알림을 구독하고 시험 글을
+올린 뒤 **그 세션을 그대로 열어 둔 채** 다음 정각 크론을 기다렸다. 구독은 18:33Z였고, 19:00Z 크론이 보낸 푸시가 19:00:55Z에
+`registration.getNotifications()`로 잡혔다. 그 사이 세션은 27분 동안 아무 입력 없이 열려 있었다. endpoint는 `fcm.googleapis.com`였다.
+
+**해결:** 서버 쪽 일정 작업이 보내는 푸시를 실제로 받으려면 브라우저 세션을 크론이 돌 때까지 닫지 말고, 30초 간격으로
+`getNotifications()`를 확인한다. 루프는 크론 정각 + 2분까지 돌린다. 끝나면 시험 글과 구독을 같은 페이지에서 지우고 프로필 복사본도
+지운다. Android Chrome은 앱 수준 알림 권한(POST_NOTIFICATIONS)이 사용자 거부(USER_FIXED) 상태면 이 시험을 할 수 없다.
+그 기기 설정은 기기 주인의 것이니 이 경우 Brave(Air)로 대신한다.
