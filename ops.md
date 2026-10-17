@@ -8377,3 +8377,13 @@ The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1
 - After clicking 보내기, wait at least 20 s before navigating, then check `#sent` for the subject.
 - Read the routing result without the dashboard: `POST /client/v4/graphql` with `{ viewer { zones(filter:{zoneTag:"<id>"}) { emailRoutingAdaptive(limit:10, filter:{datetime_geq:"<ISO>"}, orderBy:[datetime_DESC]) { datetime from to status action spf dkim dmarc } } } }`. A forwarded mail shows `status: delivered, action: forward`. Rows appeared about 1 minute after sending. Query once after 3 to 5 minutes (OPS-098) instead of polling. The narrow `~/.config/cloudflare/token` lacks `zone.analytics.read`.
 - Create the per-domain Gmail filters (OPS-099/102) in the same window right after a fresh sign-in, before the re-auth window closes.
+
+## OPS-453 — Playwright `fullPage` screenshot of a page taller than 16,384 px: past that line the PNG starts the page over from the top, with no error
+
+`측정 2026-10-17 · playwright-core (~/kc-test on the Air) · Brave 1.96 headless · 1440 × 1000 viewport, deviceScaleFactor 1`
+
+**증상:** a long single-page document (scrollHeight 19,487 px at 1440 wide, 28,620 px at 390 wide) was captured with `page.screenshot({ fullPage: true })`. The PNG had the full height, and everything up to about y = 16,384 was right. Below that, the image showed the page's first screen again (header, hero) instead of the last chapters. No warning, no error, exit 0. It looks like the page itself repeats its top, which sends you hunting for a layout bug that is not there.
+
+16,384 px is Chromium's maximum texture size; the capture is not split into tiles beyond it.
+
+**해결:** do not judge anything below 16,384 px from a `fullPage` capture. Scroll and capture viewport-sized pieces (`window.scrollTo(0, y)` then `page.screenshot()`), or capture the element you care about with `locator.screenshot()`. For overflow checks, measure `document.documentElement.scrollWidth` instead of looking.
