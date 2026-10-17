@@ -8395,3 +8395,17 @@ The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1
 **증상:** `npx wrangler deploy --config engine/wrangler.jsonc` printed only the token's scope list and the account roles, then exited. Nothing on stdout said it failed. The log in `~/Library/Preferences/.wrangler/logs/` held `A request to the Cloudflare API (/accounts/<id>/workflows/<workflow name>) failed. Authentication error [code: 10000]`. The scope list printed by `wrangler whoami` has no line naming workflows, which makes it look like a missing permission.
 
 **해결:** run the same deploy again; the second run printed `Uploaded …`, `Deployed … triggers` with `workflow: <name>` and a new version id. This is the same one-off failure as OPS-202 (`d1 create`). Check for `Current Version ID` in the output before calling a deploy done, read the log when it is missing, and do not re-login or rotate tokens over one 10000.
+
+## OPS-455 — Census Reporter API reads ACS by ZIP code with geo id `86000US<ZIP>`; median gross rent is top-coded at 3501
+
+`측정 2026-10-17 · api.censusreporter.org/1.0 · ACS 2020–2024 5-year (acs2024_5yr) · tables B25064, B25031`
+
+**증상:** ZIP 단위 렌트가 필요한데 api.census.gov는 키 없이 302를 돌려준다(OPS-372). OPS-372의 geo id 목록에는 메트로·카운티·주만 있어 ZIP을 어떻게 넣는지 알 수 없다. 받아 보면 일부 ZIP의 중위 월세가 정확히 `3501`이고 오차(`error`)가 `null`이다.
+
+ZIP(정확히는 ZCTA)은 `86000US` 접두사로 읽힌다. 16개를 한 요청에 쉼표로 묶어도 된다:
+`https://api.censusreporter.org/1.0/data/show/latest?table_ids=B25064,B25031&geo_ids=86000US07024,86000US07650`
+값은 `data["86000US07024"]["B25064"].estimate["B25064001"]`(중위 총월세, 유틸 포함), 2베드는 `B25031004`, 오차는 같은 자리의 `error`. 표 4개를 한 번에 요청했더니 응답이 오지 않아 `curl -o`가 파일을 만들지 못했다. 표 2개씩 나누니 곧바로 왔다.
+
+`3501`은 실제 값이 아니라 ACS 상한값(top-code)이다. "3,500달러 이상"으로 표시해야 하며, 이때는 오차가 `null`로 온다. 작은 ZIP은 오차가 크다(예: 07626 중위 2,599 ± 1,033). 오차/값이 0.2를 넘으면 "표본 적음"으로 표시하는 것이 안전하다. 5년 평균이라 현재 호가보다 낮다.
+
+**해결:** geo id를 `86000US<5자리 ZIP>`로 쓰고, 표는 2개씩 나눠 요청한다. `3501`은 "3,500+"로 바꾸고, 오차가 큰 값에는 표시를 붙인다.
