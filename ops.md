@@ -8371,7 +8371,7 @@ The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1
 - The toast text `메일을 보냈습니다` never matched `body.innerText`, even for sends that went through. Do not use it as the check.
 - Polling the GraphQL API every 20 s for two zones hit `Rate limiter budget depleted. Please try again after 5 minutes` (code `budget`) within about 7 minutes.
 - `osascript` over ssh to Safari on the Air answered `AppleEvent 시간이 초과되었습니다 (-1712)`; a Gmail session in Safari is no use to a script.
-- Right after the owner passed the passkey in a Playwright-opened Brave window (OPS-280 flow), 「필터 가져오기」 → 「필터 만들기」 created the filters with **no** re-auth dialog, unlike OPS-398.
+- Right after the owner passed the passkey in a Playwright-opened Brave window (OPS-276 flow), 「필터 가져오기」 → 「필터 만들기」 created the filters with **no** re-auth dialog, unlike OPS-398.
 
 **해결:**
 - After clicking 보내기, wait at least 20 s before navigating, then check `#sent` for the subject.
