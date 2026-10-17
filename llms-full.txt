@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T14:35:38Z · 소스 커밋 `d39297f` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T14:36:01Z · 소스 커밋 `c6700e2` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9069,6 +9069,46 @@ The pipeline ports directly; the details that matter: text is NFKD-normalised an
 - 연습처럼 말할 문장을 아는 경우는 "기준 문장의 마지막 단어에 닿았는가"로 판정한다.
 
 **해결:** 말끝 = 침묵 + 문장 완결 확인. 같은 가짜 마이크 입력에서 check 3번(short → open → done) 뒤 문장 전체가 전사됐다. 마지막 check의 전사를 샘플 수로 기억해 두면 end 때 다시 전사하지 않는다. 서버의 턴 길이 상한(이 경우 15초)도 같이 늘려야 한다.
+
+## AGT-130 — 브라우저 Supertonic 3(한국어 모드)은 대문자 약어를 글자로 잘 읽는다. 한글로 풀어 쓰면 오히려 틀리고, 단어로 읽는 약어와 숫자는 꼭 바꿔 줘야 한다
+
+`측정 2026-10-17 · Supertonic 3(fp32, HF 리비전 3cadd1e, F1, 5 step, 시드 2개) · onnxruntime-web 1.30.0 WebGPU · Brave 1.96 헤디드(M1 Air) · 판정: mlx-whisper large-v3-turbo · kyominnews.com 낭독`
+
+**증상:** 한인 뉴스 낭독을 붙이면서 "NYC·DMV 같은 영문 약어를 한글 글자 이름(엔와이씨)으로 바꿔야 하나"를 정해야 했다. who.withthebible.com은 `(HSLU)`를 `H S L U`로 띄어 쓰는 규칙을 쓰고 있었다.
+
+`_infer([text], ['ko'], …)`로 합성하고 STT로 되돌려 들은 결과(두 시드 같음, 다른 경우만 따로 적음):
+
+| 입력 | 들린 것 |
+| --- | --- |
+| `NYC 지하철 요금이…` | NYC 지하철 요금이… |
+| `엔와이씨 지하철 요금이…` | **NIC** 지하철 요금이… |
+| `N Y C 지하철 요금이…` | **MYC** 지하철 요금이… |
+| `LA 카운티 DMV는…` / `OC 주민은…` | 그대로 |
+| `ICE 단속이…` | **IC** 단속이… (`아이스`로 쓰면 아이스) |
+| `MARTA 버스 노선이…` | **마르레** / **마트**버스 (`마르타`로 쓰면 마르타) |
+| `211로 전화하면` | **2대7일로** / **E7일로** (`이일일로`로 쓰면 211로) |
+| `Costco와 Target이…` | 코스코와 탈겟이 / 코스코와 Target D |
+| `Fort Lee`, `Covered California` | 맞게 |
+| `Medi-Cal` | 미디캐어 |
+
+- 대문자 약어는 라틴 문자 그대로 두는 것이 가장 정확하다. 한글 글자 이름으로 풀거나 띄어 쓰면 다른 글자로 들린다.
+- 단어처럼 읽는 약어(MARTA, ICE, NASA)는 모델이 글자도 단어도 아닌 것으로 읽는다. 한글 표기로 바꾼다.
+- 아라비아 숫자는 그대로 두면 망가진다. 모두 한국어 수사로 바꾸고, 211·911 같은 번호는 한 자리씩 읽힌다.
+- 섞인 대소문자 고유명사는 대체로 맞지만 가끔 틀린다(Target, Medi-Cal).
+
+**해결:** 한국어 모드 정규화는 "숫자는 전부 말로, 단어로 읽는 약어만 한글로, 나머지 대문자 약어와 영문 이름은 그대로"로 한다. 규칙과 표는 kyominnews 리포 `public/tts/normalize.js`, `docs/READ-ALOUD.md`. 측정 스크립트는 Air `~/work/kyominnews-tts-measure/`(synth.mjs, stt.py; 모델은 `~/work/who-tts/fp32`, 목소리는 `~/work/who-rush/voices`, STT는 `~/work/who-rush/.venv`).
+
+## AGT-131 — `view-transition-name`이 붙은 요소는 backdrop root가 되어, 그 안의 `backdrop-filter`(::before 유리 효과)가 아무것도 흐리지 않는다
+
+`측정 2026-10-17 · Brave 1.96(Chromium 154) 헤디드·헤드리스 · MacBook Air M1 · who.withthebible.com 낭독 플레이어를 kyominnews.com에 옮기며`
+
+**증상:** 떠 있는 플레이어(`position: fixed`)에 `::before { backdrop-filter: blur(24px) saturate(150%); background: 90% 불투명 }`으로 반투명 유리를 깔았는데, 플레이어 뒤 본문 글자가 흐려지지 않고 선명하게 비쳤다. 계산된 스타일은 정상이었다(`backdrop-filter: blur(24px) saturate(1.5)`).
+
+- 같은 페이지에서 플레이어와 그 안 버튼의 `view-transition-name`(같은 문서 View Transition으로 크기 변화를 모핑하려고 상시 붙여 둔 것)만 `none`으로 바꾸자 바로 흐려졌다. 헤디드와 헤드리스 결과가 같았다.
+- Filter Effects 2의 Backdrop Root 규칙대로다. `view-transition-name`도 filter·opacity·mask·mix-blend-mode처럼 backdrop root를 만들므로, 자식의 backdrop-filter는 그 요소 안쪽(비어 있음)만 본다. 오류도 경고도 없이 조용히 효과가 사라진다.
+- 같은 CSS를 쓰는 who.withthebible.com의 플레이어도 같은 상태다(2026-10-17 기준, 운영자 승인 전이라 고치지 않음).
+
+**해결:** `view-transition-name`은 모핑하는 동안에만 붙인다. `startViewTransition` 직전에 클래스(예: `.is-morphing`)를 붙이고 `transition.finished.finally()`에서 뗀다. old·new 스냅샷 모두 이름이 필요하므로 콜백 안이 아니라 호출 전에 붙이고, finished 뒤에 뗀다.
 
 ---
 
