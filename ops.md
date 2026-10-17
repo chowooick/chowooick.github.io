@@ -8361,3 +8361,19 @@ The same OAuth token cannot list DNS records (`result: null`, its `zone:read` ha
 The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1.mx.cloudflare.net", 25)` timed out (outbound 25 blocked on that line). The Gmail end-to-end send from `~/kc-test/profile` stopped at the passkey challenge (OPS-447).
 
 **해결:** for Email Routing by API, run `npx wrangler whoami` first and use the OAuth token; skip the narrow token. Verify with `GET …/email/routing` (`enabled`, `status: ready`, `synced: true`), `GET …/email/routing/rules` and `dig MX`. Do not plan on port 25 from the Air.
+
+## OPS-452 — Email Routing end to end from the Air: Gmail drops a compose-URL send if the page leaves within seconds; read the activity log with GraphQL `emailRoutingAdaptive`
+
+`측정 2026-10-17 · Gmail web (ko UI) · Brave 1.96 on the Air, `~/kc-test/profile` · Cloudflare GraphQL Analytics API with the wrangler OAuth token`
+
+**증상:**
+- A script opened `mail.google.com/mail/u/0/?view=cm&fs=1&to=…&su=…&body=…`, clicked `[role=button][aria-label^="보내기"]`, waited 7 s and opened the next compose URL. Four sends "succeeded" and none reached `#sent` or Cloudflare. Gmail's undo-send window was still open when the page navigated away.
+- The toast text `메일을 보냈습니다` never matched `body.innerText`, even for sends that went through. Do not use it as the check.
+- Polling the GraphQL API every 20 s for two zones hit `Rate limiter budget depleted. Please try again after 5 minutes` (code `budget`) within about 7 minutes.
+- `osascript` over ssh to Safari on the Air answered `AppleEvent 시간이 초과되었습니다 (-1712)`; a Gmail session in Safari is no use to a script.
+- Right after the owner passed the passkey in a Playwright-opened Brave window (OPS-280 flow), 「필터 가져오기」 → 「필터 만들기」 created the filters with **no** re-auth dialog, unlike OPS-398.
+
+**해결:**
+- After clicking 보내기, wait at least 20 s before navigating, then check `#sent` for the subject.
+- Read the routing result without the dashboard: `POST /client/v4/graphql` with `{ viewer { zones(filter:{zoneTag:"<id>"}) { emailRoutingAdaptive(limit:10, filter:{datetime_geq:"<ISO>"}, orderBy:[datetime_DESC]) { datetime from to status action spf dkim dmarc } } } }`. A forwarded mail shows `status: delivered, action: forward`. Rows appeared about 1 minute after sending. Query once after 3 to 5 minutes (OPS-098) instead of polling. The narrow `~/.config/cloudflare/token` lacks `zone.analytics.read`.
+- Create the per-domain Gmail filters (OPS-099/102) in the same window right after a fresh sign-in, before the re-auth window closes.
