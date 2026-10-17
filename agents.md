@@ -2507,3 +2507,17 @@ The pipeline ports directly; the details that matter: text is NFKD-normalised an
 - 같은 CSS를 쓰는 who.withthebible.com의 플레이어도 같은 상태다(2026-10-17 기준, 운영자 승인 전이라 고치지 않음).
 
 **해결:** `view-transition-name`은 모핑하는 동안에만 붙인다. `startViewTransition` 직전에 클래스(예: `.is-morphing`)를 붙이고 `transition.finished.finally()`에서 뗀다. old·new 스냅샷 모두 이름이 필요하므로 콜백 안이 아니라 호출 전에 붙이고, finished 뒤에 뗀다.
+
+## AGT-132 — A server can use a ChatGPT subscription as its text model: Codex's backend endpoint with a host-only Codex login
+
+`측정 2026-10-17 · codex-cli 0.162.0 · chatgpt.com/backend-api/codex/responses · ChatGPT plans pro and go · gpt-6-luna, gpt-6.1-sol`
+
+**증상:** a Worker needs an LLM after Workers AI's free daily allocation ran out (OPS-116), and the owner wants their ChatGPT subscription used instead of a paid API key. There is no API key on a ChatGPT plan.
+
+Codex CLI talks to `POST https://chatgpt.com/backend-api/codex/responses` (Responses API wire format) with the login in `$CODEX_HOME/auth.json`. A plain HTTPS client can do the same: headers `Authorization: Bearer <tokens.access_token>`, `chatgpt-account-id: <tokens.account_id>`, `OpenAI-Beta: responses=experimental`, `originator: codex_cli_rs`, `session_id: <uuid>`, `Accept: text/event-stream`; body `{model, instructions, input:[{type:"message",role:"user",content:[{type:"input_text",text}]}], reasoning:{effort}, store:false, stream:true, text:{verbosity:"low"}}`. Collect `response.output_text.delta` events; `response.completed` carries `usage`. The model list a login can use is in `~/.codex/models_cache.json` (slug and supported efforts).
+
+- Measured on a 2,900-character extraction prompt: gpt-6-luna at `low` 2.3–4.0 s with every field right; gpt-6.1-sol at `low` 8.1 s, same fields. A `go` plan account answered gpt-6-luna as well as `pro`.
+- The access token lasts 240 h. Refresh with `POST https://auth.openai.com/oauth/token` JSON `{client_id:"app_EMoamEEZ73f0CkXaXp7hrann", grant_type:"refresh_token", refresh_token, scope:"openid profile email"}`. **The refresh token rotates**: never give a server a copy of an auth.json that another machine's Codex also uses, or one of them is signed out. Make a separate login for the server.
+- `codex login --device-auth` can fail at the consent page with "ChatGPT 보안 설정에서 Codex, Excel, PowerPoint 및 Word의 기기 코드 로그인을 활성화한 다음 … 다시 실행하세요". The browser flow works from another machine: `CODEX_HOME=<empty dir> BROWSER=/usr/bin/true codex login` prints the authorize URL and listens on 127.0.0.1:1455; open the URL in a signed-in browser on that same machine, then move the new auth.json to the server and delete the local copy.
+
+**해결:** run a small relay on an always-on host that holds the server-only login, refreshes it a day before expiry, and serves only an allowlisted model and effort behind a bearer token, so a leaked token cannot spend the subscription on other models. Keep the old provider and a rule-based reader behind it. Working example: kyomincenter `ops/busan/llm/server.mjs`, `src/lib/llm-relay.ts`, `docs/LLM-RELAY.md`.
