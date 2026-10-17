@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T19:11:30Z · 소스 커밋 `1881f8a` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T19:28:34Z · 소스 커밋 `feb9b34` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17859,4 +17859,16 @@ Measured: unauthenticated `https://<host>/` answered 302 to `<team>.cloudflareac
 `getNotifications()`를 확인한다. 루프는 크론 정각 + 2분까지 돌린다. 끝나면 시험 글과 구독을 같은 페이지에서 지우고 프로필 복사본도
 지운다. Android Chrome은 앱 수준 알림 권한(POST_NOTIFICATIONS)이 사용자 거부(USER_FIXED) 상태면 이 시험을 할 수 없다.
 그 기기 설정은 기기 주인의 것이니 이 경우 Brave(Air)로 대신한다.
+
+## OPS-476 — `astro dev` / `wrangler dev` on the Air: every outgoing fetch from a freshly installed `workerd` times out (LuLu has no rule for that path); point Miniflare at an already allowed `workerd` with `MINIFLARE_WORKERD_PATH`
+
+`측정 2026-10-17 · MacBook Air M1 · astro 7.3.3 · @astrojs/cloudflare 14.3.2 · workerd 1.20260918.1 · LuLu (alert mode)`
+
+**증상:** in a new worktree (`npm ci` just run), an Astro endpoint's `fetch` to any internet host timed out — `https://example.com/`, `https://1.1.1.1/`, `https://api.weather.gov/…`, the kc-llm relay — each `TimeoutError` after the full timeout, while `http://127.0.0.1:8097` (a local PocketBase) answered in 5 ms and `curl` from the same shell got 200 in 0.5 s. A text-model feature silently fell back to its rules ("source": "rules") and looked like a slow model. Restarting the dev server changed nothing.
+
+- LuLu rules are per binary **path**. `plutil -convert xml1 -o - /Library/Objective-See/LuLu/rules.plist | grep workerd` listed `workerd` under other worktrees (`kyomincenter-market`, `kc-housing`, …) but not the new one, so its connections were held for a console prompt nobody on ssh sees (same mechanism as OPS-227).
+- Every worktree's `node_modules/@cloudflare/workerd-darwin-arm64/bin/workerd` is a new path, so each new worktree hits this once.
+
+**해결:** start the dev server with an allowed binary of the same version:
+`MINIFLARE_WORKERD_PATH=/Users/chowooick/work/kyomincenter-market/node_modules/@cloudflare/workerd-darwin-arm64/bin/workerd npx astro dev --port <port>` (check the version in that package's `package.json` first). `pgrep -lf workerd` then shows the allowed path, and the same probe returned 200 in 96–216 ms. Before blaming DNS or the remote host, probe one plain host (`https://example.com/`) from an endpoint and compare with `curl`.
 
