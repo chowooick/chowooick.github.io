@@ -8645,3 +8645,38 @@ Signals that held for real open postings and invented IDs:
 | County / small-employer WordPress pages | the page | 200 | 404 |
 
 **해결:** pick the signal per board, treat 403/429/5xx/network errors as "unknown" (never closed), and close only after two "closed" answers at least ~20 hours apart. For a careers page that lists several jobs on one URL, store the job as a text fragment (`…/careers#:~:text=Teller%20(Olympic%20Branch)`) and treat "text gone from the page" as closed; readers' browsers also jump to that line. When every post on one board answers closed in the same run, assume the board changed its markup and close none. Run the check from a server: PocketBase's pure-Go `$http.send` on a macOS home network (the Air) spent 6–8 s per DNS lookup and hit its timeout on most hosts, while the same hook on the Linux host answered all of them.
+
+## OPS-473 — `wrangler dev` 4.135.0 refuses `compatibility_date` later than 2026-09-25; `wrangler deploy` does not
+
+`측정 2026-10-17 · wrangler 4.135.0 (workerd bundled with it) · macOS (MacBook Air M1)`
+
+**증상:** a new Worker set `"compatibility_date": "2026-10-01"`. `wrangler deploy` uploaded it without a word, but `wrangler dev` on the same config printed the bindings and then died:
+
+```
+service core:user:<name>: This Worker requires compatibility date "2026-10-01", but the newest date supported by this server binary is "2026-09-25".
+The Workers runtime failed to start. There was likely a problem with the workerd binary or your configuration.
+Error [ERR_IPC_CHANNEL_CLOSED]: Channel closed
+```
+
+The local server never listens, so a test that waits for the port only sees `ERR_CONNECTION_REFUSED`; the cause is in the dev log, not in the test output.
+
+**해결:** set `compatibility_date` no later than the date the error names (2026-09-25 for 4.135.0), or upgrade wrangler. Keep the deployed and local dates the same so the local run tests what ships.
+
+## OPS-474 — Cloudflare Access with Google sign-in, set up without a person: Google Auth Platform client by Playwright, IdP and app through the dashboard session
+
+`측정 2026-10-17 · Google Cloud console, Korean UI (Google 인증 플랫폼) · Cloudflare Zero Trust free · Brave 1.96 headed on the Air, profile copied from ~/kc-test/profile`
+
+**증상:** a hostname had to be limited to one Google account. The account's Zero Trust had only the one-time PIN identity provider. Three things did not work as earlier notes (OPS-332, OPS-428) describe:
+
+- `console.cloud.google.com/apis/credentials/oauthclient?project=<id>` now redirects to `/auth/clients`, and the create page `/auth/clients/create?project=<id>` has **no `mat-select`** (count 0). There are two comboboxes on the page; the first is the console search bar.
+- A `POST /accounts/<id>/access/identity_providers` sent through the dashboard session (OPS-301) from the account home page a few seconds after load came back **403 with an HTML page titled "Attention Required! | Cloudflare"**, not JSON. From `dash.cloudflare.com/<account>/one` after a 10 s wait, the same kind of POST answered 201, and a `PUT` of the real client ID and secret onto that provider answered 200. Whether the first failure came from the page or the body is not known.
+- The Cloudflare dashboard session in an older dedicated profile had expired, and that profile was not signed in to Google, so "Continue with Google" stopped at the Google identifier page.
+
+**해결:**
+
+1. Copy the signed-in Google profile without caches (`rsync -a --exclude Cache --exclude "Code Cache" --exclude GPUCache --exclude CacheStorage --exclude "Singleton*"`; 905 MB became 188 MB) and use the copy, so the original stays free for other sessions. On `dash.cloudflare.com/login`, click the button named Google; Google signs in with no chooser.
+2. Google client: open `/auth/clients/create?project=<id>`, click `getByRole('combobox', { name: /애플리케이션 유형/ })`, pick the option `웹 애플리케이션`, fill `input[formcontrolname=displayName]`, click the **last** `URI 추가` button (the second one is under 승인된 리디렉션 URI) and type `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback` with `page.keyboard`, then `만들기`. Poll the page text every 500 ms for `*.apps.googleusercontent.com` and `GOCSPX-…` and write both to a 0600 file without printing.
+3. From `/<account>/one` (wait 10 s), `POST access/identity_providers {"name":"Google","type":"google","config":{"client_id":…,"client_secret":…}}`; if it answers HTML, create it with placeholder values and `PUT` the real ones. Then `POST access/apps` with `type: self_hosted`, `domain`, `allowed_idps: [<google id>]`, `auto_redirect_to_identity: true` and an inline policy `{"decision":"allow","include":[{"email":{"email":<owner>}}]}`. Read `aud` from the app for the Worker's JWT check.
+4. Create the Access app **before** deploying the Worker on that hostname, so the first request already meets the login.
+
+Measured: unauthenticated `https://<host>/` answered 302 to `<team>.cloudflareaccess.com/cdn-cgi/access/login/<host>`; the copied profile then reached the page signed in with no clicks, and the Worker saw a valid `Cf-Access-Jwt-Assertion` (RS256, verified against `/cdn-cgi/access/certs`).
