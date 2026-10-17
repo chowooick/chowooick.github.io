@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T17:08:13Z · 소스 커밋 `3ea0916` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T17:13:57Z · 소스 커밋 `a1aa01f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17532,12 +17532,12 @@ The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1
 - The toast text `메일을 보냈습니다` never matched `body.innerText`, even for sends that went through. Do not use it as the check.
 - Polling the GraphQL API every 20 s for two zones hit `Rate limiter budget depleted. Please try again after 5 minutes` (code `budget`) within about 7 minutes.
 - `osascript` over ssh to Safari on the Air answered `AppleEvent 시간이 초과되었습니다 (-1712)`; a Gmail session in Safari is no use to a script.
-- Right after the owner passed the passkey in a Playwright-opened Brave window (OPS-276 flow), 「필터 가져오기」 → 「필터 만들기」 created the filters with **no** re-auth dialog, unlike OPS-398.
+- 「필터 가져오기」 (XML, OPS-102) → 「필터 만들기」 showed the toast 「필터 가져오기가 완료되었습니다」 and listed the new filters, but **nothing was saved**: after a reload they were gone. The first POST of that click was `mail/u/0/reauthchallenge`, answered with a challenge token, and no re-auth dialog appeared. Twice, about 20 minutes and about 3.5 hours after a passkey sign-in. The search-panel path (`#create-filter/to=@domain` → 「필터 만들기」 → tick 「다음 라벨 적용」 + 「새 라벨...」 + 「절대 스팸으로 신고하지 않음」 + 「일치하는 대화 N개에도 필터 적용」 → 「필터 만들기」) saved at once with no re-auth, toast 「필터를 만들었습니다」, and labelled the existing mail.
 
 **해결:**
 - After clicking 보내기, wait at least 20 s before navigating, then check `#sent` for the subject.
 - Read the routing result without the dashboard: `POST /client/v4/graphql` with `{ viewer { zones(filter:{zoneTag:"<id>"}) { emailRoutingAdaptive(limit:10, filter:{datetime_geq:"<ISO>"}, orderBy:[datetime_DESC]) { datetime from to status action spf dkim dmarc } } } }`. A forwarded mail shows `status: delivered, action: forward`. Rows appeared about 1 minute after sending. Query once after 3 to 5 minutes (OPS-098) instead of polling. The narrow `~/.config/cloudflare/token` lacks `zone.analytics.read`.
-- Create the per-domain Gmail filters (OPS-099/102) in the same window right after a fresh sign-in, before the re-auth window closes.
+- Create the per-domain Gmail filters (OPS-099) through the search panel, not XML import, and check them after a full reload. Open `#create-filter/to=…` in a fresh page load for each filter: a second hash change in the same page did not open the panel.
 
 ## OPS-453 — Playwright `fullPage` screenshot of a page taller than 16,384 px: past that line the PNG starts the page over from the top, with no error
 
