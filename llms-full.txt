@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T17:05:14Z · 소스 커밋 `9fa0d22` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T17:08:13Z · 소스 커밋 `3ea0916` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9134,6 +9134,27 @@ A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the 
 
 **해결:** write `&amp;` in the label (`Q&amp;A`); it renders as `&`. Fix it with a `draft-edit` on the exact snippet, take a `screenshot` read to check, then `publish`. The same applies to `<` and `>` in label words (`&lt;` `&gt;`).
 
+## AGT-134 — Alpine `x-bind`로 불리언 속성에 빈 문자열(`''`)을 주면 속성이 남는다: `x-bind:disabled="editing"`이 `editing = ''`일 때도 버튼을 끈다
+
+`측정 2026-10-17 · Alpine.js 3.14 · Brave 1.96(Chromium 154) 헤드리스 · kyomincenter.com 사고팔기 글쓰기`
+
+**증상:** 글쓰기 시트의 종류 버튼 세 개(팔아요·이사·귀국 정리·구해요)가 새 글을 쓸 때도 흐리게 보이고 눌리지 않았다. 고치기 모드를 뜻하는 상태가 `editing: ''`(빈 문자열, 고치는 글이 없음)이었고 버튼에 `x-bind:disabled="editing"`을 걸어 두었다. 콘솔 오류는 없다.
+
+- Alpine은 불리언 속성(`disabled`, `checked`, `hidden` 등)에서 `null`·`undefined`·`false`만 "속성 없음"으로 본다. 빈 문자열은 속성을 남겨 `disabled=""`가 되고, 브라우저는 그것을 `disabled`로 읽는다. JavaScript에서는 `''`가 falsy라서 직관과 반대다.
+- `!!editing`으로 바꾸자 같은 화면에서 `.mk-kinds button[disabled]` 개수가 3에서 0이 됐다.
+
+**해결:** 불리언 속성에는 항상 진짜 불리언을 넘긴다(`x-bind:disabled="!!editing"`, `x-bind:hidden="list.length === 0"`). id·문자열을 담는 상태를 그대로 바인딩하지 않는다.
+
+## AGT-135 — `x-show`로 숨긴(`display: none`) 요소에 IntersectionObserver를 걸면 영영 호출되지 않는다: 지연 로딩 위젯이 "데이터가 생기면 보이게"와 서로를 기다린다
+
+`측정 2026-10-17 · Alpine.js 3.14 · Brave 1.96 헤드리스 · kyomincenter.com 생활정보의 '근처 새 물건' 줄`
+
+**증상:** 화면에 가까워지면 목록을 받아 오고, 받은 항목이 있을 때만 보이도록 `<section x-data x-show="items.length" x-init="new IntersectionObserver(...).observe($el)">`로 만든 위젯이 끝내 나타나지 않았다. 서버 로그에 그 API 요청이 한 번도 없었다.
+
+- `x-show`가 false인 동안 요소는 `display: none`이고, 레이아웃 상자가 없는 요소는 교차 판정을 받지 못해 콜백이 오지 않는다. 그래서 fetch가 없고, 항목이 없으니 계속 숨는다.
+
+**해결:** 관찰은 늘 보이는 바깥 래퍼(`min-height: 1px`)에 걸고, `x-show`는 안쪽 요소에 둔다. 래퍼로 옮긴 뒤 같은 페이지에서 요청이 나가고 위젯이 그려졌다.
+
 ---
 
 <!-- source: ops.md -->
@@ -17571,4 +17592,15 @@ ZIP(정확히는 ZCTA)은 `86000US` 접두사로 읽힌다. 16개를 한 요청�
 **해결:** `adapter: cloudflare({ remoteBindings: process.env.KC_REMOTE_BINDINGS === '1' })` in astro.config.mjs. Local dev starts again (wrangler only warns that AI bindings always access remote resources); the binding is simply absent there, so mock the endpoint that uses it (`page.route`). Deploys are unaffected. Name the binding something other than `AI` if other code switches behaviour on `env.AI` being present.
 
 Model choice for Korean form-filling (JSON fields from a short Korean note, and from a photo of a printed Korean flyer), same prompt, Workers AI REST: `@cf/mistralai/mistral-small-3.1-24b-instruct` 5.6-8.8 s with every field right and image input; `@cf/openai/gpt-oss-120b` 29.5 s; `@cf/qwen/qwen3.8-27b` 54.8 s. Mistral wraps JSON in a ```json fence when `response_format` is not set, and returns `result.response` as an object for image input. In production through the binding it took 8.4 s (text) and 8.6 s (image).
+
+## OPS-458 — 개발 맥에서 Workers AI REST로 돌린 실측도 같은 계정의 하루 무료 뉴런을 쓴다: 실측 직후 운영 Worker의 같은 모델 호출이 4006으로 바로 실패했다
+
+`측정 2026-10-17 · Workers AI REST(wrangler 로그인 토큰)와 Worker 바인딩, Workers Free 플랜, @cf/mistralai/mistral-small-3.1-24b-instruct(사진 입력)`
+
+**증상:** 새 기능(사진 한 장 → 중고 판매글 초안)의 모델을 고르려고 개발 맥에서 REST로 사진 22장을 두 번(44회) 돌렸다. 몇 시간 뒤 운영에 배포하자 같은 모델을 부르는 엔드포인트가 0.3초 만에 502를 냈다. 같은 사이트의 다른 Workers AI 기능들도 이미 4006(`used up your daily free allocation`)으로 막혀 있었다.
+
+- 하루 10,000뉴런(OPS-116)은 계정 단위다. REST 실측, `wrangler dev --remote`, 운영 바인딩, 다른 Worker(수집기 번역 등)가 모두 같은 한도를 나눠 쓴다. 사진 입력은 텍스트보다 뉴런이 크다.
+- 실패는 즉시 오고(수백 ms) 메시지도 모델 오류처럼 보여서, 프롬프트나 입력 형식 문제로 착각하기 쉽다.
+
+**해결:** 무료 플랜 계정에서 모델 실측은 `result.usage.neurons`를 합산해 기록하고, 운영 기능이 쓸 몫을 남긴다(OPS-354의 GraphQL로 하루 사용량 확인). 운영 기능은 한 모델에만 기대지 말고 순서대로 대체하게 둔다. kyomincenter는 ChatGPT 구독 릴레이(AGT-132)를 먼저, Workers AI를 다음으로 두었고, 같은 사진 20장에서 릴레이도 제목·카테고리 18/20, 중앙값 4.1초였다(Workers AI는 18/20, 4.2초).
 
