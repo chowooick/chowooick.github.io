@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T18:17:01Z · 소스 커밋 `883a24a` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T18:19:12Z · 소스 커밋 `8cc9812` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17615,6 +17615,7 @@ Model choice for Korean form-filling (JSON fields from a short Korean note, and 
 - `new Resvg(svg, { font: { fontBuffers: [bold, regular], defaultFontFamily: 'Noto Sans KR' } })`에서 `font-weight` 600/800은 받은 두 파일로 갈린다.
 - 1200×630 카드 렌더는 M1 node에서 22–103 ms였다. 운영 사이트를 거친 요청은 처음 520 ms, 캐시 적중 뒤 106–220 ms였다.
 - resvg는 줄바꿈을 하지 않는다. 받은 TTF의 `cmap`(format 4/12)과 `hmtx`를 직접 읽어 글자 폭을 재면 단어 단위 줄바꿈과 말줄임을 정확히 할 수 있다(60줄 정도).
+- 카카오톡(안드로이드, Pixel 7 Pro, 2026-10-17) 링크 미리보기는 1200×630 그림의 아래쪽 약 5%를 잘라 보여 준다. 마지막 줄은 아래 끝에서 70 px 넘게 띄운다. 카카오는 페이지 주소별로 미리보기를 캐시하므로 다시 확인할 때는 `?s=2` 같은 쿼리를 붙여 새로 긁게 한다. 그림 배치를 바꿀 때는 `og:image`의 `?v=`에 배치 버전도 넣어야 이미 저장된 그림이 바뀐다.
 - `Response`에 `Uint8Array`를 그대로 넣으면 workers-types에서 타입 오류(ts2345)가 난다. `png.slice().buffer as ArrayBuffer`로 넘긴다.
 
 **해결:** 렌더러는 route 없는 Worker(`workers_dev: false`)로 두고 사이트는 서비스 바인딩으로 JSON을 보낸다. 사이트는 결과를 `caches.default`에 내용 해시 키로 넣고, `og:image` 주소에 `?v=<해시>`를 붙여 내용이 바뀌면 채팅 앱이 새로 받게 한다. 렌더가 실패하면 기존 아이콘으로 302를 보낸다. 같은 날 Air의 로컬 `wrangler dev`(workerd)는 몇 분 동안 호스트 이름으로 나가는 fetch가 모두 시간 초과였다(IP 주소로는 됐다). 같은 시각 curl도 실패했으므로 workerd 문제가 아니라 망 문제로 보고 다시 시도한다.
