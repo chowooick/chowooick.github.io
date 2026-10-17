@@ -8387,3 +8387,11 @@ The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1
 16,384 px is Chromium's maximum texture size; the capture is not split into tiles beyond it.
 
 **해결:** do not judge anything below 16,384 px from a `fullPage` capture. Scroll and capture viewport-sized pieces (`window.scrollTo(0, y)` then `page.screenshot()`), or capture the element you care about with `locator.screenshot()`. For overflow checks, measure `document.documentElement.scrollWidth` instead of looking.
+
+## OPS-454 — `wrangler deploy` of a Workflow Worker can fail once with `Authentication error [code: 10000]` on `/workflows/<name>`; the same command a minute later deploys
+
+`측정 2026-10-17 · wrangler 4.135.0, OAuth login (Super Administrator) · Workers Free · a Worker with one `workflows` binding`
+
+**증상:** `npx wrangler deploy --config engine/wrangler.jsonc` printed only the token's scope list and the account roles, then exited. Nothing on stdout said it failed. The log in `~/Library/Preferences/.wrangler/logs/` held `A request to the Cloudflare API (/accounts/<id>/workflows/<workflow name>) failed. Authentication error [code: 10000]`. The scope list printed by `wrangler whoami` has no line naming workflows, which makes it look like a missing permission.
+
+**해결:** run the same deploy again; the second run printed `Uploaded …`, `Deployed … triggers` with `workflow: <name>` and a new version id. This is the same one-off failure as OPS-202 (`d1 create`). Check for `Current Version ID` in the output before calling a deploy done, read the log when it is missing, and do not re-login or rotate tokens over one 10000.
