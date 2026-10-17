@@ -8457,3 +8457,33 @@ Model choice for Korean form-filling (JSON fields from a short Korean note, and 
 - `Response`에 `Uint8Array`를 그대로 넣으면 workers-types에서 타입 오류(ts2345)가 난다. `png.slice().buffer as ArrayBuffer`로 넘긴다.
 
 **해결:** 렌더러는 route 없는 Worker(`workers_dev: false`)로 두고 사이트는 서비스 바인딩으로 JSON을 보낸다. 사이트는 결과를 `caches.default`에 내용 해시 키로 넣고, `og:image` 주소에 `?v=<해시>`를 붙여 내용이 바뀌면 채팅 앱이 새로 받게 한다. 렌더가 실패하면 기존 아이콘으로 302를 보낸다. 같은 날 Air의 로컬 `wrangler dev`(workerd)는 몇 분 동안 호스트 이름으로 나가는 fetch가 모두 시간 초과였다(IP 주소로는 됐다). 같은 시각 curl도 실패했으므로 workerd 문제가 아니라 망 문제로 보고 다시 시도한다.
+
+## OPS-460 — api.weather.gov `alerts/active?zone=`는 카운티 코드(`NJC003`)도 받고 쉼표 목록도 받는다: 카운티 코드는 그 카운티에 걸친 예보구역 경보까지 모두 잡는다
+
+`측정 2026-10-17 · api.weather.gov (curl, User-Agent 지정)`
+
+**증상:** 지역 경보 배너를 만들 때 예보구역(`NJZ104`)과 카운티(`NJC003`) 중 무엇을 넣어야 하는지, 여러 개를 한 번에 물을 수 있는지 문서만으로는 분명하지 않다.
+
+- `https://api.weather.gov/alerts/active?zone=NJC003` → 200 `application/geo+json`. 카운티 코드가 그대로 통한다. 경보가 예보구역 UGC(`NJZ002`)로만 발령돼도 `zone=NJC031`(그 구역이 속한 카운티)로 같은 경보가 나온다.
+- 쉼표 목록(`zone=NJZ104,NJZ002`)과 반복 파라미터(`zone=NJZ104&zone=NJZ002`) 둘 다 합집합을 돌려준다. 반복형은 응답 `title`에 마지막 구역 이름만 적지만 결과는 합집합이다. 카운티·구역 섞기(`zone=NJZ103,NJZ104,NJC003`)도 된다. 없는 코드는 400 `application/problem+json`.
+- 카운티는 넓으면 과하게 잡는다. 같은 시각 `zone=CAC037`(LA 카운티)은 7건(산악 Red Flag Warning 포함), `zone=CAZ368`(LA 도심 내륙 해안)은 1건(Heat Advisory)이었다.
+- 위치→코드는 `GET /points/{lat},{lon}`의 `properties.county`, `properties.forecastZone`으로 얻는다.
+- 약 130회 호출 중 3회가 JSON이 아닌 응답이었다(1회는 HTML "500 Internal Server Error"로 확인). 응답 헤더는 `cache-control: public, max-age=5`, `access-control-allow-origin: *`. User-Agent 없이도 200이 나왔지만 문서는 요구한다.
+- feature `properties`의 `web`은 늘 `http://www.weather.gov`라 사람용 링크로 못 쓴다. `https://forecast.weather.gov/showsigwx.php?warnzone=<구역>&warncounty=<카운티>`는 200이고 같은 경보 본문을 보여 준다. `alerts.weather.gov`는 DNS가 풀리지 않았다.
+
+**해결:** 좁은 지역은 예보구역 코드를, 카운티 전체가 한 구역인 곳(텍사스·조지아 카운티 등)은 카운티 코드를 쓴다. 쉼표 목록 한 번으로 묻고, `content-type`이 `application/geo+json`이 아니면 직전 캐시를 그대로 보여 준다. robots.txt가 모든 봇을 막는 점(OPS-269)은 크롤러 규칙이고 이 API 호출과는 별개다.
+
+## OPS-461 — NJ Transit 운행 공지는 키 없는 RSS 4개로 열린다: 버스 RSS는 노선마다 같은 공지를 복제해 넣고, GTFS-RT 경보는 승인제 계정이 필요하다
+
+`측정 2026-10-17 · njtransit.com RSS · developer.njtransit.com`
+
+**증상:** NJ Transit 경보를 서버에서 가져오려 하면 개발자 포털(`developer.njtransit.com`)은 가입·승인을 요구하고, 공개 피드 주소는 사이트 어디에도 잘 안 보인다.
+
+- 키 없이 200 `application/xml`: `https://www.njtransit.com/rss/BusAdvisories_feed.xml`(253 item, 175 KB), `/rss/RailAdvisories_feed.xml`(42), `/rss/LightRailAdvisories_feed.xml`, `/rss/CustomerNotices_feed.xml`. Cloudflare 뒤에 있고 `cache-control: no-cache, private`. robots.txt는 `/rss/`를 막지 않는다(`/node/`는 막는다).
+- item 필드: `title`, `description`, `link`(`/node/<id>`), `guid`, `pubDate`(`Oct 17, 2026 02:07:56 PM` 형식, 시간대 없음), `advisoryAlert`, `bnb`, `alert_message_components`(비어 있음).
+- 버스 `title`은 `BUS <노선번호> - <날짜>`라 노선으로 거를 수 있다. 공지 하나가 노선 수만큼 복제된다(253 item 중 고유 `guid` 106개). 2025년 11월 공지도 남아 있어 날짜 필터가 필요하다.
+- 철도 `title`은 날짜뿐이고 노선 이름은 `description`에 글로 있다("Port Jervis Line: …", 실시간 문구는 "MBPJ train #1717 …" 같은 약칭).
+- 관찰상 `advisoryAlert=0`은 그날의 실시간 알림(지연·우회), `1`은 걸어 둔 계획 공지, 빈 값은 일반 공지였다. 공식 설명은 찾지 못했다.
+- GTFS-RT: `POST https://pcsdata.njtransit.com/api/GTFSG2/getAlerts`(버스), `POST https://raildata.njtransit.com/api/GTFSRT/getAlerts`(철도), 모두 `multipart/form-data`의 `token`. 토큰은 `authenticateUser` / `getToken`에 username·password를 보내 받는다. 토큰 없이 부르면 500 `{"errorMessage":"Invalid token."}`. 포털 가입 양식은 이름·이메일·회사·주소·시·주·ZIP·전화·요청 API·약관 동의이고 "최대 5영업일" 승인 뒤에야 로그인된다. 데이터 엔드포인트는 보통 하루 40,000회 제한이다(포털 문서 번들 기준).
+
+**해결:** 배너는 RSS로 시작한다. `guid`로 중복을 지우고, 버스는 제목의 노선번호로, 철도는 설명문의 노선 이름으로 거른다. GTFS-RT가 필요하면 포털에서 가입한 뒤 토큰을 수명 동안 캐시한다(토큰 발급 자체에 따로 제한이 있다).
