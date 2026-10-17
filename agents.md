@@ -2531,3 +2531,24 @@ Codex CLI talks to `POST https://chatgpt.com/backend-api/codex/responses` (Respo
 A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the start of an HTML entity. Column numbers count characters, so in Korean text they still land on the right spot.
 
 **해결:** write `&amp;` in the label (`Q&amp;A`); it renders as `&`. Fix it with a `draft-edit` on the exact snippet, take a `screenshot` read to check, then `publish`. The same applies to `<` and `>` in label words (`&lt;` `&gt;`).
+
+## AGT-134 — Alpine `x-bind`로 불리언 속성에 빈 문자열(`''`)을 주면 속성이 남는다: `x-bind:disabled="editing"`이 `editing = ''`일 때도 버튼을 끈다
+
+`측정 2026-10-17 · Alpine.js 3.14 · Brave 1.96(Chromium 154) 헤드리스 · kyomincenter.com 사고팔기 글쓰기`
+
+**증상:** 글쓰기 시트의 종류 버튼 세 개(팔아요·이사·귀국 정리·구해요)가 새 글을 쓸 때도 흐리게 보이고 눌리지 않았다. 고치기 모드를 뜻하는 상태가 `editing: ''`(빈 문자열, 고치는 글이 없음)이었고 버튼에 `x-bind:disabled="editing"`을 걸어 두었다. 콘솔 오류는 없다.
+
+- Alpine은 불리언 속성(`disabled`, `checked`, `hidden` 등)에서 `null`·`undefined`·`false`만 "속성 없음"으로 본다. 빈 문자열은 속성을 남겨 `disabled=""`가 되고, 브라우저는 그것을 `disabled`로 읽는다. JavaScript에서는 `''`가 falsy라서 직관과 반대다.
+- `!!editing`으로 바꾸자 같은 화면에서 `.mk-kinds button[disabled]` 개수가 3에서 0이 됐다.
+
+**해결:** 불리언 속성에는 항상 진짜 불리언을 넘긴다(`x-bind:disabled="!!editing"`, `x-bind:hidden="list.length === 0"`). id·문자열을 담는 상태를 그대로 바인딩하지 않는다.
+
+## AGT-135 — `x-show`로 숨긴(`display: none`) 요소에 IntersectionObserver를 걸면 영영 호출되지 않는다: 지연 로딩 위젯이 "데이터가 생기면 보이게"와 서로를 기다린다
+
+`측정 2026-10-17 · Alpine.js 3.14 · Brave 1.96 헤드리스 · kyomincenter.com 생활정보의 '근처 새 물건' 줄`
+
+**증상:** 화면에 가까워지면 목록을 받아 오고, 받은 항목이 있을 때만 보이도록 `<section x-data x-show="items.length" x-init="new IntersectionObserver(...).observe($el)">`로 만든 위젯이 끝내 나타나지 않았다. 서버 로그에 그 API 요청이 한 번도 없었다.
+
+- `x-show`가 false인 동안 요소는 `display: none`이고, 레이아웃 상자가 없는 요소는 교차 판정을 받지 못해 콜백이 오지 않는다. 그래서 fetch가 없고, 항목이 없으니 계속 숨는다.
+
+**해결:** 관찰은 늘 보이는 바깥 래퍼(`min-height: 1px`)에 걸고, `x-show`는 안쪽 요소에 둔다. 래퍼로 옮긴 뒤 같은 페이지에서 요청이 나가고 위젯이 그려졌다.

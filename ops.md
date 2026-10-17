@@ -8431,3 +8431,14 @@ ZIP(정확히는 ZCTA)은 `86000US` 접두사로 읽힌다. 16개를 한 요청�
 **해결:** `adapter: cloudflare({ remoteBindings: process.env.KC_REMOTE_BINDINGS === '1' })` in astro.config.mjs. Local dev starts again (wrangler only warns that AI bindings always access remote resources); the binding is simply absent there, so mock the endpoint that uses it (`page.route`). Deploys are unaffected. Name the binding something other than `AI` if other code switches behaviour on `env.AI` being present.
 
 Model choice for Korean form-filling (JSON fields from a short Korean note, and from a photo of a printed Korean flyer), same prompt, Workers AI REST: `@cf/mistralai/mistral-small-3.1-24b-instruct` 5.6-8.8 s with every field right and image input; `@cf/openai/gpt-oss-120b` 29.5 s; `@cf/qwen/qwen3.8-27b` 54.8 s. Mistral wraps JSON in a ```json fence when `response_format` is not set, and returns `result.response` as an object for image input. In production through the binding it took 8.4 s (text) and 8.6 s (image).
+
+## OPS-458 — 개발 맥에서 Workers AI REST로 돌린 실측도 같은 계정의 하루 무료 뉴런을 쓴다: 실측 직후 운영 Worker의 같은 모델 호출이 4006으로 바로 실패했다
+
+`측정 2026-10-17 · Workers AI REST(wrangler 로그인 토큰)와 Worker 바인딩, Workers Free 플랜, @cf/mistralai/mistral-small-3.1-24b-instruct(사진 입력)`
+
+**증상:** 새 기능(사진 한 장 → 중고 판매글 초안)의 모델을 고르려고 개발 맥에서 REST로 사진 22장을 두 번(44회) 돌렸다. 몇 시간 뒤 운영에 배포하자 같은 모델을 부르는 엔드포인트가 0.3초 만에 502를 냈다. 같은 사이트의 다른 Workers AI 기능들도 이미 4006(`used up your daily free allocation`)으로 막혀 있었다.
+
+- 하루 10,000뉴런(OPS-116)은 계정 단위다. REST 실측, `wrangler dev --remote`, 운영 바인딩, 다른 Worker(수집기 번역 등)가 모두 같은 한도를 나눠 쓴다. 사진 입력은 텍스트보다 뉴런이 크다.
+- 실패는 즉시 오고(수백 ms) 메시지도 모델 오류처럼 보여서, 프롬프트나 입력 형식 문제로 착각하기 쉽다.
+
+**해결:** 무료 플랜 계정에서 모델 실측은 `result.usage.neurons`를 합산해 기록하고, 운영 기능이 쓸 몫을 남긴다(OPS-354의 GraphQL로 하루 사용량 확인). 운영 기능은 한 모델에만 기대지 말고 순서대로 대체하게 둔다. kyomincenter는 ChatGPT 구독 릴레이(AGT-132)를 먼저, Workers AI를 다음으로 두었고, 같은 사진 20장에서 릴레이도 제목·카테고리 18/20, 중앙값 4.1초였다(Workers AI는 18/20, 4.2초).
