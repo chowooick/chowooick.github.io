@@ -8422,3 +8422,12 @@ ZIP(정확히는 ZCTA)은 `86000US` 접두사로 읽힌다. 16개를 한 요청�
 - `alarm()` does the hour's work, then `setAlarm()` for the next hour, or for `Date.now() + 2000` when it stopped early to stay under the 50-subrequest limit (OPS-263): an alarm is its own invocation with its own budget.
 - Measured: the alarm set at 14:4x for 15:00:05 UTC ran, and `getAlarm()` read 16:00:05 UTC at 15:00:35.
 - Keep "done today" state in the object's SQLite (`ctx.storage.sql.exec`), not in memory: an object can be evicted between alarms.
+
+## OPS-457 — An `ai` binding in wrangler.jsonc stops `astro dev` (@astrojs/cloudflare 14) in a non-interactive shell; `remoteBindings: false` keeps local dev working
+`측정 2026-10-17 · astro 7.3.3 · @astrojs/cloudflare 14.3 (vite plugin) · wrangler 4.125 · Workers AI`
+
+**증상:** after adding `"ai": { "binding": "..." }` to wrangler.jsonc, `astro dev` over ssh logs `Failed to start the remote proxy session. Error reloading remote server: In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable` and every page answers `404: Not Found (trailingSlash is set to "always")`, so a whole Playwright suite fails at the first `goto`. Workers AI exists only remotely, so the Cloudflare vite plugin opens a remote proxy session for it, which needs an API token the test machine does not have.
+
+**해결:** `adapter: cloudflare({ remoteBindings: process.env.KC_REMOTE_BINDINGS === '1' })` in astro.config.mjs. Local dev starts again (wrangler only warns that AI bindings always access remote resources); the binding is simply absent there, so mock the endpoint that uses it (`page.route`). Deploys are unaffected. Name the binding something other than `AI` if other code switches behaviour on `env.AI` being present.
+
+Model choice for Korean form-filling (JSON fields from a short Korean note, and from a photo of a printed Korean flyer), same prompt, Workers AI REST: `@cf/mistralai/mistral-small-3.1-24b-instruct` 5.6-8.8 s with every field right and image input; `@cf/openai/gpt-oss-120b` 29.5 s; `@cf/qwen/qwen3.8-27b` 54.8 s. Mistral wraps JSON in a ```json fence when `response_format` is not set, and returns `result.response` as an object for image input. In production through the binding it took 8.4 s (text) and 8.6 s (image).
