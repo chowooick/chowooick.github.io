@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T19:05:29Z · 소스 커밋 `a8cc48a` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T19:06:25Z · 소스 커밋 `a647678` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17744,4 +17744,47 @@ sharing that `node_modules` rewrites the same cache under the others.
 space: `rsync -a --exclude node_modules --exclude .astro --exclude dist <project>/ <copy>/ && cp -cR <project>/node_modules
 <copy>/node_modules && rm -rf <copy>/node_modules/.vite`, then `npx astro dev --port <your port>` in the copy. Never
 symlink `node_modules`, and never `--force` a server you did not start.
+
+## OPS-469 — Brave hides any element whose class starts with `ad-` (`.ad-top`, `.ad-nav`…), headless included
+
+`측정 2026-10-17 · Brave 1.96 (Chromium 154) · Playwright launch with executablePath, headless · default Shields`
+
+**증상:** an admin console's sticky header (`<header class="ad-top">`) and its menu (`.ad-nav`, `.ad-user`) were missing
+from every screenshot. The HTML was there; `getComputedStyle(header).display` was `none` and its bounding box `null`.
+No site CSS hid it. Brave's built-in cosmetic filter (Shields, on by default, also in a fresh headless profile) matches
+generic ad class names such as `ad-top`, so readers with Brave or any EasyList blocker lose the element too.
+
+**해결:** never start a class or id with `ad-`/`ads`/`advert`/`sponsor`/`banner` for real UI. Renaming to `nr-*` fixed it at
+once. When an element is present in the DOM but `display: none` with no matching rule in your CSS, suspect the content
+blocker before your code.
+
+## OPS-470 — Workers edge-cached HTML outlives a deploy and points at deleted `/_astro/*` files: key the cache by version
+
+`측정 2026-10-17 · Cloudflare Workers (Free) · Astro 7 · @astrojs/cloudflare 14 · Cache API (caches.default)`
+
+**증상:** a Worker that keeps rendered pages in `caches.default` (stale-while-revalidate) was redeployed. Cached pages kept
+referencing the previous build's hashed `/_astro/app.<hash>.js`, which the new deploy's static assets no longer had, so
+pages came up without JavaScript: Alpine never started, buttons did nothing, and no page error was logged.
+
+**해결:** bind `"version_metadata": { "binding": "CF_VERSION_METADATA" }` and put `env.CF_VERSION_METADATA.id` into the cache key
+(`https://edge.cache/<version>/<path>`). Every deploy starts with an empty cache and old copies expire on their own. Purging
+is not an option on Workers: `cache.delete` only clears the data center that runs it.
+
+## OPS-471 — Migrating a Korean "한국형 신문 CMS" news site (thenewsin.co.kr family): what the HTML really looks like
+
+`측정 2026-10-17 · www.biznewyork.net (CMS per robots.txt → thenewsin.co.kr) · node-html-parser 7`
+
+**증상:** article numbers (`/news/article.html?no=N`) are sparse: of 1–6147 only 2,945 exist; a missing number answers
+**200** with a 197-byte page holding `window.alert('기사번호가 누락되어 있거나 잘못된 접근입니다.')`, so status codes cannot tell
+missing from present (check length or `news_body_area`). The headline is written `<h1>…</h2>`, which breaks any HTML
+parser's tree under `.art_top`: the byline (`ul.art_info li`: "Jung Lee 기자", "등록 2026.10.11 14:56:16") comes out empty.
+The body is `#news_body_area` (Smart Editor): `<p><br></p>` spacers, inline styles, photo captions as the next paragraph with
+`font-size: 13px`, images as `<img xtype="photo" src="//www…/data/photos/YYYYMMWW/art_….jpg">`, list thumbnails under
+`/data/cache/public/photos/…_190x143_c0.jpg`. Dates are New York local time without an offset. The Google News sitemap
+labels every article `PressRelease`.
+
+**해결:** read the byline block with a regex on the raw HTML, the body with a parser. Treat a short 200 as missing. Convert
+`YYYY.MM.DD HH:MM:SS` as America/New_York (DST-aware). 5 parallel requests copied the whole site with images (604 MB) in
+18 minutes with no failures. Map old addresses with 301s: `article.html?no=N` and `mobile/article.html?no=N` → the new
+article, `section_list_all.html?sec_no=X` → the new section, `/data/photos/…` → the migrated image.
 
