@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T19:44:37Z · 소스 커밋 `cec4c12` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T23:47:55Z · 소스 커밋 `f5fa32e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17879,4 +17879,27 @@ Measured: unauthenticated `https://<host>/` answered 302 to `<team>.cloudflareac
 **증상:** a research run cited a midrash and a Quran passage, but WebFetch of the reader pages gave nothing to cite. Sefaria's page held the site header, the title "Bereshit Rabbah 56:8" and a body of only `Loading...`. Quran.com's range page `/37/99-113` returned verse 99 alone; verses 100–113 were not in the fetched text. Both sites render the text with JavaScript after load.
 
 **해결:** for Sefaria, fetch `https://www.sefaria.org/api/texts/<Ref>?context=0` (e.g. `/api/texts/Bereshit_Rabbah.56.8?context=0`): the JSON `text`/`he` fields hold the English and Hebrew, footnotes included (a sentence such as "So it must be that Isaac consented to be bound." there is the translator's gloss, not the midrash). For Quran.com, fetch one verse per page (`https://quran.com/37:102`) or a tafsir page, which return their text. Cite the human-readable page URL in the study, and note in the source notes that it was read through the API or verse by verse. A provenance gate that compares cited URLs with fetched URLs then needs the reader URL in the fetch record too, or an allowance for the API form.
+
+## OPS-478 — `wrangler dev` gives the Worker `request.url` with the route's custom-domain host, not 127.0.0.1; pass `--local-upstream` to keep it
+
+`측정 2026-10-17 · wrangler 4.135.0 · config with `"routes": [{ "pattern": "<host>", "custom_domain": true }]` · Air (M1)`
+
+**증상:** a Worker allowed a local-only shortcut (skip the Access JWT check) when `new URL(request.url).hostname` was `127.0.0.1` or `localhost`. Under `wrangler dev --ip 127.0.0.1 --port 8795`, `curl http://127.0.0.1:8795/dashboard` still answered 403: the Worker saw `request.url` as `http://<custom-domain host>/dashboard`. Nothing in the dev log says the URL was rewritten.
+
+**해결:** start dev with `--local-upstream 127.0.0.1:<port>`; `request.url` then keeps `127.0.0.1` and the check works. With that flag the Host header no longer matters (a request sent with `Host: <custom-domain host>` also arrived as 127.0.0.1), so key such shortcuts on a dev-only variable in `.dev.vars` **and** the hostname, never on the hostname alone, and never set the variable in production.
+
+## OPS-479 — Two `wrangler dev` processes on one project and one D1 database: started together, one dies with `SQLITE_BUSY_RECOVERY`
+
+`측정 2026-10-17 · wrangler 4.135.0 · two configs (`wrangler.jsonc`, `wrangler.plan.jsonc`) binding the same `database_id` · local state in `.wrangler/state``
+
+**증상:** two Workers of one repo share one D1 database. Both dev servers were launched in the same second (`(npx wrangler dev … &)` twice). The second printed its bindings and then:
+
+```
+*** Fatal uncaught kj::Exception: workerd/util/sqlite.c++:873: failed: SQLite failed; dbErrorMessage(prepareResult, db) = database is locked: SQLITE_BUSY (extended: SQLITE_BUSY_RECOVERY)
+The Workers runtime failed to start.
+```
+
+Its port never opened, so the test only saw `ERR_CONNECTION_REFUSED`.
+
+**해결:** both servers read the same local SQLite file under `.wrangler/state/v3/d1` (that is what lets one Worker's writes show up in the other). Start them one after the other: wait until the first answers HTTP, then start the second. Give the second its own `--inspector-port` too.
 
