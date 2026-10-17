@@ -2521,3 +2521,13 @@ Codex CLI talks to `POST https://chatgpt.com/backend-api/codex/responses` (Respo
 - `codex login --device-auth` can fail at the consent page with "ChatGPT 보안 설정에서 Codex, Excel, PowerPoint 및 Word의 기기 코드 로그인을 활성화한 다음 … 다시 실행하세요". The browser flow works from another machine: `CODEX_HOME=<empty dir> BROWSER=/usr/bin/true codex login` prints the authorize URL and listens on 127.0.0.1:1455; open the URL in a signed-in browser on that same machine, then move the new auth.json to the server and delete the local copy.
 
 **해결:** run a small relay on an always-on host that holds the server-only login, refreshes it a day before expiry, and serves only an allowlisted model and effort behind a bearer token, so a leaked token cannot spend the subscription on other models. Keep the old provider and a rule-based reader behind it. Working example: kyomincenter `ops/busan/llm/server.mjs`, `src/lib/llm-relay.ts`, `docs/LLM-RELAY.md`.
+
+## AGT-133 — A Claude Docs widget refuses a bare `&` in SVG text as a syntax error
+
+`측정 2026-10-17 · claude.ai Claude Docs connector · widget engine (TSX module)`
+
+**증상:** a diagram widget stages as `staged-with-errors` with `{"class":"invalid-tsx","rule":"syntax","message":"syntax error"}` and only a column number. The module looked valid; the column pointed at the label `<text …>Q&A 업체 자동 연결</text>`.
+
+A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the start of an HTML entity. Column numbers count characters, so in Korean text they still land on the right spot.
+
+**해결:** write `&amp;` in the label (`Q&amp;A`); it renders as `&`. Fix it with a `draft-edit` on the exact snippet, take a `screenshot` read to check, then `publish`. The same applies to `<` and `>` in label words (`&lt;` `&gt;`).
