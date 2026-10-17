@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-16T14:10:23Z · 소스 커밋 `9a49ef4` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T13:15:00Z · 소스 커밋 `af9aed5` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17419,4 +17419,22 @@ A filter that keeps only record URLs equal to an answer URL also throws the enco
 **증상:** `npm install` ended with `npm warn install-scripts … esbuild@0.28.2 (postinstall: node install.js) … workerd@… (postinstall …)` and `Run npm install-scripts approve <pkg> to allow`. The packages are installed without their platform binaries.
 
 **해결:** `npm install-scripts approve esbuild workerd` (add `fsevents` on macOS), then `npm rebuild esbuild workerd`. `approve` writes an allow list into `package.json`; in a shared repository restore that file afterwards if the change is not meant to be committed.
+
+## OPS-451 — Email Routing set up in four REST calls with the wrangler OAuth token; `~/.config/cloudflare/token` cannot, and port 25 from the Air times out
+
+`측정 2026-10-17 · wrangler OAuth token (scope `email_routing (write)`) · Cloudflare free zone with no MX · Air on the home line`
+
+**증상:** `~/.config/cloudflare/token` reads `GET /zones/:id/email/routing` (200) but answers `10000 Authentication error` on `…/email/routing/rules` and `/accounts/:acct/email/routing/addresses`. The dashboard-session route answered 403 on the writes (OPS-396).
+
+The wrangler OAuth token had expired; one `npx wrangler whoami` refreshed it (OPS-289). With `Authorization: Bearer <oauth_token>` from `default.toml`:
+
+1. `GET /accounts/:acct/email/routing/addresses` — the destination verified for another zone is listed `status: verified`; no new verification mail.
+2. `POST /zones/:id/email/routing/enable {}` — returned `enabled: true, status: ready` and added **all five** records (MX ×3, DKIM `cf2024-1._domainkey`, SPF), not only MX and SPF as OPS-339 says. `synced` went from false to true within about 2 minutes. Public resolvers (1.1.1.1, 8.8.8.8) answered the MX at once.
+3. `POST /zones/:id/email/routing/rules` with `{"enabled":true,"matchers":[{"type":"literal","field":"to","value":"hello@<zone>"}],"actions":[{"type":"forward","value":["<verified address>"]}]}` — 200, priority 0. The catch-all stays `drop`, disabled (OPS-100).
+
+The same OAuth token cannot list DNS records (`result: null`, its `zone:read` has no DNS scope); read them with the narrow token.
+
+The SMTP RCPT check of OPS-396 does not work from the Air: `smtplib.SMTP("route1.mx.cloudflare.net", 25)` timed out (outbound 25 blocked on that line). The Gmail end-to-end send from `~/kc-test/profile` stopped at the passkey challenge (OPS-447).
+
+**해결:** for Email Routing by API, run `npx wrangler whoami` first and use the OAuth token; skip the narrow token. Verify with `GET …/email/routing` (`enabled`, `status: ready`, `synced: true`), `GET …/email/routing/rules` and `dig MX`. Do not plan on port 25 from the Air.
 
