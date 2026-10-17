@@ -8442,3 +8442,18 @@ Model choice for Korean form-filling (JSON fields from a short Korean note, and 
 - 실패는 즉시 오고(수백 ms) 메시지도 모델 오류처럼 보여서, 프롬프트나 입력 형식 문제로 착각하기 쉽다.
 
 **해결:** 무료 플랜 계정에서 모델 실측은 `result.usage.neurons`를 합산해 기록하고, 운영 기능이 쓸 몫을 남긴다(OPS-354의 GraphQL로 하루 사용량 확인). 운영 기능은 한 모델에만 기대지 말고 순서대로 대체하게 둔다. kyomincenter는 ChatGPT 구독 릴레이(AGT-132)를 먼저, Workers AI를 다음으로 두었고, 같은 사진 20장에서 릴레이도 제목·카테고리 18/20, 중앙값 4.1초였다(Workers AI는 18/20, 4.2초).
+
+## OPS-459 — Workers 무료 플랜에서 한글 OG 이미지(PNG)를 그리는 법: resvg-wasm을 별도 Worker로 두고 글꼴은 Google Fonts `text=` 부분 집합으로 받는다
+
+`측정 2026-10-17 · Cloudflare Workers Free · @resvg/resvg-wasm 2.6.2 · wrangler 4.135 · Google Fonts css2 API(Noto Sans KR 600/800)`
+
+**증상:** 카카오톡·문자 미리보기는 SVG `og:image`를 그리지 않는다. 그래서 Worker 안에서 PNG를 만들어야 한다. 그런데 한글 글꼴 하나가 굵기마다 수 MB여서 번들에 넣으면 무료 플랜의 3 MiB(gzip) 한도를 넘고, 사이트 Worker에 렌더러를 넣으면 모든 요청의 시작 비용이 커진다.
+
+- `https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@600;800&text=<필요한 글자>`는 굵기마다 `@font-face`를 따로 주고, 그 글자만 담은 **TrueType**을 준다. User-Agent가 없는 Worker `fetch`와 node, curl 모두 `format('truetype')`을 받았다. 카드 한 장에 굵기당 22–27 KB였다. resvg는 woff2를 읽지 못하므로 이 점이 중요하다.
+- resvg-wasm만 넣은 별도 Worker는 `Total Upload: 2494 KiB / gzip: 981 KiB`, `Worker Startup Time: 4 ms`였다. `.wasm`은 wrangler 기본 규칙(CompiledWasm)으로 `import wasm from '@resvg/resvg-wasm/index_bg.wasm'` → `initWasm(wasm)`가 바로 된다. PNG 같은 바이트 파일은 `"rules": [{ "type": "Data", "globs": ["**/*.png"] }]`로 넣는다.
+- `new Resvg(svg, { font: { fontBuffers: [bold, regular], defaultFontFamily: 'Noto Sans KR' } })`에서 `font-weight` 600/800은 받은 두 파일로 갈린다.
+- 1200×630 카드 렌더는 M1 node에서 22–103 ms였다. 운영 사이트를 거친 요청은 처음 520 ms, 캐시 적중 뒤 106–220 ms였다.
+- resvg는 줄바꿈을 하지 않는다. 받은 TTF의 `cmap`(format 4/12)과 `hmtx`를 직접 읽어 글자 폭을 재면 단어 단위 줄바꿈과 말줄임을 정확히 할 수 있다(60줄 정도).
+- `Response`에 `Uint8Array`를 그대로 넣으면 workers-types에서 타입 오류(ts2345)가 난다. `png.slice().buffer as ArrayBuffer`로 넘긴다.
+
+**해결:** 렌더러는 route 없는 Worker(`workers_dev: false`)로 두고 사이트는 서비스 바인딩으로 JSON을 보낸다. 사이트는 결과를 `caches.default`에 내용 해시 키로 넣고, `og:image` 주소에 `?v=<해시>`를 붙여 내용이 바뀌면 채팅 앱이 새로 받게 한다. 렌더가 실패하면 기존 아이콘으로 302를 보낸다. 같은 날 Air의 로컬 `wrangler dev`(workerd)는 몇 분 동안 호스트 이름으로 나가는 fetch가 모두 시간 초과였다(IP 주소로는 됐다). 같은 시각 curl도 실패했으므로 workerd 문제가 아니라 망 문제로 보고 다시 시도한다.
