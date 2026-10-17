@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T18:19:12Z · 소스 커밋 `8cc9812` · 이 파일은 자동 생성물이다.
+생성 2026-10-17T18:29:40Z · 소스 커밋 `762ea4f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17649,4 +17649,16 @@ Model choice for Korean form-filling (JSON fields from a short Korean note, and 
 - GTFS-RT: `POST https://pcsdata.njtransit.com/api/GTFSG2/getAlerts`(버스), `POST https://raildata.njtransit.com/api/GTFSRT/getAlerts`(철도), 모두 `multipart/form-data`의 `token`. 토큰은 `authenticateUser` / `getToken`에 username·password를 보내 받는다. 토큰 없이 부르면 500 `{"errorMessage":"Invalid token."}`. 포털 가입 양식은 이름·이메일·회사·주소·시·주·ZIP·전화·요청 API·약관 동의이고 "최대 5영업일" 승인 뒤에야 로그인된다. 데이터 엔드포인트는 보통 하루 40,000회 제한이다(포털 문서 번들 기준).
 
 **해결:** 배너는 RSS로 시작한다. `guid`로 중복을 지우고, 버스는 제목의 노선번호로, 철도는 설명문의 노선 이름으로 거른다. GTFS-RT가 필요하면 포털에서 가입한 뒤 토큰을 수명 동안 캐시한다(토큰 발급 자체에 따로 제한이 있다).
+
+## OPS-462 — 카카오톡 인앱 브라우저(Android): `kakaotalk://web/openExternal`은 일반 VIEW 인텐트라 설치된 WebAPK가 받고, `kakaotalk://inappbrowser/close`는 인앱 창을 실제로 닫는다. adb로 여는 `kakaotalk://inappbrowser?url=`은 주소를 싣지 않는다
+
+`측정 2026-10-17 · Pixel 7 Pro · Android 17 · KakaoTalk 26.8.3 · Android System WebView 154.0.8037.106 · adb`
+
+**증상:** 카톡 인앱 브라우저에서의 동작을 실기기로 확인하려 할 때 막히는 지점 세 가지.
+
+- `adb shell am start -a android.intent.action.VIEW -d "kakaotalk://inappbrowser?url=<인코딩된 URL>" com.kakao.talk`은 `InAppBrowserActivity`를 띄우지만 주소창이 비어 있고 아무 페이지도 열지 않는다. 주소창(`com.kakao.talk:id/webview_navi_address_bar`)을 탭하고 `input text <URL>` + `KEYCODE_ENTER`로 열면 된다. 주소창을 비울 때는 `input keycombination 113 29`(Ctrl+A) 뒤 `KEYCODE_DEL`. 길게 누른 DEL로는 지워지지 않아 URL이 이어 붙어 404가 났다. 이렇게 연 페이지의 UA에는 `KAKAOTALK`이 들어 있어 사이트의 인앱 분기가 그대로 탄다.
+- 카톡 WebView는 원격 디버깅이 꺼져 있다. `/proc/net/unix`에 `webview_devtools_remote_<pid>` 소켓이 없어 CDP로 DOM을 읽을 수 없다. 화면 확인은 `screencap`과 `uiautomator dump`(WebView 안의 텍스트·버튼 bounds가 나온다)로 한다.
+- 페이지가 `location.href = 'kakaotalk://web/openExternal?url=…'`을 실행하면 카톡은 특정 브라우저가 아닌 일반 VIEW 인텐트를 보낸다. 그 사이트가 WebAPK(설치된 PWA)로 깔린 폰에서는 Chrome 탭이 아니라 `org.chromium.chrome.browser.webapps.SameTaskWebApkActivity`가 앞에 왔다. 이어서 페이지가 hidden이 된 뒤 `location.href = 'kakaotalk://inappbrowser/close'`를 실행하면 `InAppBrowserActivity`가 카톡 태스크의 히스토리에서 사라진다(남은 것은 `ChatRoomHolderActivity`·`MainActivity`). 앱 화면에서 뒤로 가도 빈 인앱 창이 남지 않는다.
+
+**해결:** 인앱 탈출 버튼을 실기기에서 검증할 때는 주소창에 직접 입력해 페이지를 연다. 탭 뒤에는 `dumpsys window | grep mCurrentFocus`(누가 앞에 왔는지)와 `dumpsys activity activities | grep -E 'Hist.*kakao'`(인앱 창이 닫혔는지)로 판정한다. WebAPK가 깔려 있으면 "Chrome에서 열기"가 설치된 앱을 연다는 점을 버튼 문구와 기대 결과에 반영한다. iOS의 `kakaoweb://closeBrowser`는 이 측정에 포함되지 않았다.
 
