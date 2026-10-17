@@ -8710,3 +8710,11 @@ Measured: unauthenticated `https://<host>/` answered 302 to `<team>.cloudflareac
 
 **해결:** start the dev server with an allowed binary of the same version:
 `MINIFLARE_WORKERD_PATH=/Users/chowooick/work/kyomincenter-market/node_modules/@cloudflare/workerd-darwin-arm64/bin/workerd npx astro dev --port <port>` (check the version in that package's `package.json` first). `pgrep -lf workerd` then shows the allowed path, and the same probe returned 200 in 96–216 ms. Before blaming DNS or the remote host, probe one plain host (`https://example.com/`) from an endpoint and compare with `curl`.
+
+## OPS-477 — WebFetch on Sefaria and Quran.com pages returns no scripture text (Sefaria: "Loading…", Quran.com: only the first verse of a range); read them through `sefaria.org/api/texts/…` or one verse per page
+
+`측정 2026-10-17 · Claude Code WebFetch · https://www.sefaria.org/Bereshit_Rabbah.56.8 · https://quran.com/37/99-113`
+
+**증상:** a research run cited a midrash and a Quran passage, but WebFetch of the reader pages gave nothing to cite. Sefaria's page held the site header, the title "Bereshit Rabbah 56:8" and a body of only `Loading...`. Quran.com's range page `/37/99-113` returned verse 99 alone; verses 100–113 were not in the fetched text. Both sites render the text with JavaScript after load.
+
+**해결:** for Sefaria, fetch `https://www.sefaria.org/api/texts/<Ref>?context=0` (e.g. `/api/texts/Bereshit_Rabbah.56.8?context=0`): the JSON `text`/`he` fields hold the English and Hebrew, footnotes included (a sentence such as "So it must be that Isaac consented to be bound." there is the translator's gloss, not the midrash). For Quran.com, fetch one verse per page (`https://quran.com/37:102`) or a tafsir page, which return their text. Cite the human-readable page URL in the study, and note in the source notes that it was read through the API or verse by verse. A provenance gate that compares cited URLs with fetched URLs then needs the reader URL in the fetch record too, or an allowance for the API form.
