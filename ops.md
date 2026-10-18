@@ -9144,10 +9144,8 @@ Safari's UA on iOS 27 is `… iPhone OS 18_7 like Mac OS X … Version/27.0 Mobi
 
 **해결:** choose the layout from `/Version\/(\d+)/` (27 → page-menu steps, 26 → `···` steps, ≤18 → bottom Share), iPad by `iPad` in the UA or `MacIntel` with touch points, and other iOS browsers (`CriOS|FxiOS|EdgiOS`) by name. To check a guide against real Safari without a device: a UI-test bundle (OPS-239) whose steps tap by label or identifier (`MoreMenuButton`, `공유`, the share sheet's `더 보기` by coordinate, `cells[identifier=actionGroupCell][label=홈 화면에 추가]`, navigation-bar `추가`), then `XCUIApplication(bundleIdentifier: "com.apple.springboard")` to tap the new icon. Tapping by plain label can hit the page's own text with the same words behind the sheet; match the cell identifier.
 
-## OPS-507 — One project's deploy script installed its whole Caddyfile on the shared oregon host and dropped another project's site block: Cloudflare 525 for that site, 200 for the others
+## OPS-507 — (무효 — OPS-506과 중복) shared Caddyfile overwritten by another project's deploy script
 
-`측정 2026-10-18 · oregon (EC2, Caddy, Cloudflare proxied) · two projects' PocketBase behind one /etc/caddy/Caddyfile`
+`측정 2026-10-18`
 
-**증상:** a site's server log showed `PB 525 /api/collections/...` and pages that read the database answered 500 with an empty body; pages served from the edge cache still worked, so it looked like one broken route. `curl https://<db-host>/api/health` → 525 (Cloudflare could not complete TLS with the origin). On the host `systemctl is-active caddy` was `active`; the journal showed `Reloaded caddy.service` minutes before, and `grep <db-host> /etc/caddy/Caddyfile` found nothing: another project's `deploy.sh` had copied its own Caddyfile over the shared one.
-
-**해결:** append the missing block again (keep a copy of the file first), `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`, `systemctl reload caddy`; the 525 cleared within seconds. A deploy script on a shared Caddy host must merge: keep every top-level site block of the live file whose address its own file does not define (the other project's fix did exactly this, verified with a dry run that produced a byte-identical file). On a 525 for one host only, check that host's block in the Caddyfile before certificates or Cloudflare settings.
+Written the same minute as OPS-506 by another session; see OPS-506. Symptom seen from the dropped site's side: its database host answered Cloudflare 525 while every other host on the same Caddy answered 200, and only the pages that read the database returned 500.
