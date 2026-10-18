@@ -8772,3 +8772,23 @@ for w in [450, 500, 600, 700, 800]:
 ```
 
 Then the same page prints with one `CID TrueType` font per weight (11 weights → 11 fonts, 386 KB for a 4-page Korean document), subset and with Unicode maps. Weights in CSS that are not instanced fall back by the CSS matching rules (e.g. 720 picks 800), so instance every weight the stylesheet names.
+
+## OPS-482 — PocketBase's auto-backup zips the whole `storage` folder: with uploaded images it is hundreds of MB a day, far over Workers KV's 25 MiB per value
+
+`측정 2026-10-18 · PocketBase 0.40.4 · Workers KV (Workers Free) · oregon t4g.small, 29 GB disk`
+
+**증상:** a PocketBase holding 2,945 news articles and 3,790 images had `backups.cron = "30 3 * * *"`, `cronMaxKeep 14`.
+`pb_data` was `data.db` 21 MB, `auxiliary.db` 9 MB, `storage` 644 MB (595 MB originals, the rest thumbnails). The
+backup zip includes `storage`, so each daily backup is about 650 MB and 14 of them about 9 GB on the same disk as the
+data. The off-host pattern used for a database without files (push the newest zip to a write-only Worker that stores it
+in KV) cannot take it: a KV value is capped at 25 MiB, and Workers Free gives the whole account 1 GB of KV. On the same
+date an existing 90-day KV backup namespace on that account already held 155 MB after 19 days (32 keys).
+
+**해결:** turn the auto-backup off (`PATCH /api/settings {"backups":{"cron":""}}` as superuser) and split the two parts.
+The database alone: `sqlite3 data.db ".backup '<tmp>/data.db'"`, `PRAGMA integrity_check`, zip (21 MB → 4.7 MB), keep a
+few on the host and push to the KV Worker with a short expiry. The files: copy only originals that are new or changed in
+size (skip `thumbs_*` folders; PocketBase regenerates thumbnails on request, verified with `?thumb=400x0` on a restored
+copy) to a host with disk, by pulling from it. A restore needs both halves: a throwaway
+`pocketbase serve --dir=<copy> --migrationsDir=<empty> --hooksDir=<empty>` on another port served records and images
+from a KV snapshot plus the pulled `storage`. Run the snapshot as the service user (a systemd `User=`), not root, so
+SQLite never leaves root-owned `-wal`/`-shm` files beside a database another user writes.
