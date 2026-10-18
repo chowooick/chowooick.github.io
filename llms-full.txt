@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T15:40:45Z · 소스 커밋 `054840d` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T16:29:04Z · 소스 커밋 `bb29879` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18190,4 +18190,20 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 **증상:** `curl -I http://<apex>/` returned `200` with the page, and `POST http://<apex>/api/...` reached the Worker and was processed (a 400 for a bad body). No `Strict-Transport-Security` header was sent. The zone's automatic HTTPS rewrite was not in effect for these hostnames.
 
 **해결:** check `url.protocol` first in `fetch`: `GET`/`HEAD` → `301` to the `https:` URL, anything else → `403` before reading the body, and add `Strict-Transport-Security` to HTTPS responses (start without `includeSubDomains`/preload until every subdomain is known to be HTTPS-only). Skip the check for `127.0.0.1`/`localhost` so `wrangler dev` still works. After deploying, `http://` GET answered `301 Location: https://…` and an HTTP POST answered `403` with no database work.
+
+## OPS-499 — LADWP's news feed answers 403 only to a collector in Korea, and kera.org hides robots.txt behind a Cloudflare challenge
+
+`측정 2026-10-18 · ladwpnews.com/feed/ · kera.org/feed/ · curl from a US Mac and from a Korean server, same bot User-Agent`
+
+**증상:** a news collector running on a server in Korea failed every LADWP run (24/24, HTTP 403) and every KERA run (26/26). From a US machine with the same User-Agent `ladwpnews.com/feed/` returns 200; there is no other LADWP feed (`ladwp.com/rss.xml` is 404). `keranews.org` redirects to `kera.org`; `kera.org/feed/` returns 200, but `kera.org/robots.txt` and the front page return a Cloudflare challenge page (403), so the crawl policy cannot be read by a bot at all.
+
+**해결:** do not work around it (no proxy, no UA spoofing, no headless browser). Mark such a source as paused with a reason and date, show its consecutive failures and last good fetch in the console, and only switch it back on from a fetch location the publisher allows or after asking the publisher. A 24-hour-without-success warning per source catches the next one.
+
+## OPS-500 — Housing and second-hand listing sites mostly forbid reposting; official affordable-housing lottery notices are the usable source
+
+`측정 2026-10-18 · terms pages read on the sites themselves · NJ, LA, Dallas, Denver, Atlanta`
+
+**증상:** looking for listings a community site may repost with a link. Terms that forbid it outright: NJ Housing Resource Center / MyHousingSearch family (njhousing.gov, georgiahousingsearch.org, coloradohousingsearch, housing.lacounty.gov: "copying … for other than personal, noncommercial use is expressly prohibited"), Access Housing LA ("Unauthorized copying, reproduction, republishing … posting … is prohibited"), GovDeals ("may not … reproduce … any Listing Data"), Public Surplus (even manual copying), Freecycle, Buy Nothing, Karrot. Dallas Housing Authority reserves all rights and asks for a permission request. Irvine allows non-commercial, non-profit use only. Bergen County's Housing Navigator asks to be told when linked.
+
+**해결:** usable without asking: NJ affordable-unit lottery notices published by the towns' administrative agents (e.g. Piazza & Associates property pages, required UHAC marketing, no reposting clause) and housing-authority waitlist announcements (DeKalb, Denver Housing Authority) — restate the facts in your own words, link the original, keep a check date and an end date. Piazza's rent and income tables are rendered by script: plain `curl` shows the headings only; read them in a real browser. For used goods there is no permitted outside source; supply has to come from members or consenting sellers.
 
