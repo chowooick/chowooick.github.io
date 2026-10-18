@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T21:20:23Z · 소스 커밋 `9b8ef42` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T21:37:36Z · 소스 커밋 `de70231` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18322,4 +18322,26 @@ cat stage/Caddyfile.others >> stage/Caddyfile
 ```
 
 The global options block (`{` at column 0) is skipped, and the repo's own sites still win. A dry run on the host gave a file byte-identical to the live one, so the existing `cmp` check skips the reload. Comment lines at column 0 just above a foreign block are not carried over, so keep comments inside the block.
+
+## OPS-508 — iOS 27 Safari "Add to Home Screen" is five taps behind the page menu, and Safari's user agent says iOS 18_7: read `Version/` to pick the steps
+
+`측정 2026-10-18 · Xcode 27.0 iOS 27.0 simulator (iPhone 18 Pro, iPad mini A17 Pro), Korean UI · XCUITest accessibility tree`
+
+**증상:** an install guide written for iOS 18 (bottom-centre Share) or iOS 26 (bottom-right `···`) points at buttons that are not there on iOS 27. Measured iOS 27 compact layout (the default) on iPhone, accessibility identifiers in brackets:
+- bottom bar: `뒤로` (`BackButton`), the page menu `페이지 메뉴` (`MoreMenuButton`, a ≡ icon at the **left inside the address pill**, centre x 114 of 402 pt), the address, `탭` (`TabOverviewButton`, bottom right, where `···` was on iOS 26);
+- page menu → first item `공유` → share sheet with an app row and an action row `복사 · 북마크에 추가 · 읽기 목록에 추가 · 더 보기(⌄)`; **`홈 화면에 추가` is only in the list under `더 보기`** (cell identifier `actionGroupCell`);
+- the add sheet: name from the manifest `short_name`, URL = manifest `start_url`, `웹 앱으로 열기` switch on by default, blue `추가` top right. After `추가` iOS goes to the home screen with the new icon; the icon opens `start_url` standalone (`navigator.standalone === true`), with a blank white screen for about 2 s.
+- iPad (iPadOS 27): `공유` (`ShareButton`) in the top toolbar, centre x 624 of 744 pt, opens the same sheet as a popover, again with `더 보기` before `홈 화면에 추가`.
+
+Safari's UA on iOS 27 is `… iPhone OS 18_7 like Mac OS X … Version/27.0 Mobile/15E148 Safari/604.1`: the OS part is frozen since iOS 26, so `/OS (\d+)_/` gives 18 and picks the old layout.
+
+**해결:** choose the layout from `/Version\/(\d+)/` (27 → page-menu steps, 26 → `···` steps, ≤18 → bottom Share), iPad by `iPad` in the UA or `MacIntel` with touch points, and other iOS browsers (`CriOS|FxiOS|EdgiOS`) by name. To check a guide against real Safari without a device: a UI-test bundle (OPS-239) whose steps tap by label or identifier (`MoreMenuButton`, `공유`, the share sheet's `더 보기` by coordinate, `cells[identifier=actionGroupCell][label=홈 화면에 추가]`, navigation-bar `추가`), then `XCUIApplication(bundleIdentifier: "com.apple.springboard")` to tap the new icon. Tapping by plain label can hit the page's own text with the same words behind the sheet; match the cell identifier.
+
+## OPS-507 — One project's deploy script installed its whole Caddyfile on the shared oregon host and dropped another project's site block: Cloudflare 525 for that site, 200 for the others
+
+`측정 2026-10-18 · oregon (EC2, Caddy, Cloudflare proxied) · two projects' PocketBase behind one /etc/caddy/Caddyfile`
+
+**증상:** a site's server log showed `PB 525 /api/collections/...` and pages that read the database answered 500 with an empty body; pages served from the edge cache still worked, so it looked like one broken route. `curl https://<db-host>/api/health` → 525 (Cloudflare could not complete TLS with the origin). On the host `systemctl is-active caddy` was `active`; the journal showed `Reloaded caddy.service` minutes before, and `grep <db-host> /etc/caddy/Caddyfile` found nothing: another project's `deploy.sh` had copied its own Caddyfile over the shared one.
+
+**해결:** append the missing block again (keep a copy of the file first), `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`, `systemctl reload caddy`; the 525 cleared within seconds. A deploy script on a shared Caddy host must merge: keep every top-level site block of the live file whose address its own file does not define (the other project's fix did exactly this, verified with a dry run that produced a byte-identical file). On a 525 for one host only, check that host's block in the Caddyfile before certificates or Cloudflare settings.
 

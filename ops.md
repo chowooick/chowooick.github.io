@@ -9130,7 +9130,7 @@ cat stage/Caddyfile.others >> stage/Caddyfile
 
 The global options block (`{` at column 0) is skipped, and the repo's own sites still win. A dry run on the host gave a file byte-identical to the live one, so the existing `cmp` check skips the reload. Comment lines at column 0 just above a foreign block are not carried over, so keep comments inside the block.
 
-## OPS-506 — iOS 27 Safari "Add to Home Screen" is five taps behind the page menu, and Safari's user agent says iOS 18_7: read `Version/` to pick the steps
+## OPS-508 — iOS 27 Safari "Add to Home Screen" is five taps behind the page menu, and Safari's user agent says iOS 18_7: read `Version/` to pick the steps
 
 `측정 2026-10-18 · Xcode 27.0 iOS 27.0 simulator (iPhone 18 Pro, iPad mini A17 Pro), Korean UI · XCUITest accessibility tree`
 
