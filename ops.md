@@ -9098,3 +9098,13 @@ stop that browser, back up `Default/Cookies`, delete `Default/Cookies-journal`, 
 of the profile that Playwright wrote (here `~/kc-test/km/profile-km`, last written the same morning). The next
 `open()` from `~/kc-test/kc-browser.mjs` showed `myaccount.google.com` signed in. Sign-ins done in the plain window
 (here an Apple account) are lost by that restore.
+
+## OPS-505 — A Play Store emulator image with no Google account accepts Chrome's PWA install sheet but never mints the WebAPK: use it to test the install card, not the hand-off to the app
+
+`측정 2026-10-18 · Android emulator, system-images;android-35;google_apis_playstore;arm64-v8a (no account) · Chrome 124.0.6367.219 · adb 1.0.41`
+
+**증상:** with no phone on USB, a session tried to check a PWA's install-then-open flow (OPS-284) on the main Mac's Play Store AVD. Chrome fired `beforeinstallprompt` after one swipe on the page, the page's own install button opened Chrome's sheet (`Install app` / `Install`, buttons `com.android.chrome:id/positive_button`), and after `Install` a toast said "Installing <name>…". 43 s later `pm list packages | grep webapk` was still empty, `topResumedActivity` stayed `ChromeTabbedActivity`, `getInstalledRelatedApps()` never returned the app, and every `intent://<host>/…` only reloaded the tab. Logcat showed Finsky busy with an auto-update of WebView and no WebAPK install. A WebAPK is minted through Play, and Play has no account here.
+
+To get there headless: write `chrome --disable-fre --no-default-browser-check --no-first-run` to `/data/local/tmp/chrome-command-line` and `am set-debug-app --persistent com.android.chrome`; Chrome 124 still shows a "Chrome notifications make things easier" dialog on the first page (tap "No thanks").
+
+**해결:** an account-less emulator verifies the page side only: the offer, Chrome's sheet, the installing state, and the fallback when the app never lands. The hand-off to the opened app needs a phone (or an AVD) signed in to Play. Pages that wait for `getInstalledRelatedApps()` should give up without sending the intent when it never sees the app; otherwise the reader gets three reloads (the OPS-284 retry loop) for nothing.
