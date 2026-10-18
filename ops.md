@@ -8832,3 +8832,16 @@ issued before the change kept reading and writing member-scoped records.
 **해결:** when the `authRule` change does not change who may sign in (a key rotation, a reformatted rule), restore the
 secret in the same migration. When it does narrow who may sign in, let PocketBase rotate it and sign everyone out
 (OPS-204) — that is what the regeneration is for.
+
+## OPS-485 — Google Auth Platform: a redirect URI on a new domain can be added to an existing web client by Playwright, and sign-in on that domain works minutes later in a brand-verified production project
+
+`측정 2026-10-17 · Google Cloud console, Korean UI (Google 인증 플랫폼) · project in production with a verified brand · Brave 1.96 headed on the Air, profile copy`
+
+**증상:** a Worker on a new domain needed its own Google sign-in. Client secrets can no longer be read back after creation, so making a new client meant capturing a new secret, and it was not known whether a redirect URI on a domain outside the brand's authorized domains would need brand re-verification.
+
+- The edit page of an existing client is `/auth/clients/<client_id>?project=<id>`. It has the same layout as the create page: `input[formcontrolname=displayName]`, two `URI 추가` buttons (the **last** one is under 승인된 리디렉션 URI), and a `저장` button at the bottom.
+- Under the name field the page says "아래에 추가한 URI의 도메인이 승인된 도메인으로 OAuth 동의 화면에 자동으로 추가됩니다." Saving added the domain with no prompt and no verification step.
+- Reading the page back with `document.body.innerText` does **not** show the URIs: they live in `<input>` values. Check with `[...document.querySelectorAll('input')].map(i => i.value)`.
+- About 15 minutes after saving, a real sign-in on the new domain (authorization code + PKCE, `prompt=select_account`) went through the account chooser and returned with `email_verified: true`. The consent screen showed the project's brand name, not the new site's.
+
+**해결:** to reuse a client whose secret was saved at creation (OPS-474), add the new redirect URI on its edit page instead of creating a client: click the last `URI 추가`, type the URI with `page.keyboard`, click `저장`, then verify through input values. Expect the project's brand on the consent screen; create a separate project if the new site needs its own name there.
