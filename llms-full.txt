@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T12:31:25Z · 소스 커밋 `e0f55ef` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T12:36:44Z · 소스 커밋 `20cce28` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18092,4 +18092,33 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 - The new client's secret shows once on the creation dialog; a script read it from the dialog text (`GOCSPX-…`) into a 0600 file and piped it to `wrangler secret put`, so it was never printed.
 
 **해결:** for a sign-in used only by invited staff, the domain is a clear and accurate label, so no verification was requested. A product that wants its name on the chooser has to submit the brand for verification (domain ownership in Search Console).
+
+## OPS-492 — Sending one email from the owner's Gmail on the Air: compose URL + the "보내기" button, in a copy of the signed-in profile when another session holds it
+
+`측정 2026-10-18 · Brave 1.97 (Chromium 155) on the Air · playwright-core launchPersistentContext · Gmail web, Korean UI`
+
+**증상:** a session had to send an approved outside email from the owner's Gmail. `~/kc-test/profile` was locked by another session (`SingletonLock -> air.local-<pid>`, that pid alive), so it could not be opened.
+
+**사실:**
+- `rsync -a --exclude 'Singleton*' --exclude '*Cache*' --exclude GPUCache ~/kc-test/profile/ ~/kc-test/profile-<task>/` gives a copy that opens signed in to Google while the original stays in use. The original is never touched.
+- `https://mail.google.com/mail/?view=cm&fs=1&to=…&su=…&body=…` (each value `encodeURIComponent`) opens a full-screen compose with all three filled; line breaks in `body` survive as `%0A`. Wait about 8 s after `domcontentloaded`.
+- The send button is `div[role="button"][data-tooltip^="보내기"]` in the Korean UI (`^="Send"` in English). One click sends; the compose window does not stay.
+- Check by opening `#sent` and counting the subject text. The count can be 2 for one mail (list row plus a hidden duplicate node), so read a screenshot rather than trust the number.
+- Do a dry run first (open compose, screenshot, no click) to see the From account and the text before anything leaves.
+
+**해결:** copy the profile, dry-run, send, check Sent by screenshot, then delete the copied profile (it holds the owner's cookies).
+
+## OPS-493 — Korean VAT: sales to US customers collected through PayPal and paid out in won are not zero-rated (영세율); a foreign-issued card or a direct USD wire is
+
+`측정 2026-10-18 · 부가가치세법 시행 2026-01-02, 시행령 2026-02-27, 시행규칙 2026-03-20 · NTS rulings as cited`
+
+**증상:** a Korean company selling online ads/listings to US businesses planned to collect through PayPal (Korea business account) and Payoneer, assuming the sales were 영세율 because the buyers are foreign.
+
+**사실:**
+- 영세율 for services to a 비거주자/외국법인 without a 국내사업장 (부가가치세법 제24조①3, 시행령 제33조②1) needs the money to arrive by a method in 시행규칙 제22조: foreign remittance sold to a 외국환은행, a card issued abroad, a foreign check, a foreign-currency wire into a 외화예금 with a 외화입금증명서, or offset.
+- NTS ruling 서면-2016-법령해석부가-3979 (2016-07-07): receipts collected through PayPal and converted and paid to a Korean won account do not meet that test, so 10% VAT applies (about 9.09% of a price that did not include VAT). 기재부 부가가치세제과-462 (2022-10-13) denied zero rating where a domestic third party received the foreign currency and paid won, which is close to Payoneer's won payout. Payoneer USD sent by SWIFT into a 외화예금 is arguable and unsettled.
+- A foreign-issued card through a Korean PG (e.g. 토스페이먼츠 overseas card acceptance) or the customer's direct USD wire qualifies. A platform selling space on its own site fits 포털 및 기타 인터넷 정보매개서비스업 (KSIC 63120, 시행령 33②1 바목), which has no reciprocity condition; 광고업 sits under 전문서비스업 and needs reciprocity.
+- Stripe does not accept Korea-incorporated businesses (stripe.com/global), which is why PayPal looked like the default.
+
+**해결:** make a foreign-card checkout or a direct USD wire the default collection channel, file 영세율 attachments (외화입금증명서 or card statements) with each VAT return, and treat PayPal won receipts as 10% taxable. Confirm Payoneer with an NTS 서면질의 before relying on it.
 
