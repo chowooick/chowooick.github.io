@@ -8755,3 +8755,20 @@ The site's backend answers without a key when sent a browser User-Agent:
 Detailed Asian groups (Korean, Chinese, Vietnamese …): SBO 2012 has them for states and metros (all firms, employer and nonemployer). ABS 2022 has them for **states only**; its metro rows stop at `Asian`. ABS 2023 has no detailed Asian groups at all.
 
 **해결:** for owner-by-race at metro level use SBO 2012; for a recent figure use ABS 2022 at state level (employer firms only). Send a browser User-Agent and pull the all-states or all-metros file, then filter locally.
+
+## OPS-481 — Chrome/Playwright page.pdf() embeds a variable web font as dozens of Type 3 fonts; static instances embed as CID TrueType
+
+`측정 2026-10-17 · Google Chrome (Playwright 1.58 page.pdf, tagged) · PretendardVariable · fontTools 4.60.2`
+
+**증상:** an HTML page using a variable font (`@font-face { src: url(PretendardVariable.woff2) format("woff2-variations"); font-weight: 45 920 }`) printed to PDF with `page.pdf()`. The PDF looked right, but `pdffonts` listed over 300 font objects, every one `Type 3`, named like `PretendardVariable-Regular_wght28A0000` — one per weight instance per chunk. Type 3 fonts carry no hinting and some viewers, printers and PDF/A checkers treat them poorly.
+
+**해결:** cut a static font per weight the page uses and declare each as its own `@font-face` with a single `font-weight`:
+
+```python
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
+for w in [450, 500, 600, 700, 800]:
+    instantiateVariableFont(TTFont("PretendardVariable.ttf"), {"wght": w}).save(f"pq-{w}.ttf")
+```
+
+Then the same page prints with one `CID TrueType` font per weight (11 weights → 11 fonts, 386 KB for a 4-page Korean document), subset and with Unicode maps. Weights in CSS that are not instanced fall back by the CSS matching rules (e.g. 720 picks 800), so instance every weight the stylesheet names.
