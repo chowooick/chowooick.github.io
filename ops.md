@@ -8902,3 +8902,24 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 - `wrangler tail <worker> --format json` works and each event carries `request.cf.asn`, `request.cf.asOrganization` and all request headers, but a low-traffic site gave 3 requests in 30 minutes.
 
 **해결:** decide in the Worker, where `request.cf` is always present: count a view as a bot when the user agent matches, when `Accept-Language` is missing (every browser sends it on a page load; a Chrome user agent sent without it was stored as `bot = 1` on the first try), or when `cf.asn` is a cloud network (AWS 16509/14618, Google 15169/396982, Microsoft 8075, DigitalOcean 14061, OVH 16276, Hetzner 24940, Alibaba 45102/37963, Tencent 132203/45090, Huawei 136907, Oracle 31898, Vultr 20473, Linode 63949, …) or `cf.asOrganization` names hosting. Leave Cloudflare 13335, Akamai 36183/20940 and Fastly 54113 out: iCloud Private Relay and WARP users leave through them. Counts from before the change are not comparable with counts after it. To see who is behind the numbers, run `wrangler tail` for a busy hour rather than a quiet one.
+
+## OPS-490 — `Cache-Control: no-transform` on a Worker response stops Cloudflare Web Analytics from injecting its beacon into that page
+
+`측정 2026-10-18 · Cloudflare Workers (custom domain) · Web Analytics with automatic setup on the zone · Brave 1.96`
+
+**증상:** a zone with Web Analytics on "automatic setup" injects `static.cloudflareinsights.com/beacon.min.js` into every HTML response, including a private, sign-in-only console served by the Worker (`/admin`). The console's own visits were counted in the zone's analytics, and Brave logged a blocked-request console error on every console page.
+
+**해결:** add `no-transform` to the `Cache-Control` header of the responses that should stay untouched (here `private, no-store, no-transform` on `/admin`, `/api/admin` and `/auth`). Measured on the live page: before, the HTML held the beacon script; after, a fetch of the same page has no `cloudflareinsights` string and the DOM has no beacon `<script>`. The public pages keep the beacon because their header is unchanged. No dashboard rule is needed, so this works per path from code.
+
+## OPS-491 — Google sign-in with an unverified brand: the account chooser names the app by its redirect domain, and "앱 게시" did not need a terms-of-service URL
+
+`측정 2026-10-18 · Google Cloud Console (Google 인증 플랫폼) · new external project, scopes openid email profile, no logo`
+
+**증상:** a sign-in for a second product reused the OAuth client of another project, so Google's chooser showed the other product's brand name. Moving it to its own project raised two questions: what the chooser shows before brand verification, and what "앱 게시" requires.
+
+**사실:**
+- With homepage, privacy policy URL and one authorized domain filled on 브랜딩 (terms of service left empty, no logo), the 대상 page's "앱 게시" → "확인" moved the app from "테스트 중" to "프로덕션 단계" at once. This differs from OPS-084, which filled all four fields; the ToS URL was not needed here.
+- The chooser then reads "계정을 선택하세요 · kyominmart.com(으)로 이동", and the consent step reads "kyominmart.com 서비스로 로그인 … kyominmart.com의 개인정보처리방침 및 서비스 약관 검토". The app name from 브랜딩 does not appear; the redirect URI's domain does. Showing the app name needs brand verification.
+- The new client's secret shows once on the creation dialog; a script read it from the dialog text (`GOCSPX-…`) into a 0600 file and piped it to `wrangler secret put`, so it was never printed.
+
+**해결:** for a sign-in used only by invited staff, the domain is a clear and accurate label, so no verification was requested. A product that wants its name on the chooser has to submit the brand for verification (domain ownership in Search Console).
