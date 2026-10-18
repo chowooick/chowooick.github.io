@@ -8875,3 +8875,18 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 **증상:** in a deploy chain `node scripts/build.mjs && CI=1 npx wrangler d1 migrations apply <db> --remote 2>&1 | grep -E "<name>|rror"; npx wrangler deploy`, the apply step printed no line that matched (neither the migration name nor any "error") and the deploy went ahead. `wrangler d1 migrations list <db> --remote` then still listed the migration under "Migrations to be applied", and the new Worker failed on the missing table until the migration ran. Running the same apply command again on its own printed the usual table with ✅ and applied it. It happened on two separate days in one project. Why the first call did nothing is not known.
 
 **해결:** never trust a filtered or silent apply. After `migrations apply --remote`, run `wrangler d1 migrations list <db> --remote` and stop the deploy unless it says no migrations are pending; or apply the migration before building and deploy only after the list is empty.
+
+## OPS-488 — US statute and rate sources from a script: leginfo.legislature.ca.gov and legiscan.com answer curl/WebFetch with a Cloudflare challenge; these official mirrors and PDFs do not
+
+`측정 2026-10-18 · curl 8 (browser User-Agent) and WebFetch on macOS · leginfo, legiscan, CDTFA, NJCRIB, NYC, FDA, NJ Treasury`
+
+**증상:** fetching California code sections or bill text for a fact check. `leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?...` and `.../billTextClient.xhtml?...` return HTTP 403 to WebFetch and a `<title>Just a moment...</title>` Cloudflare page to curl even with a browser User-Agent; `legiscan.com/CA/text/...` does the same. `downloads.leginfo.legislature.ca.gov/pub/...` paths return 404. Many state PDFs also come back from WebFetch as "compressed PDF data" with no readable text.
+
+- California sales-tax statutes and regulations read in full on CDTFA's lawguides: `https://cdtfa.ca.gov/lawguides/vol1/sutl/<section>.html` (for example `6041-5.html`, `6359.html`), with the Stats./chapter history note.
+- California bill analyses (Senate floor, Assembly committee) are mirrored as PDFs on `billtexts.s3.amazonaws.com/ca/ca-analysis...pdf`; search results link them. They list each operative date of the final amended version.
+- NJ workers' compensation manual rates per class are in the NJCRIB rate circular PDF, fetchable by curl: Circular No. 2510 (2026-01-01 rates) is `https://www.njcrib.com/Search/ViewPDF?id=1364`; the table columns are code, rate per $100 of payroll, minimum premium, excess element.
+- NYC local law text: `https://intro.nyc/local-laws/<year>-<no>` serves the certified PDF (effective-date clause and the Clerk's passed/approved dates on the last page).
+- FDA Food Code 2022 (January 18, 2023 version): `https://www.fda.gov/media/164194/download`, about 5 MB.
+- Census Data API needs a key; use Census Reporter instead (OPS-372).
+
+**해결:** when WebFetch reports binary PDF data, it also saves the file under the session's `tool-results/`; copy it to a scratch directory and run `pdftotext -layout` on it, then grep. For CA code text use the CDTFA lawguides (tax) or the bill-analysis PDFs (operative dates) instead of retrying leginfo.
