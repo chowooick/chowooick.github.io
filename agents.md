@@ -2560,3 +2560,15 @@ A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the 
 **증상:** a session built a PDF from HTML, fonts and a render script kept in its scratchpad, and copied only the PDF into the repo. The next turn, about eleven hours later and after midnight, came in the same session to revise the PDF. `cd` into the scratchpad failed with `no such file or directory`: the folder still existed but was empty, and so were the scratchpads of every other session under that project. The HTML source was gone and had to be rewritten from the conversation.
 
 **해결:** treat the scratchpad as lost at any turn boundary. Anything that might be revised later (document sources, render scripts, generated fonts) goes in a git-ignored folder of the project, such as `tmp/`, which survives. Copy only the final output to where the user wants it.
+
+## AGT-137 — Korean news retrieval on Workers AI: bge-m3 beat embeddinggemma-300m (384 d); an int8 matrix in one KV value replaces Vectorize for a few thousand documents
+
+`측정 2026-10-18 · Workers AI @cf/baai/bge-m3, @cf/google/embeddinggemma-300m · Workers Free`
+
+**증상:** a Korean news site's question box needed meaning-based search, but the account's free Vectorize allowance (5 M stored dimensions, account-wide) was shared with another project's 1,024-d index; one more 1,024-d index of 2,945 articles would take 3 M of it.
+
+**사실:**
+- Side-by-side on 600 articles (title, dek, 3-line summary) and eight Korean questions: bge-m3 (1,024 d) ranked the right stories first more often; embeddinggemma-300m truncated to 384 d with its `task: search result | query:` / `title: … | text:` prompts missed on "K-뷰티 미국 진출 사례" (returned startup-tour stories; bge-m3 returned beauty brands) and on "한국 배터리 회사 미국 공장". Relevant bge-m3 hits scored 0.50–0.64 cosine, unrelated ones about 0.45.
+- 2,945 bge-m3 vectors quantised to int8 with one float scale each are 2.9 MB; stored as one binary KV value (limit 25 MiB) and scanned in Worker memory they rank in a few milliseconds. Embedding the archive in batches of 50 through the REST API cost about 250 neurons.
+
+**해결:** for up to a few tens of thousands of documents, skip Vectorize: keep normalised int8 vectors in one KV value (layout: count, dims, ids, scales, int8 matrix), load it once per isolate, and update it on publish. Fuse with keyword hits by reciprocal rank so exact company names still win, and fall back to keywords when the daily neuron allocation is spent. Working example: biznewyork.net `src/lib/semantic.ts`, `src/lib/vectors.ts`, `scripts/embed-archive.ts`.
