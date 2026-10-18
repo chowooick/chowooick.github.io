@@ -2572,3 +2572,15 @@ A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the 
 - 2,945 bge-m3 vectors quantised to int8 with one float scale each are 2.9 MB; stored as one binary KV value (limit 25 MiB) and scanned in Worker memory they rank in a few milliseconds. Embedding the archive in batches of 50 through the REST API cost about 250 neurons.
 
 **해결:** for up to a few tens of thousands of documents, skip Vectorize: keep normalised int8 vectors in one KV value (layout: count, dims, ids, scales, int8 matrix), load it once per isolate, and update it on publish. Fuse with keyword hits by reciprocal rank so exact company names still win, and fall back to keywords when the daily neuron allocation is spent. Working example: biznewyork.net `src/lib/semantic.ts`, `src/lib/vectors.ts`, `scripts/embed-archive.ts`.
+
+## AGT-138 — A ChatGPT subscription behind a Codex-backend relay reports its own usage: read `x-codex-primary-used-percent` before a batch job; the Go plan's window is 30 days
+
+`측정 2026-10-18 · chatgpt.com/backend-api/codex/responses · plan go · gpt-6-luna effort low`
+
+**증상:** a batch job (archive translation, 2,828 Korean news articles) ran through the kc-llm relay that live sites share. Nothing in the relay's logs said how much of the subscription it was spending, and a 429 would stop every site's AI features until the window reset.
+
+**사실:**
+- Every response from the Codex backend carries `x-codex-plan-type` (`go`), `x-codex-primary-used-percent`, `x-codex-primary-window-minutes` (43200 = 30 days on Go), `x-codex-primary-reset-at` (epoch) and `x-codex-secondary-*` (0 on Go). One tiny request ("Reply OK.") is enough to read them.
+- Measured cost: one article (summary JSON + full-body translation, about 2.2 calls, 2.1 k input and 0.9 k output tokens) took 0.033–0.055% of the Go 30-day window (60 articles moved it 18 → 20%; the headers are whole percents). The whole archive would have needed 100–154%.
+
+**해결:** before and between batches, read `x-codex-primary-used-percent` (example: biznewyork.net `scripts/relay-usage.sh`) and stop at a cap that leaves room for the live features (the owner chose 60%); resume after `reset-at`. Size any per-request product promise (e.g. "10,000 reader questions a month") against these numbers before relying on a consumer subscription.
