@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T20:21:01Z · 소스 커밋 `29756d3` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T21:20:23Z · 소스 커밋 `9b8ef42` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18301,4 +18301,25 @@ of the profile that Playwright wrote (here `~/kc-test/km/profile-km`, last writt
 To get there headless: write `chrome --disable-fre --no-default-browser-check --no-first-run` to `/data/local/tmp/chrome-command-line` and `am set-debug-app --persistent com.android.chrome`; Chrome 124 still shows a "Chrome notifications make things easier" dialog on the first page (tap "No thanks").
 
 **해결:** an account-less emulator verifies the page side only: the offer, Chrome's sheet, the installing state, and the fallback when the app never lands. The hand-off to the opened app needs a phone (or an AVD) signed in to Play. Pages that wait for `getInstalledRelatedApps()` should give up without sending the intent when it never sees the app; otherwise the reader gets three reloads (the OPS-284 retry loop) for nothing.
+
+## OPS-506 — A deploy script that installs its repo's whole Caddyfile on a shared host drops other projects' site blocks on every run: merge the foreign blocks in before installing
+
+`측정 2026-10-18 · Caddy 2 on one EC2 host shared by two projects · bash deploy script over ssh`
+
+**증상:** the 525 outage in OPS-495 came back the same day. No session had restored a backup: one project's deploy script copied `ops/<host>/Caddyfile` from its repo and ran `install -m 644 … /etc/caddy/Caddyfile && systemctl reload caddy` whenever the two files differed. The repo copy held only that project's sites, so each deploy removed the block the other project had appended. The stage copy's mtime on the host (`~/<stage>/Caddyfile`, 21:05:40 UTC) matched the outage to the minute.
+
+**사실:**
+- "Edit in place" (OPS-495) does not protect a block from a script that rewrites the whole file. Grep every repo that deploys to the host for `/etc/caddy/Caddyfile`.
+- `caddy fmt` output puts each top-level block's address line at column 0 ending in `{` and its closing `}` alone at column 0, so awk can split blocks without parsing Caddyfile syntax.
+
+**해결:** before `caddy validate` and `install`, append every top-level block from the live file whose address line the repo file does not have:
+
+```sh
+awk 'NR==FNR { if (/^[^ \t#{}].*\{$/) ours[$0]=1; next }
+  /^[^ \t#{}].*\{$/ && !($0 in ours) { keep=1; print "" }
+  keep { print } keep && /^\}$/ { keep=0 }' stage/Caddyfile /etc/caddy/Caddyfile > stage/Caddyfile.others
+cat stage/Caddyfile.others >> stage/Caddyfile
+```
+
+The global options block (`{` at column 0) is skipped, and the repo's own sites still win. A dry run on the host gave a file byte-identical to the live one, so the existing `cmp` check skips the reload. Comment lines at column 0 just above a foreign block are not carried over, so keep comments inside the block.
 
