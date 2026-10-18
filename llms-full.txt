@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T12:58:36Z · 소스 커밋 `75c37e4` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T15:16:10Z · 소스 커밋 `c1d5806` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18134,4 +18134,16 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 - Only after clicking **"브랜딩 게시"** did the status become "브랜딩이 인증되었으며 사용자에게 표시되고 있습니다". The chooser then read "계정을 선택하세요 · 교민마트(으)로 이동" and "교민마트의 개인정보처리방침 및 서비스 약관".
 
 **해결:** verify the domain in Search Console, click "브랜딩 확인", wait about 5 minutes, then click "브랜딩 게시" before the 7 days run out. No human review was involved for this scope set.
+
+## OPS-495 — A shared Caddyfile replaced from another project's older copy silently dropped a site block; Cloudflare answered 525 and the Worker's edge cache hid it for 14 hours
+
+`측정 2026-10-18 · Caddy 2 on one EC2 host serving two projects' PocketBase behind Cloudflare (proxied)`
+
+**증상:** a Worker site's article pages answered 500 while its front page still loaded. The database's public name answered `525` (SSL handshake failed) from Cloudflare. On the host PocketBase was `active` and `127.0.0.1:<port>/api/health` was 200. `/etc/caddy/Caddyfile` had no block for that name: another project's session had reloaded Caddy with a file it edited from a copy taken before the block was added (same byte size as the `.before-…` backup next to it). The front page kept working only because the Worker served it stale from its edge cache, so nothing looked down until an uncached page was opened.
+
+**사실:**
+- Caddy keeps the old certificate in its storage, so appending the block again and `systemctl reload caddy` brought the name back at once (no new ACME order).
+- A missing site block on a proxied name shows as 525, not 404 or 502, because Caddy has no certificate to present for that SNI.
+
+**해결:** on a host whose Caddyfile several projects share, append or edit your own block in place and never install a whole file from your own older copy; keep each project's block in its repo (for example `ops/<host>/Caddyfile.<project>`) so it can be put back. Watch the database's public `/api/health` from outside, not only the site's front page, since an edge-cached page hides an origin outage.
 
