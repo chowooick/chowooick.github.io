@@ -8977,3 +8977,35 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 - A missing site block on a proxied name shows as 525, not 404 or 502, because Caddy has no certificate to present for that SNI.
 
 **해결:** on a host whose Caddyfile several projects share, append or edit your own block in place and never install a whole file from your own older copy; keep each project's block in its repo (for example `ops/<host>/Caddyfile.<project>`) so it can be put back. Watch the database's public `/api/health` from outside, not only the site's front page, since an edge-cached page hides an origin outage.
+
+## OPS-496 — workerd refuses to start when the Worker's main module has a named export that is not a function: `Incorrect type for map entry '<NAME>'`
+
+`측정 2026-10-18 · wrangler 4.135.0 dev (workerd local) · Workers module syntax`
+
+**증상:** after adding `export const NEW_PER_HOUR = 8;` (and other constants) to the `main` module so tests could import them, `wrangler dev` stopped at start: `Uncaught TypeError: Incorrect type for map entry 'ATTEMPTS_PER_HOUR': the provided value is not of type 'function or ExportedHandler'` and `The Workers runtime failed to start`. Node tests that imported the same module passed, so the break showed only in the runtime. Exported functions (`export function normalizeContact`) and `export default {...}` were accepted.
+
+**사실:** workerd treats every named export of the main module as a possible entrypoint (a handler object, a class or a function). A string, number or array there is a startup error, not a warning, and `wrangler deploy` would ship the same bundle.
+
+**해결:** keep constants and shared helpers in a separate module (for example `src/signup.js`) and import them into the main module; tests import from that module. Run `wrangler dev` (or a deploy dry run) once after adding exports to the entry file, not only `node --test`.
+
+## OPS-497 — Self-hosting Korean web fonts: the css2 `text=` subset comes back as one woff2 file per weight when asked with a Chrome User-Agent; 478 characters took the teaser from 471 KB of Google font traffic to about 125 KB
+
+`측정 2026-10-18 · fonts.googleapis.com css2 · Noto Sans KR 400/700/900, Manrope 600/800 · Brave 1.96 on the Air`
+
+**증상:** a Korean landing page loaded Noto Sans KR from Google Fonts: 20 font requests and about 471 KB of its 497 KB transfer (Lighthouse), mobile LCP spread 2.18–6.70 s over three runs, and a connection to Google that the privacy page did not mention.
+
+**사실:**
+- `https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400&text=<every character on the pages, URL-encoded>` with a desktop Chrome `User-Agent` answered one `@font-face` with one `format('woff2')` file (without a browser UA it answers TrueType, OPS-452). A 478-character set (pages' text plus printable ASCII, about 1.3 KB of characters, a URL near 9 KB) was accepted in one request.
+- Sizes: Noto Sans KR 400 / 700 / 900 = 34.9 / 35.6 / 34.5 KB, Manrope 600 / 800 (ASCII) = 9.5 / 9.2 KB.
+- Keeping the look: declare each file with a weight range (`font-weight: 600 700` on the 700 file, `800 900` on the 900 file) so `600` and `800` in the CSS still pick the same faces they did when only 400/500/700/900 were loaded.
+- Characters not in the subset (a shop name someone types) fall back per glyph to the system font; nothing breaks.
+
+**해결:** generate the subsets with a script from the pages' own characters, serve them from the site, and add a test that fails when page copy uses a character missing from the subset, so a copy edit cannot silently fall back. Remove the `fonts.googleapis.com` / `fonts.gstatic.com` links and preconnects.
+
+## OPS-498 — A Workers custom domain answers plain `http://` with the Worker's normal response; the Worker has to redirect or refuse it itself
+
+`측정 2026-10-18 · Workers custom domain (apex, www, plan) · run_worker_first static assets · Workers Free`
+
+**증상:** `curl -I http://<apex>/` returned `200` with the page, and `POST http://<apex>/api/...` reached the Worker and was processed (a 400 for a bad body). No `Strict-Transport-Security` header was sent. The zone's automatic HTTPS rewrite was not in effect for these hostnames.
+
+**해결:** check `url.protocol` first in `fetch`: `GET`/`HEAD` → `301` to the `https:` URL, anything else → `403` before reading the body, and add `Strict-Transport-Security` to HTTPS responses (start without `includeSubDomains`/preload until every subdomain is known to be HTTPS-only). Skip the check for `127.0.0.1`/`localhost` so `wrangler dev` still works. After deploying, `http://` GET answered `301 Location: https://…` and an HTTP POST answered `403` with no database work.
