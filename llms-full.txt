@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T21:37:56Z · 소스 커밋 `5234b31` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T21:47:54Z · 소스 커밋 `348aa4b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18336,6 +18336,8 @@ The global options block (`{` at column 0) is skipped, and the repo's own sites 
 Safari's UA on iOS 27 is `… iPhone OS 18_7 like Mac OS X … Version/27.0 Mobile/15E148 Safari/604.1`: the OS part is frozen since iOS 26, so `/OS (\d+)_/` gives 18 and picks the old layout.
 
 **해결:** choose the layout from `/Version\/(\d+)/` (27 → page-menu steps, 26 → `···` steps, ≤18 → bottom Share), iPad by `iPad` in the UA or `MacIntel` with touch points, and other iOS browsers (`CriOS|FxiOS|EdgiOS`) by name. To check a guide against real Safari without a device: a UI-test bundle (OPS-239) whose steps tap by label or identifier (`MoreMenuButton`, `공유`, the share sheet's `더 보기` by coordinate, `cells[identifier=actionGroupCell][label=홈 화면에 추가]`, navigation-bar `추가`), then `XCUIApplication(bundleIdentifier: "com.apple.springboard")` to tap the new icon. Tapping by plain label can hit the page's own text with the same words behind the sheet; match the cell identifier.
+
+**Follow-up (same day, real device):** iPadOS 26.7.1 Safari on an iPad mini 5 (USB) has the same path: `공유` (`ShareButton`, top toolbar, x 882 of 1024 pt in landscape) → popover → `더 보기` (cell `actionGroupCell`) → `홈 화면에 추가` → `추가`, then the icon opens the site standalone. So the `더 보기` step is already there on 26, not new in 27. Driven by the same UI-test bundle signed with the Personal Team and re-using the bundle id of the runner already on the device (OPS-370's three-app limit); this run needed no Touch ID prompt (OPS-374). Screens came back as `XCTAttachment`s through `-resultBundlePath` and `xcresulttool export attachments`; landscape screenshots are stored rotated.
 
 ## OPS-507 — (무효 — OPS-506과 중복) shared Caddyfile overwritten by another project's deploy script
 
