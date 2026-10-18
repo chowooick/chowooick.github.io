@@ -8867,3 +8867,11 @@ answered.
 and retry the detail page on another day for expiry dates instead of treating a timeout as "not found". A working
 form-driving script: select profession, fill `t_web_lookup__license_no` / `__full_name` / `__addr_city`, click
 `sch_button`, read `a[id^="datagrid_results"][id$="_name"]` rows, open each `href` in a new page.
+
+## OPS-487 — `CI=1 npx wrangler d1 migrations apply <db> --remote` printed nothing and applied nothing, twice; the same command run again applied the migration
+
+`측정 2026-10-18 · npx wrangler (4.151.1 fetched by npx; no local node_modules) · macOS · Cloudflare D1`
+
+**증상:** in a deploy chain `node scripts/build.mjs && CI=1 npx wrangler d1 migrations apply <db> --remote 2>&1 | grep -E "<name>|rror"; npx wrangler deploy`, the apply step printed no line that matched (neither the migration name nor any "error") and the deploy went ahead. `wrangler d1 migrations list <db> --remote` then still listed the migration under "Migrations to be applied", and the new Worker failed on the missing table until the migration ran. Running the same apply command again on its own printed the usual table with ✅ and applied it. It happened on two separate days in one project. Why the first call did nothing is not known.
+
+**해결:** never trust a filtered or silent apply. After `migrations apply --remote`, run `wrangler d1 migrations list <db> --remote` and stop the deploy unless it says no migrations are pending; or apply the migration before building and deploy only after the list is empty.
