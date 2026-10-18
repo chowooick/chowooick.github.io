@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T12:12:32Z · 소스 커밋 `c471af6` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T12:19:53Z · 소스 커밋 `5f481a1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18059,4 +18059,16 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 - Census Data API needs a key; use Census Reporter instead (OPS-372).
 
 **해결:** when WebFetch reports binary PDF data, it also saves the file under the session's `tool-results/`; copy it to a scratch directory and run `pdftotext -layout` on it, then grep. For CA code text use the CDTFA lawguides (tax) or the bill-analysis PDFs (operative dates) instead of retrying leginfo.
+
+## OPS-489 — Telling people from crawlers in a Worker's own page-view log: a user-agent test let through about 60% non-US one-page views; Free-plan GraphQL has no `clientAsn` and the wrangler OAuth token cannot read Workers Logs, so check `request.cf.asn` and `Accept-Language` in the Worker
+
+`측정 2026-10-18 · Cloudflare Workers Free · wrangler 4.135 OAuth token (`npx wrangler auth token`) · Astro 7 middleware on Workers`
+
+**증상:** a site logged page views from its Worker middleware and marked bots only by a user-agent regex (bot/crawl/spider/headless/curl/…). Over 7 days, 549 visitor-days passed the test and 327 (60%) were from outside the US (SG 87, CN 37, HK 32, DE 28, KR 27, BR 22, JP 21), almost all one HTML page each, with ordinary Chrome/Safari user agents. Looking the networks up failed both ways the account offered:
+
+- GraphQL `httpRequestsAdaptiveGroups` on a Free zone with `clientAsn` / `clientASNDescription` as dimensions: `zone '<id>' does not have access to the field 'clientasn' from the path`.
+- `POST /accounts/<acct>/workers/observability/telemetry/query` with the wrangler OAuth token (observability enabled on the Worker): `{"code":10000,"message":"Authentication error"}`.
+- `wrangler tail <worker> --format json` works and each event carries `request.cf.asn`, `request.cf.asOrganization` and all request headers, but a low-traffic site gave 3 requests in 30 minutes.
+
+**해결:** decide in the Worker, where `request.cf` is always present: count a view as a bot when the user agent matches, when `Accept-Language` is missing (every browser sends it on a page load; a Chrome user agent sent without it was stored as `bot = 1` on the first try), or when `cf.asn` is a cloud network (AWS 16509/14618, Google 15169/396982, Microsoft 8075, DigitalOcean 14061, OVH 16276, Hetzner 24940, Alibaba 45102/37963, Tencent 132203/45090, Huawei 136907, Oracle 31898, Vultr 20473, Linode 63949, …) or `cf.asOrganization` names hosting. Leave Cloudflare 13335, Akamai 36183/20940 and Fastly 54113 out: iCloud Private Relay and WARP users leave through them. Counts from before the change are not comparable with counts after it. To see who is behind the numbers, run `wrangler tail` for a busy hour rather than a quiet one.
 
