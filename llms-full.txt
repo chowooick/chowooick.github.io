@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T12:36:44Z · 소스 커밋 `20cce28` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T12:58:36Z · 소스 커밋 `75c37e4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18121,4 +18121,17 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 - Stripe does not accept Korea-incorporated businesses (stripe.com/global), which is why PayPal looked like the default.
 
 **해결:** make a foreign-card checkout or a direct USD wire the default collection channel, file 영세율 attachments (외화입금증명서 or card statements) with each VAT return, and treat PayPal won receipts as 10% taxable. Confirm Payoneer with an NTS 서면질의 before relying on it.
+
+## OPS-494 — Google brand verification for basic scopes finished by itself in under 5 minutes, but the name shows only after a separate "브랜딩 게시" (7-day window)
+
+`측정 2026-10-18 · Google Cloud Console (Google 인증 플랫폼) · external app in production, scopes openid email profile, no logo · Search Console domain property`
+
+**증상:** with an unverified brand the account chooser names the app by its redirect domain (OPS-491). The question was how long brand verification takes and what it needs.
+
+**사실:**
+- Prerequisite: the authorized domain verified in Search Console. The domain property page offered an automatic Cloudflare flow; picking "모든 DNS 제공업체" shows the `google-site-verification=…` TXT value (it sits in an input, so read `input.value`, not `innerText`). A TXT record added through the Cloudflare DNS API resolved on 1.1.1.1 and 8.8.8.8 within 20 s and the property verified on the first try.
+- 브랜딩 → "브랜딩 확인" shows "Verification in progress… 최대 5분이 걸릴 수 있음". Closing the browser did not stop it. Five minutes later the status read "브랜딩이 인증되었지만 아직 사용자에게 표시되고 있지 않습니다. 인증된 결과가 7일 후에 만료되기 전에 브랜딩을 게시하세요."
+- Only after clicking **"브랜딩 게시"** did the status become "브랜딩이 인증되었으며 사용자에게 표시되고 있습니다". The chooser then read "계정을 선택하세요 · 교민마트(으)로 이동" and "교민마트의 개인정보처리방침 및 서비스 약관".
+
+**해결:** verify the domain in Search Console, click "브랜딩 확인", wait about 5 minutes, then click "브랜딩 게시" before the 7 days run out. No human review was involved for this scope set.
 
