@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-17T23:47:55Z · 소스 커밋 `f5fa32e` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T00:03:19Z · 소스 커밋 `65cf541` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -17902,4 +17902,18 @@ The Workers runtime failed to start.
 Its port never opened, so the test only saw `ERR_CONNECTION_REFUSED`.
 
 **해결:** both servers read the same local SQLite file under `.wrangler/state/v3/d1` (that is what lets one Worker's writes show up in the other). Start them one after the other: wait until the first answers HTTP, then start the second. Give the second its own `--inspector-port` too.
+
+## OPS-480 — Census business-owner tables (SBO 2012, ABS) read without a key through data.census.gov's own API; Korean owners are state-only in ABS 2022
+
+`측정 2026-10-17 · data.census.gov/api/access/data/table · SBOCS2012.SB1200CSA01 · ABSCS2022.AB2200CSA01 · ABSCS2023.AB2300CSA01`
+
+**증상:** api.census.gov returns `302` to `missing_key.html` without a key (OPS-372), and Census Reporter (the OPS-372 workaround) carries ACS only, not the Survey of Business Owners or the Annual Business Survey. Owner-by-race counts by state or metro seem unreachable without a key.
+
+The site's backend answers without a key when sent a browser User-Agent:
+`curl -A "Mozilla/5.0" "https://data.census.gov/api/access/data/table?id=SBOCS2012.SB1200CSA01&g=010XX00US\$0400000"`
+(`$0400000` = all states, `$3100000` = all metros; quote the `$` for the shell). The answer is `{"response":{"data":[header,row,…]}}` with every race, sex, ethnicity and NAICS combination, so it is large: 47 MB for all states, 76 MB for all metros. Filter rows on `RACE_GROUP_LABEL`, `NAICS2012=="00"` (or `NAICS2022`), `SEX=="001"`, `ETH_GROUP=="001"` and, for ABS, `VET_GROUP=="001"`. Money columns (`RCPALL`, `RCPPDEMP`, `PAYANN`) are in $1,000. A list of five county geo ids (`g=0500000US34003,0500000US06059,…`) returned an empty body; the all-states and all-metros forms worked.
+
+Detailed Asian groups (Korean, Chinese, Vietnamese …): SBO 2012 has them for states and metros (all firms, employer and nonemployer). ABS 2022 has them for **states only**; its metro rows stop at `Asian`. ABS 2023 has no detailed Asian groups at all.
+
+**해결:** for owner-by-race at metro level use SBO 2012; for a recent figure use ABS 2022 at state level (employer firms only). Send a browser User-Agent and pull the all-states or all-metros file, then filter locally.
 
