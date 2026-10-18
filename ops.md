@@ -9033,3 +9033,21 @@ form-driving script: select profession, fill `t_web_lookup__license_no` / `__ful
 **증상:** checking state security-deposit and tenant-screening rules for a site's copy. (1) `leginfo.legislature.ca.gov` answers curl and WebFetch with a Cloudflare challenge (OPS-488). (2) `statutes.capitol.texas.gov/Docs/PR/htm/PR.92.htm` answers curl with HTTP 200 but the body is an Angular shell with no statute text, so a grep for `Sec. 92.103.` finds nothing. (3) A web search for Colorado HB25-1249 returned summaries saying it lowered the deposit cap from two months' rent to one from 2026-01-01; the introduced draft did, but the enrolled text (`content.leg.colorado.gov/sites/default/files/documents/2025A/bills/2025a_1249_enr.pdf`) only amends 38-12-102(4) and 38-12-103 (30-day default return, at most 60). The two-month cap in 38-12-102.5 is unchanged.
 
 **해결:** open leginfo and the Texas statutes page in Brave with Playwright (`headless: false`, `waitUntil: 'networkidle'`, then a few seconds) and read `document.body.innerText`; both load normally there (CA 1950.5 showed "Amended by Stats. 2025, Ch. 340 (AB 414)"). For claims about what a bill changed, read the enrolled or signed text, not the introduced draft or a search summary. Sources that `curl` reads directly: CA DRE tenant guide PDF (`dre.ca.gov/publications/ResourceGuidebook/2026_Landlord_Tenant_Guide.pdf`), CA courts self-help, NJ DCA "Truth in Renting" PDF, NJ DCR Fair Chance in Housing page, Texas AG renters' rights, Colorado Legislative Council "Renters' Rights" summary PDF, Colorado DRE bill summaries, Georgia DCA landlord-tenant handbook. Run each PDF through `pdftotext -layout` and grep.
+
+## OPS-502 — Playwright WebKit (Safari engine): a page that calls `navigator.serviceWorker.register()` on load stops answering; register on the user's action instead
+
+`측정 2026-10-18 · Playwright WebKit 2370 (playwright-core) on macOS, MacBook Air M1 · Astro 7 site on Workers`
+
+**증상:** in WebKit only, every page of one kind (the edition pages) stopped answering a few seconds after load:
+`page.evaluate(() => document.readyState)` never returned (10 s timeout), `page.goto(…, {waitUntil: 'load'})` timed out,
+clicks waited forever. Chromium (Brave) was fine at every width, and the Air's load average was 1.7, so it was not load.
+Blocking Turnstile and every third-party host changed nothing; turning JavaScript off made it answer. Removing the page's
+inline scripts one at a time (fetch the HTML, `route.fulfill` it without script k) found the one: the push-alert box,
+which ran `navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready)` on every load.
+
+**해결:** on load only ask for an existing registration (`navigator.serviceWorker.getRegistration('/')`, then its
+`pushManager.getSubscription()`) and register when the reader turns the alert on. The same pages then answered in
+WebKit at 390, 768 and 1440 px, light and dark, on production. A test that stubs push must stub
+`ServiceWorkerContainer.prototype.getRegistration` too. Separately, WebKit's `load` event never came on pages with the
+Cloudflare Web Analytics beacon and Turnstile, so wait for `commit` plus a few seconds rather than `load`. Whether
+Safari on a device behaves the same was not measured.
