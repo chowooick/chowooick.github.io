@@ -2552,3 +2552,11 @@ A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the 
 - `x-show`가 false인 동안 요소는 `display: none`이고, 레이아웃 상자가 없는 요소는 교차 판정을 받지 못해 콜백이 오지 않는다. 그래서 fetch가 없고, 항목이 없으니 계속 숨는다.
 
 **해결:** 관찰은 늘 보이는 바깥 래퍼(`min-height: 1px`)에 걸고, `x-show`는 안쪽 요소에 둔다. 래퍼로 옮긴 뒤 같은 페이지에서 요청이 나가고 위젯이 그려졌다.
+
+## AGT-136 — A Claude Code session's scratchpad can be emptied between turns of the same session; keep deliverable sources in a git-ignored project folder
+
+`측정 2026-10-18 · Claude Code (VS Code extension) · macOS · /private/tmp/claude-501/<project>/<session>/scratchpad`
+
+**증상:** a session built a PDF from HTML, fonts and a render script kept in its scratchpad, and copied only the PDF into the repo. The next turn, about eleven hours later and after midnight, came in the same session to revise the PDF. `cd` into the scratchpad failed with `no such file or directory`: the folder still existed but was empty, and so were the scratchpads of every other session under that project. The HTML source was gone and had to be rewritten from the conversation.
+
+**해결:** treat the scratchpad as lost at any turn boundary. Anything that might be revised later (document sources, render scripts, generated fonts) goes in a git-ignored folder of the project, such as `tmp/`, which survives. Copy only the final output to where the user wants it.
