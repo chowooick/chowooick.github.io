@@ -8792,3 +8792,18 @@ copy) to a host with disk, by pulling from it. A restore needs both halves: a th
 `pocketbase serve --dir=<copy> --migrationsDir=<empty> --hooksDir=<empty>` on another port served records and images
 from a KV snapshot plus the pulled `storage`. Run the snapshot as the service user (a systemd `User=`), not root, so
 SQLite never leaves root-owned `-wal`/`-shm` files beside a database another user writes.
+
+## OPS-483 — iPad 홈 화면 웹 앱 실기기 푸시 확인: XCUITest 러너는 같은 와이파이의 맥에 닿지 못하고(-1009), 팝업 OAuth 뒤 `location.assign`은 무시된다
+
+`측정 2026-10-17 · iPad mini 5(iPad11,1) · iPadOS 26.7.1 · Xcode 27 XCUITest(Personal Team) · Safari 홈 화면에 추가(웹 앱으로 열기) · Web Push(web.push.apple.com)`
+
+**증상과 사실:**
+- 원격 조작용 XCUITest 러너(명령을 HTTP로 받아 실행)가 맥 `http://192.168.0.x:port`에 요청하면 매번 `NSURLConnection finished with error - code -1009`로 실패했다. 로컬 네트워크 권한 창도 뜨지 않는다. 같은 러너가 `https://<무작위>.trycloudflare.com/<비밀 경로>`(맥의 `cloudflared tunnel --url http://127.0.0.1:port`)로는 바로 통했다.
+- 처음 실행할 때 기기에서 사람이 두 번 해야 한다. ① 설정 › 일반 › VPN 및 기기 관리 › 개발자 앱 '신뢰'(안 하면 `Developer App Certificate is not trusted`). ② "'XCTest'의 Touch ID · Enable UI Automation" 지문(안 하면 `Timed out while enabling automation mode`). 설정 화면은 `xcrun devicectl device process launch --device <udid> --payload-url 'prefs:root=General&path=ManagedConfigurationList' com.apple.Preferences`로 바로 열어 둘 수 있다.
+- Safari 공유 시트와 '홈 화면에 추가' 시트는 `XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")` 트리에 나오지 않는다(원격 뷰). `devicectl device capture screenshot`(2048×1536 px = 1024×768 pt)으로 위치를 읽어 좌표로 누른다. 시트 위치는 열 때마다 달라질 수 있으므로 누르기 전에 매번 찍는다.
+- 홈 화면 웹 앱의 이름과 알림의 'from ○○'은 `<title>`을 그대로 쓴다. `<meta name="apple-mobile-web-app-title" content="짧은 이름">`이 없으면 긴 제목이 잘린다. 이 이름은 추가할 때 정해지고, 나중에 메타를 넣어도 이미 추가한 아이콘에는 반영되지 않는다.
+- 웹 앱에서 `window.open` 팝업으로 Google 로그인을 끝내면 앞 페이지의 `fetch('/auth/complete')`는 성공한다. 그런데 바로 부른 `location.assign(next)`는 무시되어 "로그인되었습니다"에서 40분 동안 멈춰 있었다. 세션 쿠키는 이미 들어가 있어서 링크를 누르자 로그인된 화면이 열렸다.
+- Google 로그인은 패스키 창 → Touch ID를 요구했다. 세션이 할 수 없는 단계다.
+- 알림 권한 창의 '허용'은 XCUITest 좌표 탭으로 눌렸다. 그 뒤 서버의 `sendPush`가 `web.push.apple.com`에서 201을 받았고, 알림이 몇 초 안에 배너로 떴다(앱이 앞에 있어도 떴다).
+
+**해결:** 러너와 맥 사이는 임시 터널을 쓰고, 경로에 무작위 토큰을 넣는다. 끝나면 러너·터널·서버를 모두 끈다. 로그인 페이지는 성공 뒤 `document.hidden`이 풀릴 때(`visibilitychange`·`focus`) 다시 이동하게 하고 '계속하기' 링크를 남긴다. 자기 행동에는 알림을 보내지 않는 서비스라면, 관리자 본인 구독으로만 보내는 시험 알림 API를 두어야 기기 하나로 확인할 수 있다(kyomincenter `/api/admin/push-test`). 시험 구독 행은 확인 뒤 지운다(OPS-330).
