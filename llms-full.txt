@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-18T18:30:21Z · 소스 커밋 `b70b3c3` · 이 파일은 자동 생성물이다.
+생성 2026-10-18T19:16:58Z · 소스 커밋 `d08917f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18244,4 +18244,51 @@ WebKit at 390, 768 and 1440 px, light and dark, on production. A test that stubs
 `ServiceWorkerContainer.prototype.getRegistration` too. Separately, WebKit's `load` event never came on pages with the
 Cloudflare Web Analytics beacon and Turnstile, so wait for `commit` plus a few seconds rather than `load`. Whether
 Safari on a device behaves the same was not measured.
+
+## OPS-503 — Apple Developer Program organization enrollment (Korea): the D-U-N-S profile fills the entity fields, the work email is verified by a 6-character code that a Cloudflare Email Routing address delivers to Gmail fine
+
+`측정 2026-10-18 · developer.apple.com/enroll (ko UI) · Brave 155 on the MacBook Air · Cloudflare Email Routing`
+
+**증상:** opening `https://developer.apple.com/enroll/` while signed in resumed an organization enrollment at
+`/enroll/organization/details/edit/signing-authority`, titled 「추가 정보가 필요합니다.」 법인명, D-U-N-S 번호, 현지 사업자명,
+사업자등록번호, address and 지역 were already filled read-only from the D&B record ("이 정보가 잘못된 경우 D&B 프로파일을
+업데이트해 주십시오"). Still empty: 웹사이트, 전화번호 (국제 코드 select + number + 내선), the 서명 권한 radio
+(`signingRole`: 「대표/설립자로서…」 or 「…권한을 부여받았습니다」) and 직장 이메일 (`emailAddress`, must be on the
+organization's domain).
+
+**사실:**
+- 「코드 전송」 sends mail from Apple Developer with the subject "Action required: Please verify your work email
+  address." The code is 6 characters, letters and digits, case-sensitive (e.g. `CL2OZL`), and expires in 10 minutes.
+  It goes into `workEmailOTP` on the same page.
+- A `contact@<domain>` address on Cloudflare Email Routing forwarding to Gmail received it within a minute; a session
+  can read the code itself in Gmail on the Air. No mailbox on the domain is needed.
+- The Apple account used was a member of another company's team whose membership had expired. That did not block
+  enrolling a new organization with the same account.
+- After 「계속」 the page `/enroll/organization/details/confirm` shows 「등록 신청을 처리하는 중입니다.」, an 등록 ID and
+  「법적 계약 서명 권한이 확인되면 등록을 완료하는 방법을 이메일로 안내해 드립니다.」 The agreement and the annual fee come
+  only after that email, not in the same session.
+- The Air's traffic leaves through a US exit node (OPS-275); the country stayed KR because it comes from the
+  D&B record, not from the IP.
+
+**해결:** have the D-U-N-S ready before starting (the entity fields cannot be typed in), use a domain address that
+forwards to a mailbox the session can read, and expect a wait for Apple's signing-authority check before payment.
+
+## OPS-504 — OPS-276 also happens with Brave: starting the Brave binary with `--user-data-dir=<Playwright profile>` to drive it over CDP wiped every google.com cookie; copying the `Cookies` file back from a Playwright-made copy restores the sign-in
+
+`측정 2026-10-18 · Brave 155.1.97.59 · playwright-core 1.63 · macOS on the MacBook Air · ~/kc-test/profile`
+
+**증상:** to keep one interactive window open across many steps, the Brave binary was started directly with
+`--user-data-dir=$HOME/kc-test/profile --remote-debugging-port=<port>` and each step attached with
+`chromium.connectOverCDP`. Gmail in that window went to the Google sign-in page. The profile's `Cookies` DB then held
+0 rows for `%google.com`, while copies of the same profile made earlier the same day still had `SID`.
+
+**원인:** the same as OPS-276. A plain launch uses the real macOS Keychain key, Playwright launches use
+`--use-mock-keychain`, and each discards the cookies it cannot decrypt. Brave behaves like Chrome here. Attaching over
+CDP does not change which key the browser was started with.
+
+**해결:** never start a Playwright profile with the plain browser binary, including for CDP. If it already happened:
+stop that browser, back up `Default/Cookies`, delete `Default/Cookies-journal`, and copy `Default/Cookies` from a copy
+of the profile that Playwright wrote (here `~/kc-test/km/profile-km`, last written the same morning). The next
+`open()` from `~/kc-test/kc-browser.mjs` showed `myaccount.google.com` signed in. Sign-ins done in the plain window
+(here an Apple account) are lost by that restore.
 
