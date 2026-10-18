@@ -8845,3 +8845,25 @@ secret in the same migration. When it does narrow who may sign in, let PocketBas
 - About 15 minutes after saving, a real sign-in on the new domain (authorization code + PKCE, `prompt=select_account`) went through the account chooser and returned with `email_verified: true`. The consent screen showed the project's brand name, not the new site's.
 
 **해결:** to reuse a client whose secret was saved at creation (OPS-474), add the new redirect URI on its edit page instead of creating a client: click the last `URI 추가`, type the URI with `page.keyboard`, click `저장`, then verify through input values. Expect the project's brand on the consent screen; create a separate project if the new site needs its own name there.
+
+## OPS-486 — NJ license lookup (newjersey.mylicense.com): business licenses only on `?facility=Y`, `%` wildcards for partial names, and detail pages that time out some days
+
+`측정 2026-10-17~18 · newjersey.mylicense.com/verification (ASP.NET WebForms) · Playwright + Brave headless on macOS`
+
+**증상:** checking contractors' New Jersey licenses by script. A Home Improvement Contractor (`13VH…`) or other business
+registration searched on `Search.aspx` finds nothing, a business-name search for `PLUMBING` returns only exact names,
+and on 2026-10-17 every `Details.aspx?result=<guid>` page timed out (3 min) from two networks while the search itself
+answered.
+
+- Person licenses (Master Plumber `36BI…`, Master HVACR `19HC…`, Electrical Contractor `34EB…`) are on
+  `Search.aspx`; business registrations (HIC `13VH…`, business permits) only on `Search.aspx?facility=Y`.
+- The name fields match from the start; `%PLUMBING%` makes a contains-search.
+- The results grid shows name, number, profession, type, status and city but **no expiry date**; that is only on the
+  detail page (`Issue Date`, `Expiration Date`, `Status Change Reason`). On 2026-10-18 the same detail pages opened in
+  a few seconds, so a timeout there is the site, not the client.
+- NJ movers are not in this system (Public Movers licenses are at `rgbportal.dca.njoag.gov/public-view/`).
+
+**해결:** search person and facility screens separately, use `%…%` for partial names, record status from the grid,
+and retry the detail page on another day for expiry dates instead of treating a timeout as "not found". A working
+form-driving script: select profession, fill `t_web_lookup__license_no` / `__full_name` / `__addr_city`, click
+`sch_button`, read `a[id^="datagrid_results"][id$="_name"]` rows, open each `href` in a new page.
