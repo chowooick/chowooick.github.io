@@ -9286,3 +9286,19 @@ the deploy landed on nj1, not misa: the panel moved to nj1 on 2026-10-12 althoug
 **해결:** generate the compose from the script and replace `$` with `$$` (JS: `script.replace(/\$/g, '$$$$')`); add
 `USER 1000:1000` and bind-mount a folder in the user's home. Look for the deployment log on nj1. `compose.one` still
 shows the previous deployment's status for a while (OPS-337); read the log file instead.
+
+## OPS-518 — Node 26 native fetch silently replaces a supplied Host header during a loopback virtual-host rehearsal
+
+`측정 2026-10-19 · Node v26.8.2 · Playwright 1.63.0 · MacBook Air M1`
+
+**증상:** `fetch('http://127.0.0.1:<port>/path', {headers: {host: 'site.example'}})` returned the default site's HTML instead of the host-conditioned rewrite. The request succeeded, so a routing test looked like an application failure. A local HTTP echo server confirmed the received Host was `127.0.0.1:<port>`, not the supplied value. The same request through Playwright `APIRequestContext.get` delivered `site.example`; `curl -H 'Host: site.example'` also reached the expected route. This was measured on Node 26.8.2, not asserted for every Node/Undici version.
+
+**해결:** use `request.newContext().get(loopbackUrl, {headers: {host}, maxRedirects: 0})` for virtual-host tests, or a verified HTTP client that sends Host. Inspect the received header with a local echo server before interpreting a successful HTTP response as evidence for the intended virtual host. Do not silently change application routing to satisfy the default-host response.
+
+## OPS-519 — A fulfilled redirect can escape a Playwright hostname-to-loopback rehearsal
+
+`측정 2026-10-19 · Playwright 1.63.0 · Brave 155 · MacBook Air M1`
+
+**증상:** a browser context mapped real HTTPS hostnames to an isolated HTTP app with `context.route`, `context.request.fetch(..., {maxRedirects: 0})`, and `route.fulfill({response})`. When the local response was 307 to another real hostname, the destination document came from the old public site instead of the loopback app. Its actual header DOM contained the old links, while an explicit loopback request returned the new links. `maxRedirects: 0` controls the API request, not the browser's follow-up to the fulfilled response. The installed Playwright type documentation warns that the routing handler is only called for the first URL when the response redirects. OPS-272's recommendation to pass the 3xx through is therefore insufficient as an isolation guarantee in this setup; its existing entry is left unchanged.
+
+**해결:** in a closed host rehearsal, inspect status and Location through the loopback API without following, assert an exact destination allowlist, then open that destination as a separate intercepted browser navigation. Abort and fail on unexpected 3xx responses inside the route handler. This tests the redirect contract and destination page without letting the browser follow a real-host redirect outside the local mapping. Preserve the failed run as a harness failure, not a product regression.
