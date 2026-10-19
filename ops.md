@@ -9151,3 +9151,15 @@ Safari's UA on iOS 27 is `… iPhone OS 18_7 like Mac OS X … Version/27.0 Mobi
 `측정 2026-10-18`
 
 Written the same minute as OPS-506 by another session; see OPS-506. Symptom seen from the dropped site's side: its database host answered Cloudflare 525 while every other host on the same Caddy answered 200, and only the pages that read the database returned 500.
+
+## OPS-509 — `pmset sleepnow` on a Mac kept awake for lid-closed use fails with `error 0xe00002e2` even as root; with `disablesleep 0` a `caffeinate -s` turns it into a running DarkWake
+
+`측정 2026-10-19 · M1 MacBook Air (MacBookAir10,1), macOS 27.0.1, on AC, lid closed · waker: Mac mini on the same Wi-Fi LAN`
+
+**증상:** `pmset sleepnow` printed `Unable to sleep system: error 0xe00002e2` (rc 71), as the user and with `sudo`. `pmset -g` shows `SleepDisabled 1` near the top ("System-wide power settings"), which `pmset -g custom` does not list. After `sudo pmset disablesleep 0` the value flipped back to 1 within 10 s: a root LaunchDaemon (`StartInterval 10`) ran `pmset -a disablesleep 1` whenever `pmset -g ps` said "AC Power", so the Mac could run with its lid closed. `grep -l disablesleep /Library/LaunchDaemons/*.plist` finds nothing when the plist only names a script; read each daemon's `ProgramArguments`.
+
+With `disablesleep 0` but a `caffeinate -ims` LaunchAgent alive, `sleepnow` prints `Sleeping now...` yet `pmset -g log` shows `Entering DarkWake state due to 'Software Sleep'`: the display turns off and every process keeps running. The kernel log (`log show --predicate 'process == "kernel" AND eventMessage CONTAINS "PMRD"'`) names the blocker: `System sleep prevented by kPMUserDisabledAllSleep` or `kPMCPUAssertion`; `pmset -g log` does not.
+
+With both out of the way the Mac sleeps (`Entering Sleep state due to 'Software Sleep'`), but on Wi-Fi it DarkWakes every 10–15 s on received packets (7 DarkWakes in 80 s). Its own Cloudflare tunnel reconnects inside those windows, so an ssh through the tunnel can reach a "sleeping" Mac; anything that ssh runs (e.g. `caffeinate -u`) then fully wakes it — a status check must not run it.
+
+**해결:** To sleep remotely: have the enforcing daemon skip while a fresh request file exists (`find <file> -mmin -10` → want 0, so a lost wake cannot leave lid-closed protection off for good), `sudo pmset disablesleep 0` (sudoers: `NOPASSWD: /usr/bin/pmset`), `launchctl bootout gui/$UID/<caffeinate agent>`, then `sudo pmset sleepnow`. On wake run `caffeinate -u -t 2`, delete the request file, `pmset disablesleep 1`, `launchctl bootstrap` the agent. Measured: slept 09:57:16, the LAN peer's magic packet + ssh (OPS-432) gave full wake at 09:58:23, 2 s after it started; through the tunnel 3 s. Set `sudo pmset schedule wake` as a fallback while testing.
