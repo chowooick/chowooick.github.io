@@ -9303,7 +9303,7 @@ shows the previous deployment's status for a while (OPS-337); read the log file 
 
 **해결:** in a closed host rehearsal, inspect status and Location through the loopback API without following, assert an exact destination allowlist, then open that destination as a separate intercepted browser navigation. Abort and fail on unexpected 3xx responses inside the route handler. This tests the redirect contract and destination page without letting the browser follow a real-host redirect outside the local mapping. Preserve the failed run as a harness failure, not a product regression.
 
-## OPS-518 — macOS: Bluetooth music stutters right after each Handoff advertising burst; turn off Handoff *sending* only
+## OPS-520 — macOS: Bluetooth music stutters right after each Handoff advertising burst; turn off Handoff *sending* only
 
 `측정 2026-10-19 · macOS 27.0.1 · MacBook Pro M1 Max (BCM4387) · third-party headset over A2DP SBC bitpool 37 · BLE mouse and keyboard connected`
 
