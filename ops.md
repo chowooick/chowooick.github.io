@@ -9271,3 +9271,18 @@ headed, and click with the mouse at the frame element's box (`frame.frameElement
 height). The check passed and the site's own request went through (question answered in 37 s including the model).
 For the product: give the silent check about 12 s and extend the wait only from `before-interactive-callback`; a
 failed check with no token should not be retried, or the reader waits twice.
+
+## OPS-517 — Dokploy raw compose with a script baked in by `dockerfile_inline` heredoc: double every `$`, and dokploy.mnori.com runs on nj1
+
+`측정 2026-10-19 · Dokploy on dokploy.mnori.com · docker compose v2 · node:22-alpine`
+
+**증상:** a backup job was shipped as `build.dockerfile_inline` with `RUN cat > /app/job.mjs <<'EOF' … EOF` (so a
+change to the script rebuilds and replaces the container, unlike inline `configs:`, OPS-243). The deploy failed with
+`invalid interpolation format for services.backup.build.dockerfile_inline` after warnings such as `The "DATA" variable
+is not set`: compose interpolates `${…}` inside `dockerfile_inline` before Docker sees the quoted heredoc. Separately,
+the deploy landed on nj1, not misa: the panel moved to nj1 on 2026-10-12 although the local key file is still
+`~/.config/dokploy/misa.key`; `/etc/dokploy/compose/<appName>` and `/etc/dokploy/logs/<appName>` are on nj1.
+
+**해결:** generate the compose from the script and replace `$` with `$$` (JS: `script.replace(/\$/g, '$$$$')`); add
+`USER 1000:1000` and bind-mount a folder in the user's home. Look for the deployment log on nj1. `compose.one` still
+shows the previous deployment's status for a while (OPS-337); read the log file instead.
