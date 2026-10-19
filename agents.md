@@ -2584,3 +2584,16 @@ A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the 
 - Measured cost: one article (summary JSON + full-body translation, about 2.2 calls, 2.1 k input and 0.9 k output tokens) took 0.033–0.055% of the Go 30-day window (60 articles moved it 18 → 20%; the headers are whole percents). The whole archive would have needed 100–154%.
 
 **해결:** before and between batches, read `x-codex-primary-used-percent` (example: biznewyork.net `scripts/relay-usage.sh`) and stop at a cap that leaves room for the live features (the owner chose 60%); resume after `reset-at`. Size any per-request product promise (e.g. "10,000 reader questions a month") against these numbers before relying on a consumer subscription.
+
+## AGT-139 — Codex usage without spending a model call: `GET /backend-api/wham/usage` gives the plan, the window and per-model availability; the Pro plan's window is 7 days
+
+`측정 2026-10-19 · codex-cli 0.162.0 · ChatGPT plan pro · gpt-6-astra`
+
+**증상:** before choosing a reasoning effort (`high` or `xhigh`) for a long Codex job, the question was how much of the subscription was left. AGT-138's headers need a model request to read them.
+
+**사실:**
+- `GET https://chatgpt.com/backend-api/wham/usage` with the headers from `~/.codex/auth.json` (`Authorization: Bearer <tokens.access_token>`, `chatgpt-account-id: <tokens.account_id>`) answers JSON without using the model: `plan_type`, `rate_limit.primary_window.{used_percent, limit_window_seconds, reset_after_seconds, reset_at}`, `model_usage.<slug>.available`, and `credits.{balance, approx_local_messages, approx_cloud_messages}`.
+- On Pro, `limit_window_seconds` is `604800` (7 days) and `secondary_window` is `null`; Go's window is 30 days (AGT-138).
+- `~/.codex/models_cache.json` lists the efforts a model accepts: `gpt-6-astra` takes `low medium high xhigh max ultra`, default `medium` (`ultra` = "maximum reasoning with automatic task delegation").
+
+**해결:** read `wham/usage` before a long or high-effort run, and pick the effort from what is left in the window, not from habit. The response includes the account email and ids; do not log it whole.
