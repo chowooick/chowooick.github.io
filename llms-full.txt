@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-19T16:17:43Z · 소스 커밋 `fe11751` · 이 파일은 자동 생성물이다.
+생성 2026-10-19T17:36:28Z · 소스 커밋 `bdb741c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18369,4 +18369,127 @@ With `disablesleep 0` but a `caffeinate -ims` LaunchAgent alive, `sleepnow` prin
 With both out of the way the Mac sleeps (`Entering Sleep state due to 'Software Sleep'`), but on Wi-Fi it DarkWakes every 10–15 s on received packets (7 DarkWakes in 80 s). Its own Cloudflare tunnel reconnects inside those windows, so an ssh through the tunnel can reach a "sleeping" Mac; anything that ssh runs (e.g. `caffeinate -u`) then fully wakes it — a status check must not run it.
 
 **해결:** To sleep remotely: have the enforcing daemon skip while a fresh request file exists (`find <file> -mmin -10` → want 0, so a lost wake cannot leave lid-closed protection off for good), `sudo pmset disablesleep 0` (sudoers: `NOPASSWD: /usr/bin/pmset`), `launchctl bootout gui/$UID/<caffeinate agent>`, then `sudo pmset sleepnow`. On wake run `caffeinate -u -t 2`, delete the request file, `pmset disablesleep 1`, `launchctl bootstrap` the agent. Measured: slept 09:57:16, the LAN peer's magic packet + ssh (OPS-432) gave full wake at 09:58:23, 2 s after it started; through the tunnel 3 s. Set `sudo pmset schedule wake` as a fallback while testing.
+
+## OPS-510 — Cloudflare Registrar: a new registration cannot move to another Cloudflare account for 10 days, and cannot point its nameservers away; a zone routes only to its own account's Workers
+
+`측정 2026-10-19 · Cloudflare Registrar (.com registered the same day) · dashboard in Brave 155 (ko UI) · Workers Free`
+
+**증상:** the owner bought a domain in the shared account and then wanted it in a separate account (so its Workers
+Free limits — 100,000 requests a day, 5 crons, D1 rows read, KV writes — are its own; they are per account, not per
+domain). Registrar → 도메인 → 설정 → 「다른 Cloudflare 계정으로 이동」 was disabled: 「도메인이 최근 10일 이내에 등록되어
+이전 대상이 아닙니다」. The domain's DNS 설정 page offers no custom nameservers, so the zone added to the new account (it
+gets its own pair, e.g. alina/yadiel) stays `pending`. A Workers custom domain or route needs the zone in the Worker's
+own account, and a proxied CNAME to another account's hostname is error 1014.
+
+- A second account under the same login: account switcher → 「+ 계정 만들기」, name only, no payment (free user).
+- The move's other prerequisites (official doc "Move a Cloudflare Registrar domain registration between accounts"):
+  the domain added as a site in the target account with a plan, DNSSEC off, both accounts approve, then 30 days locked.
+
+**해결:** add the zone to the target account at once and put every DNS record, WAF rule and zone setting there while
+it is pending (records, rulesets and settings are accepted on a pending zone; Email Routing `enable` is not:
+`2009 Active zone required`, so copy its MX/SPF/DKIM records by hand). Serve the site meanwhile with a small proxy
+Worker in the old account on the custom domains that `fetch`es the new account's `*.workers.dev` with a shared secret
+header plus the reader's `CF-Connecting-IP`/`CF-IPCountry`; the real Worker turns those back into the request (and
+redirects any workers.dev visitor without the secret to the public host). Move the registration on day 10.
+
+## OPS-511 — D1 export API refuses a database that has an FTS5 table: "cannot export databases with virtual tables (like FTS5)"
+
+`측정 2026-10-19 · D1 REST POST /accounts/:a/d1/database/:id/export {"output_format":"polling"} · database with one FTS5 table`
+
+**증상:** a daily off-site backup job got `D1 Export error: cannot export databases with virtual tables (like FTS5)`
+on the first call. `wrangler d1 export` uses the same API. Time Travel still works (7 days on Workers Free).
+
+**해결:** read the tables yourself: `SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL` (skip the FTS
+table and its shadow tables `<name>_data/_idx/_docsize/_config/_content`, `_cf_*`, `sqlite_*`), then each table
+`SELECT * … ORDER BY rowid LIMIT 200 OFFSET ?` through `/query`, written as JSON lines + gzip (6,768 rows, 23 MB
+database → 4.7 MB in 9 s). Restore = run the schema, insert rows (one row per statement, 20 per batch: D1 binds at most
+100 parameters), rebuild the FTS table from its source columns, compare `COUNT(*)` per table. Rehearsed into a scratch
+database: every count equal.
+
+## OPS-512 — Korean substring search on D1 without a full scan: FTS5 over overlapping character pairs, queried as a phrase
+
+`측정 2026-10-19 · D1 (Workers Free, 5 M rows read a day per account) · 2,945 Korean news articles`
+
+**증상:** `WHERE search LIKE '%네일샵%'` reads every row (`rows_read` 2,945 per query). A question box that probes 8
+keywords in title and body is 16 such queries per question, about 47,000 rows; a few hundred questions a day reach
+the account's daily row budget. FTS5's `unicode61` tokenizer indexes whole words, and Korean compounds have no spaces
+(네일샵, 소상공인지원금), so a word index misses 네일 inside 네일샵; `trigram` cannot find two-syllable words.
+
+**해결:** index each run of letters/digits as its overlapping pairs (`네일샵` → `네일 일샵`, `LG전자` → `lg g전 전자`) with a
+3-letter separator token between words (`qqq`, never equal to a queried pair), and query a word as the phrase of its
+pairs: `body : "네일 일샵"`. Consecutive pairs only match where the text contains the word. Measured against `LIKE`:
+네일샵 5/5 rows (rows read 5 vs 2,945), 프랜차이즈 128/128 (128), hyundai 17/17 (17). One-letter words fall back to LIKE.
+Also: page lists by fetching `perPage + 1` rows instead of `COUNT(*)`, which reads every match.
+
+## OPS-513 — Workers KV on the free plan (1,000 writes a day): put many images in one value and serve byte ranges
+
+`측정 2026-10-19 · Workers KV bulk API PUT /storage/kv/namespaces/:id/bulk · Workers Free · 3,790 images, 540 MB`
+
+**증상:** a new Cloudflare account has no R2 until a payment method is added (R2 "구독 추가" opens a card/PayPal form,
+even for the $0 tier; the API answers `10042 Please enable R2 through the Cloudflare Dashboard`). KV is free (1 GB) but
+allows 1,000 writes a day, so one key per image (and per thumbnail width) would take days.
+
+**해결:** pack images (original + widths) into values of up to 4 MB and keep `{width: [offset, length, type?]}` per
+image in the database; the Worker reads the value with `cacheTtl`, `slice`s the range and caches the response a year.
+3,790 images and their thumbnails became 132 keys, uploaded by the bulk API in 14 requests of about 45 MB (base64);
+`successful_key_count` per request. PNG photos stored as lossless WebP: 287 MB → 149 MB, same pixels. New uploads get
+their own key; widths are made in the browser with canvas before upload (a Worker cannot resize on the free plan).
+
+## OPS-514 — Resend: a key restricted to a deleted domain still answers 200 on /emails/batch, and the mail stays "Queued" forever
+
+`측정 2026-10-19 · Resend free plan (3 domains) · API key with Sending access restricted to one domain`
+
+**증상:** the free plan refused a fourth domain (「You have reached the domain limit of your plan」), so the old staging
+domain was deleted and the new one added and verified. The site's sign-in mail from the new domain then showed
+`Queued` in Resend's Emails list with no events, for 30 minutes, while `POST /emails/batch` had returned 200 to the
+Worker. A direct `POST /emails` with the same key named the cause: `400 The associated domain with your API key is not
+verified. Please, create a new API key with full access or with a verified domain.` The key was restricted to the
+deleted domain.
+
+**해결:** after deleting or replacing a Resend domain, create a new key (Sending access, the new domain) and replace the
+secret; delete the old key. Test a new sender with single `POST /emails` (it reports the error), not `/emails/batch`.
+Non-ASCII display names (`뉴욕경제신문 <news@…>`) are fine.
+
+## OPS-515 — Cloudflare dashboard session API: writes from page `fetch` are blocked even with `x-atok`; create an account-owned token from the "Write all resources" template instead
+
+`측정 2026-10-19 · dash.cloudflare.com in Brave 155 (Playwright persistent profile) · new free account`
+
+**증상:** `GET /api/v4/...` from a signed-in dashboard tab worked (OPS-301), but every write — `POST /zones`, `POST
+/accounts`, `PATCH /zones/:id/settings/…`, `PUT /registrar/domains/…` — returned Cloudflare's HTML "Sorry, you have
+been blocked" page (403), also with the `x-atok` value from `/api/v4/system/bootstrap` (`result.data.atok`) that the
+dashboard sends. The same writes done by clicking in the UI went through. The wrangler OAuth token covers only the
+accounts that existed when it was granted (a new account answers `10000 Authentication error`).
+
+**해결:** in the new account: 계정 관리 → 계정 API 토큰 → 토큰 생성 → template 「Write all resources」 (172 permissions, scoped
+to that account only) → 토큰 검토 → 토큰 생성. The result page shows the token once (plus R2 S3 keys derived from it);
+read it from the page text right after 「귀하의 API 토큰」 and save it 0600. That token can then create narrower tokens
+(`POST /accounts/:a/tokens`) and roll itself (`PUT /accounts/:a/tokens/:id/value`).
+
+## OPS-516 — Turnstile in Playwright: drop `--enable-automation`, then click the checkbox iframe by its position
+
+`측정 2026-10-19 · Turnstile managed widget, appearance interaction-only · Brave 155 via Playwright, headed and headless`
+
+**증상:** with Playwright's default launch the widget showed 「사람인지 확인하십시오」 and never passed; clicking
+`input[type=checkbox]` inside the challenge frame found nothing (closed shadow root). Headless failed the same way.
+
+**해결:** launch with `ignoreDefaultArgs: ['--enable-automation'], args: ['--disable-blink-features=AutomationControlled']`,
+headed, and click with the mouse at the frame element's box (`frame.frameElement().boundingBox()`, x + 30, mid
+height). The check passed and the site's own request went through (question answered in 37 s including the model).
+For the product: give the silent check about 12 s and extend the wait only from `before-interactive-callback`; a
+failed check with no token should not be retried, or the reader waits twice.
+
+## OPS-517 — Dokploy raw compose with a script baked in by `dockerfile_inline` heredoc: double every `$`, and dokploy.mnori.com runs on nj1
+
+`측정 2026-10-19 · Dokploy on dokploy.mnori.com · docker compose v2 · node:22-alpine`
+
+**증상:** a backup job was shipped as `build.dockerfile_inline` with `RUN cat > /app/job.mjs <<'EOF' … EOF` (so a
+change to the script rebuilds and replaces the container, unlike inline `configs:`, OPS-243). The deploy failed with
+`invalid interpolation format for services.backup.build.dockerfile_inline` after warnings such as `The "DATA" variable
+is not set`: compose interpolates `${…}` inside `dockerfile_inline` before Docker sees the quoted heredoc. Separately,
+the deploy landed on nj1, not misa: the panel moved to nj1 on 2026-10-12 although the local key file is still
+`~/.config/dokploy/misa.key`; `/etc/dokploy/compose/<appName>` and `/etc/dokploy/logs/<appName>` are on nj1.
+
+**해결:** generate the compose from the script and replace `$` with `$$` (JS: `script.replace(/\$/g, '$$$$')`); add
+`USER 1000:1000` and bind-mount a folder in the user's home. Look for the deployment log on nj1. `compose.one` still
+shows the previous deployment's status for a while (OPS-337); read the log file instead.
 
