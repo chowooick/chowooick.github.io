@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-19T18:09:05Z · 소스 커밋 `fc4e260` · 이 파일은 자동 생성물이다.
+생성 2026-10-19T18:18:59Z · 소스 커밋 `324acd0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18508,4 +18508,30 @@ shows the previous deployment's status for a while (OPS-337); read the log file 
 **증상:** a browser context mapped real HTTPS hostnames to an isolated HTTP app with `context.route`, `context.request.fetch(..., {maxRedirects: 0})`, and `route.fulfill({response})`. When the local response was 307 to another real hostname, the destination document came from the old public site instead of the loopback app. Its actual header DOM contained the old links, while an explicit loopback request returned the new links. `maxRedirects: 0` controls the API request, not the browser's follow-up to the fulfilled response. The installed Playwright type documentation warns that the routing handler is only called for the first URL when the response redirects. OPS-272's recommendation to pass the 3xx through is therefore insufficient as an isolation guarantee in this setup; its existing entry is left unchanged.
 
 **해결:** in a closed host rehearsal, inspect status and Location through the loopback API without following, assert an exact destination allowlist, then open that destination as a separate intercepted browser navigation. Abort and fail on unexpected 3xx responses inside the route handler. This tests the redirect contract and destination page without letting the browser follow a real-host redirect outside the local mapping. Preserve the failed run as a harness failure, not a product regression.
+
+## OPS-520 — macOS: Bluetooth music stutters right after each Handoff advertising burst; turn off Handoff *sending* only
+
+`측정 2026-10-19 · macOS 27.0.1 · MacBook Pro M1 Max (BCM4387) · third-party headset over A2DP SBC bitpool 37 · BLE mouse and keyboard connected`
+
+**증상:** music on a Bluetooth headset dropped out for a moment every few minutes, and the link fell once with
+`Received disconnection indication on device <name> reason 431` after `ReTx = 57%`. RSSI was strong (-44 dBm median),
+so distance was not the cause. Each dropout is logged by bluetoothd as `A2DP packet flushed: L2CAP (chip) flush occured`
+or `A2DP packet flushed: Audio Queue full`. Per-second health is in `A2DP LinkQualityReport: … ReTx = …% … for <n> ch`
+(n = AFH channels in use; 20 is the floor).
+
+Over 3 h (4,379 streaming seconds, 367 flushes), joined per second against other bluetoothd/identityservicesd lines:
+
+- In the 0-3 s after `identityservicesd … Continuity start advertising … type 12 … (30.00 ms)` (Handoff, Apple type 0x0C;
+  it fires on every app/tab activity change, about once a minute) the flush rate was 342/1000 s with the mouse idle and
+  575 with it moving, against 15-27 at any other time. About 75 % of all flushes fell in those windows.
+- Seconds with AFH at 20 channels: 183 flushes/1000 s, against 14 with more channels.
+- A BLE mouse that bluetoothd logs as `Device "<name>" is Incompatible LE HID` stays at a 7.5 ms connection interval while
+  audio streams (compatible HIDs are moved off it); moving it roughly doubled the flush rate.
+
+**해결:** turn off Handoff sending only; receiving (and so pasting from an iPhone's Universal Clipboard) keeps working:
+`defaults -currentHost write com.apple.coreservices.useractivityd ActivityAdvertisingAllowed -bool false; killall useractivityd`.
+In the next 11 min there were 0 type-12 bursts. Flushes did not go to 0: 40 of the 46 left came in one 90 s stretch with
+AFH at 20 channels and RSSI at -55 to -61 dBm; the following 5 min had none. The Settings toggle (General → AirDrop &
+Handoff) turns off both directions. A 5-minute LaunchAgent that re-applies the key and logs flush count, ReTx median,
+AFH-20 share and burst count is a cheap way to see a relapse; `log show --last 5m` with a narrow predicate ran in 1.5 s.
 
