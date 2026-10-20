@@ -9770,3 +9770,32 @@ Two more things on the way: the prebuilt project has no `android/local.propertie
 ```
 
 and run `prebuild` again. The release build (`-PreactNativeArchitectures=arm64-v8a`) then took 1 m 57 s and gave a 50.7 MB APK that installed and opened on a Pixel 7 Pro. `EXPO_PUBLIC_*` values are inlined into the Hermes bundle at build time; check with a byte search of `assets/index.android.bundle` (`strings` misses Hermes string tables).
+
+## OPS-545 — Next 16 `experimental.inlineCss` ships every CSS rule twice (the `<style>` and the RSC payload): a 92-rule Pretendard dynamic-subset stylesheet doubled a page's HTML
+
+`측정 2026-10-20 · Next 16.3.2 (Turbopack build, standalone) · pretendard@1.3.9 dynamic subset · curl + gzip on the MacBook Air`
+
+**증상:** importing the official `pretendardvariable-dynamic-subset.css` (92 `@font-face` rules, 55 KB) into a layout of an app with
+`experimental: { inlineCss: true }` grew the page's HTML from 41.2 KB to 82.4 KB gzip. The HTML held 196 `@font-face` occurrences
+for 104 rules: every rule once in the inlined `<style>` and again, escaped, in the `self.__next_f.push` flight scripts. Only 16
+of the 92 ranges were used by the page, so most of those bytes described fonts that are never fetched.
+
+**해결:** with `inlineCss`, keep large rule sets small at the source. For a dynamic-subset web font, generate a stylesheet with
+only the `@font-face` rules whose `unicode-range` covers characters the page can show (here 18 of 92, 17.8 KB raw; HTML back to
+64 KB gzip, the rest being page CSS and content), point it at the unmodified woff2 files with absolute URLs, and add a test that
+recomputes the needed ranges from the page's source so new copy cannot silently fall back to a system face.
+
+## OPS-546 — A web font downloads for an element with no text: the body's `font-family` pulls the face whose `unicode-range` covers U+0020
+
+`측정 2026-10-20 · Brave 155 (Chromium) headless · Next 16.3.2 page whose content sets its own font-family on a child div`
+
+**증상:** a page whose every visible text node used Pretendard still fetched `NotoSansKR-latin.woff2` (62 KB) and listed
+`Noto Sans KR Core` as `loaded` in `document.fonts`. No rendered element with text had Noto in its computed `font-family`
+(checked over `body *`). The `<body>` kept the site-wide `font-sans` class (Noto first, its Latin face declared with
+`unicode-range: U+0020-024F, …`). Chromium resolves the body's first available font for its line metrics, which needs the face
+that covers the space character, so it downloads that face even when the body has no text of its own.
+
+**해결:** on a page that switches faces below `<body>`, set the same family on `<body>` too (here
+`body.migration-shell:has(> .cs) { font-family: "Pretendard Variable", … }`). The Noto request disappeared and
+`document.fonts` listed only Pretendard. Check with `performance.getEntriesByType("resource")` for unexpected `.woff2` URLs, not
+only with screenshots.
