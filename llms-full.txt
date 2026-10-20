@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T19:33:49Z · 소스 커밋 `4de04ed` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T19:35:52Z · 소스 커밋 `2e3dbdf` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19000,6 +19000,7 @@ What does work from ssh on the Air, against the owner's normal (non-automation) 
 - Page text is still readable: `tell active tab of w` → `select all`, `copy selection`, then `pbpaste` over ssh. Save and restore the clipboard around it; other sessions share it.
 - `tell application "System Events" to tell process "Brave Browser" …` answered (menu bar names listed), so UI scripting is permitted for the ssh user.
 - Safari: `make new document with properties {URL:…}` returns a reference that cannot be used afterwards (-1728); use `front document`.
+- `set w to make new window` then `id of w` once returned the id of **another session's existing window** (a session that opens and closes one window per page): the `set URL` that followed navigated that session's tab. List `id of windows` before and after, take the id that is new, and stop if there is none. Windows you open can also be closed by such a session within a minute.
 
 **해결:** do not script sign-ins of a new Microsoft account; one lock costs an SMS round trip on the owner's phone. Open the signup screen in the owner's own Brave with `osascript` and let the owner do the parts that need their mailbox, phone and card. For the CLI side, `~/.local/bin/uv tool install --python 3.12 azure-cli` installs `az` 2.91.0 under the LuLu rules (OPS-227), and `az login --use-device-code` keeps the account out of any automated browser.
 
