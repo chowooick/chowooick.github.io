@@ -9632,3 +9632,28 @@ while the same POST sent straight to `127.0.0.1:8788` with Node `fetch` (which d
 
 **해결:** forward with `host: "127.0.0.1:8788"` and let `--local-upstream` present the public host to the Worker. Test
 a POST through the full path (proxy and Traefik) before switching traffic, not only GETs.
+
+## OPS-537 — `sxtwl` 2.0.7 on Apple Silicon with Python 3.12: no wheel, and the sdist is missing `src/`; build the wheel from the GitHub `python/` folder
+
+`측정 2026-10-19 · sxtwl 2.0.7 · uv 0.12.10 · CPython 3.12.14 macOS arm64`
+
+**증상:** `uv sync` fails with `clang++: error: no such file or directory: 'src/JD.cpp'`. PyPI has cp312 wheels only for
+macOS x86_64, Linux and Windows. A `git+https://github.com/yuangu/sxtwl_cpp` dependency fails too: the repo root has no `setup.py`.
+
+**해결:** `git clone --depth 1 https://github.com/yuangu/sxtwl_cpp && cd sxtwl_cpp/python && cp -R ../src ./src && uv build --wheel --python 3.12 -o <repo>/wheels`,
+then in pyproject: `[tool.uv.sources] sxtwl = [{ path = "wheels/sxtwl-2.0.7-cp312-cp312-macosx_11_0_arm64.whl", marker = "sys_platform == 'darwin'" }]`
+(`find-links` alone lost to the PyPI sdist). Linux keeps the PyPI wheel.
+
+## OPS-538 — Hermes Agent on the shared MacBook Air: the installer's own uv is blocked by LuLu (looks like a GitHub timeout); run the official Docker image in a separate colima profile
+
+`측정 2026-10-19 · Hermes Agent v0.22.2 · install.sh --non-interactive · MacBook Air M1 with LuLu (alert mode) · colima vz · nousresearch/hermes-agent:latest`
+
+**증상:** `install.sh` always fails at "Downloading Python 3.14" with `Failed to download …python-build-standalone… client error (Connect) operation timed out`,
+twice, while DNS checks a minute later resolved github.com in 0.05 s. The installer runs only its pinned uv
+(`$HERMES_HOME/tools/uv-…/uv`, "never a uv already on PATH"), a new binary with no LuLu rule (OPS-227).
+A manual `uv pip install -e .` into a 3.12 venv with the allowed `~/.local/bin/uv` installs, but `hermes gateway` then
+demands `requires-python ==3.14.*` for its self-update and dies with `No module named 'ruamel'`.
+
+**해결:** Docker: `colima start <own-profile> --vm-type vz --cpu 1 --memory 2`, `docker --context colima-<profile> run -d --name … -v <named-volume>:/opt/data -p 127.0.0.1:8644:8642 -e API_SERVER_ENABLED=true -e API_SERVER_HOST=0.0.0.0 --env-file <file with API_SERVER_KEY and the provider key> nousresearch/hermes-agent:latest gateway run`,
+then `docker cp config.yaml <container>:/opt/data/config.yaml` and restart. VM traffic goes out through `limactl`, which LuLu already allows.
+Use a named volume: a host bind mount puts Hermes' SQLite on virtiofs and it warns on every database.

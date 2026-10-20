@@ -2597,3 +2597,55 @@ A widget's code is parsed as TSX, and a bare `&` inside JSX text is read as the 
 - `~/.codex/models_cache.json` lists the efforts a model accepts: `gpt-6-astra` takes `low medium high xhigh max ultra`, default `medium` (`ultra` = "maximum reasoning with automatic task delegation").
 
 **해결:** read `wham/usage` before a long or high-effort run, and pick the effort from what is left in the window, not from habit. The response includes the account email and ids; do not log it whole.
+
+## AGT-140 — Groq free tier (Oct 2026) holds a voice agent to a few turns a minute: 8K tokens/min and 200K tokens/day per chat model, and Developer-tier upgrades were closed
+
+`측정 2026-10-19 · console.groq.com/settings/limits (free plan) · livekit-agents 1.8.8 groq plugin · qwen/qwen3.8-27b, openai/gpt-oss-120b, openai/gpt-oss-20b`
+
+**증상:** A Korean voice companion on LiveKit answered the first turn and then went silent. The worker log:
+`Rate limit reached for model qwen/qwen3.8-27b ... on input tokens per minute (ITPM): Limit 7000, Used 6194, Requested 2161`,
+retried three times and closed the session.
+
+- Free-plan limits read from the console: qwen3.8-27b, gpt-oss-120b, gpt-oss-20b each 30 RPM, 1K RPD, **8K TPM, 200K TPD**.
+  Whisper large-v3 / v3-turbo: 20 RPM, 2K RPD, 7.2K audio seconds/hour, 28.8K/day. Groq TTS (Orpheus) is English and Saudi Arabic only, so Korean needs another TTS.
+- One voice turn with a persona prompt, the day's facts and three tools was 1.6–2.2K input tokens, so one model allows
+  about 4 turns a minute and about 100 turns a day **for all users together**.
+- The billing page said "Developer tier upgrades are temporarily unavailable due to high demand" on 2026-10-19.
+- TTFT was not the problem: 0.19–0.62 s on all three models from a US host.
+
+**해결:** `llm.FallbackAdapter([groq.LLM(qwen…), groq.LLM(gpt-oss-120b), groq.LLM(gpt-oss-20b)], max_retry_per_llm=0)` moves a turn to the
+next model on a 429 instead of retrying the same one; open the call with a prepared `session.say(...)` line so the greeting costs no tokens.
+This is enough for one tester, not for users: plan a paid provider before anyone else calls.
+
+## AGT-141 — Groq through OpenAI-compatible clients: `prompt_cache_key` is a 400 that ends a LiveKit session, and `reasoning_effort` values differ per model
+
+`측정 2026-10-19 · livekit-plugins-groq 1.8.8 · Hermes Agent v0.22.2 (nousresearch/hermes-agent:latest) · Groq API`
+
+**증상:** `groq.LLM(..., prompt_cache_key=...)` (the plugin accepts it) makes every completion fail with
+`property 'prompt_cache_key' is unsupported`, `retryable=False`, and the AgentSession closes "due to unrecoverable error".
+Separately, Hermes with `provider: custom` pointed at Groq's gpt-oss answered every request with
+`HTTP 400: reasoning_effort must be one of low, medium, or high`, even with `agent.reasoning_effort: low` in config.yaml.
+
+- Groq accepts `reasoning_effort: "none"` on qwen/qwen3.8-27b (answers directly) and only low/medium/high on gpt-oss.
+- Hermes with `model.default: qwen/qwen3.8-27b` and `agent.reasoning_effort: none` answered at once.
+
+**해결:** Never pass `prompt_cache_key` to Groq. Per model: qwen → `reasoning_effort="none"`, gpt-oss → `"low"`.
+For Hermes on Groq, use the qwen model, or expect the 400 on gpt-oss.
+
+## AGT-142 — Korean voice turn on LiveKit with Groq Whisper + Groq LLM + Edge TTS: 2.2–3.5 s from end of speech to first audio; TTS and end-of-utterance are most of it
+
+`측정 2026-10-19 · livekit-agents 1.8.8 · LiveKit Cloud (worker on MacBook Air, region US West B) · whisper-large-v3-turbo language=ko · qwen3.8-27b · edge-tts 7.3.1 ko-KR-SunHiNeural · Python rtc probe publishing Edge-TTS speech as the user`
+
+**증상:** The call worked but every reply came 2.2–3.5 s after the user stopped talking (measured as first audible frame, 9 turns over 3 calls).
+
+From `metrics_collected` per turn: end of utterance (VAD silence + batch Whisper) 0.86–1.04 s, LLM first token 0.24–0.62 s,
+Edge TTS first byte 0.48–0.90 s per sentence (it opens a new websocket for each sentence), plus sentence buffering and transport.
+Lowering endpointing `min_delay` from 0.4 to 0.3 s did not move the total measurably.
+
+- Prompting matters as much: the model copied `(10월 24일)` from tool output and read the brackets out. A filter in both
+  `tts_node` and `transcription_node` (`Agent.default.tts_node(self, filtered(text), ...)`) that drops bracketed asides
+  across chunk boundaries fixed voice and captions together.
+- Whisper turned the test name 지우 into 지호 in summaries; give the reflection step the stored nickname.
+
+**해결:** For under ~1.5 s, streaming STT and streaming TTS are needed; Groq Whisper and Edge TTS are both batch.
+Keep the opening line prepared (instant), and measure with a probe that publishes known speech into the room.
