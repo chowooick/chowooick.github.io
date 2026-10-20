@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T01:49:31Z · 소스 커밋 `3003984` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T02:26:34Z · 소스 커밋 `cd7bcf6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18675,4 +18675,83 @@ and `www` itself (OPS-498). Measured on the live apex: the cookie unlock (same-o
 beacon only on the apex, a forged secret on workers.dev ignored, and a sign-up with the real Turnstile in Brave
 returned a verification link on the apex. `dist/server/wrangler.json` still says `main: "entry.mjs"`; the wrapper is
 bundled into it.
+
+---
+
+## OPS-528 — Cloudflare stopped account creation after three additional Free accounts (docs say five): 422 「생성할 수 있는 계정 수의 한도에 도달했습니다」
+
+`측정 2026-10-19 · dash.cloudflare.com (ko UI), account switcher → 「+ 계정 만들기」 · one login with four accounts`
+
+**증상:** a login that owned one account created three more the same day (two in the morning, two in the evening
+minus one). The next 「계정 생성」 answered `POST /api/v4/accounts` → **422** and the dialog said 「생성할 수 있는 계정 수의
+한도에 도달했습니다」. The official page "Create account" says a user "can create up to five additional Free accounts"
+(user active and at least 7 days old, Super Administrator on an existing account) and gives "use an existing account
+or contact your account team" as the remedy. A script looping over seven new names failed on all of them.
+
+**해결:** count the slots before promising one account per project. Give the slots to the projects that use the most
+account-wide Free quota (Workers requests, D1 rows, KV, AI neurons, Pages builds); zone features (WAF, cache, rules)
+are per zone and gain nothing from a separate account. An account can be renamed (`PUT /accounts/:id {"name": …}`),
+so a slot created for one project can be given to another.
+
+---
+
+## OPS-529 — Moving a Cloudflare Registrar domain to another account: the clicks, where the gaining account accepts, and how fast it switched
+
+`측정 2026-10-19 · Cloudflare Registrar .com registered 2026-09-17 · dashboard (ko UI) in Brave via Playwright · gaining account created the same day, no payment method`
+
+**증상:** the steps are spread over two accounts and the gaining side has no obvious page; the docs mention a mail.
+
+- Losing account: 도메인 → 등록 → domain 「관리」 → 「다른 계정으로 이동」 → 「계속」 → `input[name=accountId]` and
+  `input[name=confirmAccountId]` (type the target account ID into both) → 「계속」 → two acknowledgement checkboxes
+  (getByRole checkbox, `check({force:true})`) → 「제출」. The page then shows 「계정 이동 취소」.
+- Gaining account: `/{account}/domains/registrations` lists the domain as 「계정 가져오기 보류 중」 (the 전송 page is
+  a 404). Its 「관리」 opens `/{account}/domains/registrations/action-center` (「작업 센터」) with 「동의」 / 「거부」;
+  no mail click is needed. `GET /accounts/:id/registrar/domains` shows `actionable_metadata` type `domain_move`,
+  `expires_at` 5 days out.
+- Timings: accepted 02:19:56 UTC; `dig NS <domain> @a.gtld-servers.net +norec` showed the new zone's pair at
+  02:23:55; `PUT /zones/:id/activation_check` then `status: active` at 02:24:08. The old zone in the losing account
+  kept answering on the old nameservers (TTL 172800), so both accounts serve for up to two days.
+- The gaining account warns 「청구 프로필에 결제 수단이 없습니다. 자동 갱신을 위해 결제 수단을 추가하세요」.
+- Email Routing's MX and `cf2024-1._domainkey` records are read-only managed records; they are not copied to the
+  new zone, and `POST …/email/routing/enable` recreates them. Rules to chowooick@gmail.com were refused with
+  `2054 Destination address is not verified` until the address is verified again in the new account (one mail click
+  per account).
+
+**해결:** prepare the new zone (records, settings, rulesets, tunnel hostnames) and the Workers in the gaining account
+first, deploy the Workers on workers.dev, then move. Run the custom-domain deploy and `activation_check` as soon as
+the registry shows the new nameservers; clear the old Worker's crons (`PUT …/workers/scripts/<name>/schedules []`) so
+the two copies do not both run them. Verify the Email Routing destination before the move, and add a card to the
+gaining account before the registration's expiry.
+
+---
+
+## OPS-530 — Reading a Worker's secret values back for an account move: an undeployed version on a preview URL that returns them encrypted to an offline key
+
+`측정 2026-10-19 · wrangler 4.151.2 versions upload · Workers preview URLs · Worker with 8 secrets and no other copy of them`
+
+**증상:** Worker secrets are write-only (the API lists names only), and some must not change: a mail-signing secret
+that derives subscriber IDs and every unsubscribe link already sent. Moving the Worker to another account needed the
+exact values.
+
+**해결:** `wrangler versions upload --config <tmp>/wrangler.json` with `name` = the Worker and a tiny `main` uploads a
+version **without deploying it**; secrets are inherited by every version. The code answers only a request carrying a
+one-time header and returns `{key, iv, ct}`: the JSON of the secret values encrypted with AES-GCM, the AES key wrapped
+with RSA-OAEP-256 to a public key whose private half never left the Mac. Turn previews on
+(`POST /accounts/:a/workers/scripts/<name>/subdomain {"enabled":false,"previews_enabled":true}`), call
+`https://<first 8 of version id>-<name>.<account subdomain>.workers.dev/`, decrypt with Node
+(`privateDecrypt` OAEP sha256, then `aes-256-gcm` with the last 16 bytes as the tag), write the values to a 0600
+file, turn previews off (the URL then answers 404) and delete the key pair. Production stayed on its version at 100 %
+the whole time. `wrangler secret bulk <json>` then sets them in the new account.
+
+---
+
+## OPS-531 — `wrangler d1 execute --file` of a `d1 export` dump fails with `SQLITE_TOOBIG` on rows above ~100 KB
+
+`측정 2026-10-19 · wrangler 4.134.0 · D1 export 12.7 MB, 568 INSERT lines`
+
+**증상:** importing a D1 export into a new database stopped at once with `statement too long: SQLITE_TOOBIG`. 19
+`INSERT` lines for a table of image files were over 90 KB each (D1's statement limit is 100 KB).
+
+**해결:** split the dump: lines over ~90 KB aside, the rest through `d1 execute --file` (598 queries in 0.38 s); load
+the large rows another way (chunked updates, or keep the files in R2/KV) or skip them if the copy is only a fallback.
 
