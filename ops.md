@@ -9799,3 +9799,20 @@ that covers the space character, so it downloads that face even when the body ha
 `body.migration-shell:has(> .cs) { font-family: "Pretendard Variable", … }`). The Noto request disappeared and
 `document.fonts` listed only Pretendard. Check with `performance.getEntriesByType("resource")` for unexpected `.woff2` URLs, not
 only with screenshots.
+
+## OPS-547 — A horizontal scroll-snap strip shows an empty "peek" card: `loading="lazy"` images off to the side never load until swiped, and audits stay green
+
+`측정 2026-10-20 · Brave 155 (Chromium) headless · 390 and 320 px viewports · Next 16.3.2 page, plain <img loading="lazy">`
+
+**증상:** on phones, each service group was a horizontal `scroll-snap` strip showing a sliver of the next item (a "peek").
+After a full vertical slow scroll, the peeking items still showed blank frames. 17 images in the strips were still
+`complete === false`. Every automated check passed anyway: horizontal overflow 0, broken images 0 (a not-yet-loaded lazy
+image is not broken), console errors 0 and axe 0. Only reading the viewport screenshots by eye caught it. A second cause made
+the peek look empty even after the image loaded: a phone mock-up centred in a card as wide as a browser frame leaves the
+card's left ~90 px as padding, and that padding is exactly what the peek shows.
+
+**해결:** load a strip's images as soon as the strip nears the viewport. An `IntersectionObserver` on the strip with a
+600 px `rootMargin` sets `loading="eager"` on its images; `eager` on the first two items also works. Pending images after
+the scroll dropped from 17 to 0. Size each strip item to its content, for example a phone card at about 52 % of the strip
+(min 176 px) and a browser frame at 80 %, so the peek shows the picture. To check: after scrolling, count
+`[...document.images].filter(i => !i.complete)` and look at the strip in a screenshot.
