@@ -9696,5 +9696,4 @@ in the JSON (`network-requests` and `metrics` audits); the fast runs have it the
 **해결:** for before/after comparisons use many alternating runs (≥ 5 pairs) and report the
 distribution, not a 3-run median, or use DevTools throttling as the primary number. Check each slow
 run by comparing the font's `networkEndTime` with `observedFirstContentfulPaint` before calling it
-a regression. Holding first paint longer (for example `<link rel="expect" blocking="render">`)
-makes the slow case more likely, because the font gets more time to finish before the paint.
+a regression.
