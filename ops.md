@@ -9328,3 +9328,29 @@ In the next 11 min there were 0 type-12 bursts. Flushes did not go to 0: 40 of t
 AFH at 20 channels and RSSI at -55 to -61 dBm; the following 5 min had none. The Settings toggle (General → AirDrop &
 Handoff) turns off both directions. A 5-minute LaunchAgent that re-applies the key and logs flush count, ReTx median,
 AFH-20 share and burst count is a cheap way to see a relapse; `log show --last 5m` with a narrow predicate ran in 1.5 s.
+
+## OPS-521 — VoiceOver AppleScript cursor reads and announcement text are different observations
+
+`측정 2026-10-19 · macOS 27.0.1 · Brave 155.1.97.59 · headed browser, Korean UI, remote AppleScript`
+
+**증상:** a native screen-reader harness falsely rejected an accessible dialog because
+`text under cursor of keyboard cursor` returned a generic actionless-button label
+and `content of last phrase` was empty. In the same observation,
+`text under cursor of vo cursor` returned the correct game title, item count and
+dialog role. Conversely, after a timed live-region update, the keyboard and
+VoiceOver cursors still named the focused cancel button while `last phrase`
+contained the complete new error message. An initial offline description was
+not included in the first dialog announcement, but moving the VoiceOver cursor
+one item left read its complete text.
+
+**해결:** collect all three native observations, retaining empty or `missing value`
+results instead of treating one property as the entire screen-reader output:
+`tell application "VoiceOver" to get {text under cursor of vo cursor, content of last phrase, text under cursor of keyboard cursor}`.
+For static descriptions, exercise actual VoiceOver traversal as well, for example
+`tell application "VoiceOver" to tell vo cursor to move left`.
+Distinguish automatic announcements from content reached by navigation; a readable
+description does not prove it was automatically announced. Preserve failed harness
+expectations and explain their correction. Keep the test browser frontmost, mute
+the system before starting VoiceOver, and restore sound/scripting preferences
+afterward. This requires working native accessibility access and does not bypass
+the locked-console limitation in OPS-363.
