@@ -9674,3 +9674,27 @@ Injecting `.chips { mask-image: none }` with nothing else changed made the row p
 programmatic scroll; drop the fade (or draw it with an overlay outside the scroller). Only headless
 was measured; whether headed Brave or Chrome does the same was not checked. A check that asserts
 only DOM boxes or computed styles passes on this failure — look at the screenshot.
+
+## OPS-540 — Lighthouse simulated (Lantern) FCP/LCP flips between two values run to run on a fast local server: a web font that finishes before the observed first paint becomes render-blocking
+
+`측정 2026-10-20 · Lighthouse 13.5.0 (trace_engine Lantern) · headless Brave 155 · Next 16 standalone on the MacBook Air M1, 127.0.0.1`
+
+**증상:** the same build measured with `--throttling-method=simulate` gave LCP either ~3.2–3.6 s
+or ~4.7–5.7 s, and FCP either ~1.0–1.4 s or exactly 2.86 s, with nothing in between. Eleven runs of
+one build: 5 fast, 6 slow; eleven of a slightly larger build: 1 fast, 10 slow. Comparing three runs per
+build reported a 1.56 s "regression" that was this coin toss. `--throttling-method=devtools` on the
+same builds was stable (LCP spread under 0.1 s) and showed the larger build 0.17 s faster.
+
+Lantern's FCP graph (`FirstContentfulPaint.getFirstPaintBasedGraph`) keeps every network request
+that **ended before the observed, unthrottled FCP** and `hasRenderBlockingPriority()` (VeryHigh or
+High). A web font discovered from CSS is fetched at VeryHigh. On a local server the 272 KB Korean
+font finished at 90–115 ms and the page painted at 90–150 ms, so in some runs the font ended first,
+was counted as render-blocking, and its throttled download (~1.5 s at the simulated 1.6 Mbps) was
+added to FCP and LCP. The slow runs have font `networkEndTime` < `observedFirstContentfulPaint`
+in the JSON (`network-requests` and `metrics` audits); the fast runs have it the other way round.
+
+**해결:** for before/after comparisons use many alternating runs (≥ 5 pairs) and report the
+distribution, not a 3-run median, or use DevTools throttling as the primary number. Check each slow
+run by comparing the font's `networkEndTime` with `observedFirstContentfulPaint` before calling it
+a regression. Holding first paint longer (for example `<link rel="expect" blocking="render">`)
+makes the slow case more likely, because the font gets more time to finish before the paint.
