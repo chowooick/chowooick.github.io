@@ -9428,3 +9428,22 @@ the old one. Kill by port: `kill $(lsof -ti tcp:4417 -sTCP:LISTEN)`.
 **해결:** find an allowed binary of the same version (`plutil -convert xml1 -o - /Library/Objective-See/LuLu/rules.plist |
 grep workerd`, then each path's `package.json` version) and export `MINIFLARE_WORKERD_PATH` for `astro preview` and
 `wrangler dev` alike. Stop servers by port, not by command line.
+
+---
+
+## OPS-526 — glab OAuth refresh can time out on DNS while Node reaches the same GitLab endpoint
+
+`측정 2026-10-19 · glab 1.82.0 · Node 26.8.2 · MacBook Air M1 · gitlab.com OAuth`
+
+**증상:** an existing OAuth access token returned HTTP 401 after expiry. A copied glab 1.82.0 executable on Air
+failed its refresh with `lookup gitlab.com: i/o timeout`; Node fetch on that same Air reached GitLab. The cause
+of the executable-specific DNS failure was not established; this does not prove a firewall rule.
+
+**해결:** inspect the matching official glab release source for its OAuth client ID and refresh contract. From
+Node on Air, POST the existing refresh token with `grant_type=refresh_token` and that public `client_id` to
+`https://gitlab.com/oauth/token`. Verify the renewed access token with an authenticated API read before use.
+Preserve the rotated refresh token and expiry too. When using an isolated copy of the CLI config, compare the
+original file against its pre-refresh snapshot before updating it; otherwise concurrent credentials can be
+overwritten or the original can retain an invalidated refresh token. This case passed the API read after
+refresh and safely updated the unchanged original config. Keep token bodies out of logs and remove temporary
+credential copies after the operation. No new login or account setting change was needed.
