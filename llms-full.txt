@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T20:36:47Z · 소스 커밋 `4661872` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T21:38:24Z · 소스 커밋 `e112a17` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19015,4 +19015,27 @@ A curl `-X POST` with no body to ARM (`…/providers/Microsoft.CognitiveServices
 **해결:** either `az login` again after the signup, or skip the CLI's subscription cache and call ARM REST with the CLI token: register the provider (`POST …/register`, poll `GET …/providers/Microsoft.CognitiveServices` until `Registered`, about 10–20 s), `PUT …/resourcegroups/<rg>`, `PUT …/accounts/<name>?api-version=2023-05-01` with `{"kind":"SpeechServices","sku":{"name":"F0"},"location":"koreacentral","properties":{}}` (Succeeded within seconds), then `POST …/listKeys`. Give every body-less POST `-d '{}'`. Pipe `listKeys` straight into a 0600 file rather than printing it.
 
 Measured on the result: Azure `ko-KR-SunHiNeural` in koreacentral through the LiveKit `azure` plugin (livekit-agents 1.8.8), first audio median 0.23 s over 33 utterances (0.19–1.03 s); raw REST `cognitiveservices/v1` MP3 first byte 0.57–0.60 s warm, 1.47 s cold. Edge TTS for the same voice in the same worker was 0.48–0.90 s.
+
+## OPS-544 — Expo SDK 58 release APK with `@livekit/react-native-webrtc` 150 fails in R8 on `livekit.org.jni_zero.JniZeroJni`; add keep rules through `expo-build-properties`
+
+`측정 2026-10-20 · Expo SDK 58.0.16 · React Native 0.88.0 · @livekit/react-native 3.1 · @livekit/react-native-webrtc 150.1 · Gradle 9.4.1 · JDK 25 (Temurin) · Pixel 7 Pro`
+
+**증상:** `npx expo prebuild --platform android` writes `android.enableMinifyInReleaseBuilds=true` into `gradle.properties`, so `./gradlew assembleRelease` runs R8 and stops at `:app:minifyReleaseWithR8`:
+
+```
+ERROR: R8: Missing class livekit.org.jni_zero.JniZeroJni (referenced from: void livekit.org.jni_zero.JniZero.setJniClassLoader(java.lang.ClassLoader))
+```
+
+The generated `missing_rules.txt` offers only a `-dontwarn`. That makes the build pass but leaves R8 free to strip or rename the WebRTC classes that native code finds by name over JNI.
+
+Two more things on the way: the prebuilt project has no `android/local.properties`, so a shell without `ANDROID_HOME` fails at configuration with `SDK location not found` (after Gradle has already spent minutes); and a single `Read timed out` from `dl.google.com` disables the Google repository for the whole run (`Repository Google is disabled due to earlier error below`) — rerun with `-Dorg.gradle.internal.http.socketTimeout=180000 -Dorg.gradle.internal.http.connectionTimeout=180000`.
+
+**해결:** keep the rules in `app.json` so a later `prebuild --clean` keeps them: `npx expo install expo-build-properties` (it adds the plugin to `app.json` by itself — do not add a second entry), then give it
+
+```json
+["expo-build-properties", {"android": {"extraProguardRules":
+  "-keep class livekit.org.webrtc.** { *; }\n-keep class livekit.org.jni_zero.** { *; }\n-dontwarn livekit.org.jni_zero.JniZeroJni"}}]
+```
+
+and run `prebuild` again. The release build (`-PreactNativeArchitectures=arm64-v8a`) then took 1 m 57 s and gave a 50.7 MB APK that installed and opened on a Pixel 7 Pro. `EXPO_PUBLIC_*` values are inlined into the Hermes bundle at build time; check with a byte search of `assets/index.android.bundle` (`strings` misses Hermes string tables).
 
