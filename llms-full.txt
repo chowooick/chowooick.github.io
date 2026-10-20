@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T02:26:34Z · 소스 커밋 `cd7bcf6` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T02:39:33Z · 소스 커밋 `f485089` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18754,4 +18754,20 @@ the whole time. `wrangler secret bulk <json>` then sets them in the new account.
 
 **해결:** split the dump: lines over ~90 KB aside, the rest through `d1 execute --file` (598 queries in 0.38 s); load
 the large rows another way (chunked updates, or keep the files in R2/KV) or skip them if the copy is only a fallback.
+
+## OPS-532 — Korea Post's full postal-code DB downloads without a key; codes are 기초구역번호 per building, and 사서함 codes overlap ordinary ones
+
+`측정 2026-10-19 · 우정사업본부 지역별 주소 DB (2026.10.08 기준, 고시 2026.10.13) · Python 3.9`
+
+**증상:** a Korean service keyed by the 5-digit postal code needed every valid code with a readable neighborhood name.
+The juso.go.kr dumps and data.go.kr APIs ask for an application or a key.
+
+**해결:** `https://www.epost.go.kr/search/areacd/zipcode_DB.zip` (page `/search/zipcode/areacdAddressDown.jsp`) downloads
+directly: 115 MB, 16 text files by 시도, 6,459,663 building rows, each with 우편번호, 법정동, 읍면, 리, 행정동 and 건물관리번호.
+There are 34,403 distinct codes (01000–63644). Naming by 법정동 fits 79.7% of urban codes inside one 동 (행정동 only
+48.3%); in 읍·면 areas use 면 + 리. 431 of 432 사서함 codes are also ordinary area codes, and 534 codes cover a single
+building (mostly apartment complexes). A building-count split under-weights large apartment complexes (one address each).
+One 동 is split across many codes (망원동: 04005–04018). data.go.kr 15000302 lists the service as "이용허락범위: 제한 없음",
+but the 인터넷우체국 이용약관 §22② bars commercial reuse of its works without consent; confirm with 우정사업본부 before a
+commercial launch. A 20-code random sample matched the public epost search 20/20.
 
