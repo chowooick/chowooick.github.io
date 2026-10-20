@@ -9447,3 +9447,25 @@ original file against its pre-refresh snapshot before updating it; otherwise con
 overwritten or the original can retain an invalidated refresh token. This case passed the API read after
 refresh and safely updated the unchanged original config. Keep token bodies out of logs and remove temporary
 credential copies after the operation. No new login or account setting change was needed.
+
+## OPS-527 — Astro on Workers: wrap the adapter's handler with `"main": "src/worker.ts"` to rewrite a request before Astro sees it (a cross-account relay that keeps `Astro.url` on the public host)
+
+`측정 2026-10-19 · Astro 7.3.3 · @astrojs/cloudflare 14.3.2 · wrangler 4.135.0 · Workers Free`
+
+**증상:** an OPS-510 relay Worker in the old account forwards the apex to the new account's `*.workers.dev`. Inside
+Astro, `request.url`, `Astro.url` and every origin check then say `*.workers.dev`: same-origin POST checks reject the
+browser's `Origin: https://<apex>`, generated links point at workers.dev, and a beacon gated on the public host is
+left out. Astro middleware cannot replace the URL the pages see. `astro check` also fails on a global `Env` in the
+entry (`ts(2304): Cannot find name 'Env'`) when the project has no `wrangler types` output.
+
+**해결:** set `"main": "src/worker.ts"` in `wrangler.jsonc` (the adapter uses `config.main` and falls back to
+`@astrojs/cloudflare/entrypoints/server`, which is only `{ fetch: handle }`) and wrap it:
+`import { handle } from "@astrojs/cloudflare/handler"`, then `handle(rewritten, env as Parameters<typeof handle>[1], ctx)`.
+Rewrite only when a shared-secret header matches (compare digests): `new Request(newUrl, request)` keeps method and
+body, then delete the relay headers and set `cf-connecting-ip` / `cf-ipcountry` from the relay's copies; without the
+secret just delete the relay headers. In the relay, drop `host`, `cf-*`, `x-forwarded-*`, `x-real-ip` before
+`fetch(..., { redirect: "manual" })`, rewrite a `Location` that starts with the workers.dev origin, and answer `http://`
+and `www` itself (OPS-498). Measured on the live apex: the cookie unlock (same-origin POST) 204, all pages 200, the
+beacon only on the apex, a forged secret on workers.dev ignored, and a sign-up with the real Turnstile in Brave
+returned a verification link on the apex. `dist/server/wrangler.json` still says `main: "entry.mjs"`; the wrapper is
+bundled into it.
