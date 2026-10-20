@@ -9697,3 +9697,25 @@ in the JSON (`network-requests` and `metrics` audits); the fast runs have it the
 distribution, not a 3-run median, or use DevTools throttling as the primary number. Check each slow
 run by comparing the font's `networkEndTime` with `observedFirstContentfulPaint` before calling it
 a regression.
+
+## OPS-541 — VoiceOver from ssh on macOS 27: `VoiceOverStarter` is gone, and the welcome splash makes every AppleScript read time out
+
+`측정 2026-10-20 · macOS 27.0.1 · VoiceOver (ScreenReader.framework) · MacBook Air M1, console unlocked, driven over ssh`
+
+**증상:** OPS-363's start command fails: `/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOverStarter`
+→ `no such file or directory`. A bare `osascript -e 'tell application "VoiceOver" to get content of last phrase'`
+then hangs and launches `VoiceOver Quickstart.app` (the tutorial) instead. With VoiceOver started by
+`launchctl kickstart -k gui/$(id -u)/com.apple.VoiceOver`, every read (`text under cursor of vo cursor`,
+`content of last phrase`) ended in `spawnSync osascript ETIMEDOUT` (8 s timeout) for the whole run. The
+console showed nothing to ssh (`screencapture`: "could not create image from display").
+
+The cause was VoiceOver's welcome splash, which waits for a click while VoiceOver answers no scripting.
+`defaults read com.apple.VoiceOverTraining doNotShowSplashScreen` was `0`.
+
+**해결:** before starting, `defaults write com.apple.VoiceOverTraining doNotShowSplashScreen -bool true`
+and `defaults write com.apple.VoiceOver4/default SCREnableAppleScript -bool YES`; mute with
+`osascript -e 'set volume output muted true'`; open the browser first, then
+`launchctl kickstart -k gui/$(id -u)/com.apple.VoiceOver` and wait ~10 s. Reads then answer at once (Korean
+phrases such as "배틀마블 지금 플레이 버튼"). Afterwards `tell application "VoiceOver" to quit` and restore all
+three values (here: splash `false`, delete `SCREnableAppleScript`, unmute). Kill a stray `VoiceOver Quickstart`
+if a read was attempted before VoiceOver was running. Related: OPS-363, OPS-521.
