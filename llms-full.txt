@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T03:28:40Z · 소스 커밋 `b744a51` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T03:34:54Z · 소스 커밋 `04b5f3d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18786,4 +18786,27 @@ several minutes.
 before the first test, and test with a throwaway address first. To undo a suppression: dashboard → Emails →
 Suppressions tab → row "More actions" → "Remove email address", and type the address to enable the button. Check
 delivery on the email's page (Sent → Delivered events) rather than in Cloudflare analytics.
+
+---
+
+## OPS-534 — `getPlatformProxy({ persist: { path } })` and `wrangler dev --persist-to` do not share a directory as given: dev writes under `<dir>/v3/`, the proxy reads `<dir>/` itself. An Astro-built Worker (`dist/server/wrangler.json`) also ignores `--test-scheduled`
+
+`측정 2026-10-19 · wrangler 4.135.0 · @astrojs/cloudflare 14.3.2 · Astro 7.3.3 · macOS (Air)`
+
+**증상:** a local D1 filled with `wrangler d1 migrations apply <db> --local --persist-to .state` and served by
+`wrangler dev --persist-to .state` lives in `.state/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite`. A Node script
+that opened the same binding with `getPlatformProxy({ configPath, persist: { path: ".state" } })` answered
+`D1_ERROR: no such table` and left a second, empty database in `.state/d1/…` (no `v3`). Passing
+`persist: { path: ".state/v3" }` opened the real one; the proxy then ran a `db.batch()` of six DELETEs against it
+while `wrangler dev` kept the same files open (as in OPS-106).
+
+In the same setup `wrangler dev --config dist/server/wrangler.json --test-scheduled` (the config `@astrojs/cloudflare`
+writes, `no_bundle: true`, custom `main` with a `scheduled` export) answered `GET /__scheduled?cron=…` with Astro's
+own 404 page: the request reached the Worker's `fetch` instead of the scheduled test endpoint. The `scheduled` export
+itself was in `dist/server/entry.mjs` and `triggers.crons` from `wrangler.jsonc` was copied into the generated config.
+
+**해결:** when `wrangler dev` or `wrangler d1 … --local` used `--persist-to <dir>`, give `getPlatformProxy` the path
+`<dir>/v3`. To exercise a cron handler of an Astro Worker locally, call the handler's function through
+`getPlatformProxy` (OPS-106) rather than `/__scheduled`, and check `grep scheduled dist/server/entry.mjs` plus
+`"triggers"` in `dist/server/wrangler.json` for the deploy itself.
 
