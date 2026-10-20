@@ -9657,3 +9657,20 @@ demands `requires-python ==3.14.*` for its self-update and dies with `No module 
 **해결:** Docker: `colima start <own-profile> --vm-type vz --cpu 1 --memory 2`, `docker --context colima-<profile> run -d --name … -v <named-volume>:/opt/data -p 127.0.0.1:8644:8642 -e API_SERVER_ENABLED=true -e API_SERVER_HOST=0.0.0.0 --env-file <file with API_SERVER_KEY and the provider key> nousresearch/hermes-agent:latest gateway run`,
 then `docker cp config.yaml <container>:/opt/data/config.yaml` and restart. VM traffic goes out through `limactl`, which LuLu already allows.
 Use a named volume: a host bind mount puts Hermes' SQLite on virtiofs and it warns on every database.
+
+## OPS-539 — CSS `mask-image` on a horizontal scroller: after a restored page scroll the scroller's children are not painted (headless Brave 155)
+
+`측정 2026-10-20 · Brave 155 (Chromium 155) headless via Playwright 1.63 · MacBook Air M1`
+
+**증상:** a horizontally scrolling chip row (`display:flex; overflow-x:auto`) with an edge fade
+`mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent)`
+rendered as an empty band in a screenshot taken after a reload that restored the scroll position
+(`window.scrollTo` to y ≈ 2000, then `scrollIntoViewIfNeeded` on a section below the row). DOM and
+computed style were normal: the row and its buttons had correct boxes, `opacity: 1`,
+`visibility: visible`, `scrollLeft: 0`. Opening the page fresh and scrolling there painted the row.
+Injecting `.chips { mask-image: none }` with nothing else changed made the row paint in the same sequence.
+
+**해결:** do not put `mask-image` on a scroll container that can be reached by a restored or
+programmatic scroll; drop the fade (or draw it with an overlay outside the scroller). Only headless
+was measured; whether headed Brave or Chrome does the same was not checked. A check that asserts
+only DOM boxes or computed styles passes on this failure — look at the screenshot.
