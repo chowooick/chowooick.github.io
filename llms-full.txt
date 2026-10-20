@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T19:35:52Z · 소스 커밋 `2e3dbdf` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T20:36:47Z · 소스 커밋 `4661872` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19003,4 +19003,16 @@ What does work from ssh on the Air, against the owner's normal (non-automation) 
 - `set w to make new window` then `id of w` once returned the id of **another session's existing window** (a session that opens and closes one window per page): the `set URL` that followed navigated that session's tab. List `id of windows` before and after, take the id that is new, and stop if there is none. Windows you open can also be closed by such a session within a minute.
 
 **해결:** do not script sign-ins of a new Microsoft account; one lock costs an SMS round trip on the owner's phone. Open the signup screen in the owner's own Brave with `osascript` and let the owner do the parts that need their mailbox, phone and card. For the CLI side, `~/.local/bin/uv tool install --python 3.12 azure-cli` installs `az` 2.91.0 under the LuLu rules (OPS-227), and `az login --use-device-code` keeps the account out of any automated browser.
+
+## OPS-543 — Azure CLI signed in before the free-trial signup never lists the new subscription; ARM REST with its token does, and a body-less ARM POST from curl is HTTP 411
+
+`측정 2026-10-20 · azure-cli 2.91.0 (uv tool, Python 3.12) · Azure free trial (quotaId FreeTrial_2014-09-01) · Microsoft.CognitiveServices api-version 2023-05-01 · MacBook Air M1`
+
+**증상:** `az login --use-device-code --allow-no-subscriptions` was done while the account had no subscription (only `N/A(tenant level account)`). After the free-trial signup finished, `az account list --refresh` still showed only the tenant entry, every time over several minutes. `az account tenant list` failed instead ("The command requires the extension account … Pip failed with status code 1"). Yet `GET https://management.azure.com/subscriptions?api-version=2022-12-01` with `az account get-access-token` returned the new subscription ("Azure subscription 1", Enabled, FreeTrial) at once.
+
+A curl `-X POST` with no body to ARM (`…/providers/Microsoft.CognitiveServices/register`, `…/accounts/<name>/listKeys`) gets **HTTP 411 Length Required** as an HTML page, which breaks a `| python -c 'json.load…'` pipe with `JSONDecodeError: Expecting value`.
+
+**해결:** either `az login` again after the signup, or skip the CLI's subscription cache and call ARM REST with the CLI token: register the provider (`POST …/register`, poll `GET …/providers/Microsoft.CognitiveServices` until `Registered`, about 10–20 s), `PUT …/resourcegroups/<rg>`, `PUT …/accounts/<name>?api-version=2023-05-01` with `{"kind":"SpeechServices","sku":{"name":"F0"},"location":"koreacentral","properties":{}}` (Succeeded within seconds), then `POST …/listKeys`. Give every body-less POST `-d '{}'`. Pipe `listKeys` straight into a 0600 file rather than printing it.
+
+Measured on the result: Azure `ko-KR-SunHiNeural` in koreacentral through the LiveKit `azure` plugin (livekit-agents 1.8.8), first audio median 0.23 s over 33 utterances (0.19–1.03 s); raw REST `cognitiveservices/v1` MP3 first byte 0.57–0.60 s warm, 1.47 s cold. Edge TTS for the same voice in the same worker was 0.48–0.90 s.
 
