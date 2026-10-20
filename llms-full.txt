@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T02:39:33Z · 소스 커밋 `f485089` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T03:28:40Z · 소스 커밋 `b744a51` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18770,4 +18770,20 @@ building (mostly apartment complexes). A building-count split under-weights larg
 One 동 is split across many codes (망원동: 04005–04018). data.go.kr 15000302 lists the service as "이용허락범위: 제한 없음",
 but the 인터넷우체국 이용약관 §22② bars commercial reuse of its works without consent; confirm with 우정사업본부 before a
 commercial launch. A 20-code random sample matched the public epost search 20/20.
+
+## OPS-533 — A mail sent the minute Email Routing is enabled bounces "Recipient not found", and Resend then suppresses that address for good
+
+`측정 2026-10-20 · Cloudflare Email Routing (zone with no MX before) · Resend free plan, ap-northeast-1`
+
+**증상:** `POST /zones/:id/email/routing/enable` answered `ready` and the MX records showed at 1.1.1.1 within seconds,
+but a Resend mail to the routed address sent about a minute later was `Bounced` with "Recipient not found" and then
+`Suppressed`. Later mails to that address are dropped by Resend without trying; a mail to a second routed address
+of the same zone sent eight minutes later was `Delivered`. The sending-only API key cannot list or remove
+suppressions, and the Cloudflare `emailRoutingAdaptive` GraphQL dataset stayed empty for the delivered mail for
+several minutes.
+
+**해결:** wait for the MX to resolve at the sender's side (minutes; the zone had a cached negative answer for MX)
+before the first test, and test with a throwaway address first. To undo a suppression: dashboard → Emails →
+Suppressions tab → row "More actions" → "Remove email address", and type the address to enable the button. Check
+delivery on the email's page (Sent → Delivered events) rather than in Cloudflare analytics.
 
