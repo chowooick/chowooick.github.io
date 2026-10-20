@@ -9354,3 +9354,77 @@ expectations and explain their correction. Keep the test browser frontmost, mute
 the system before starting VoiceOver, and restore sound/scripting preferences
 afterward. This requires working native accessibility access and does not bypass
 the locked-console limitation in OPS-363.
+
+---
+
+## OPS-522 — A new Cloudflare account has no card, so Zero Trust's $0 plan stops at checkout; and the first minute after "계정 생성" the dashboard renders blank pages
+
+`측정 2026-10-19 · dash.cloudflare.com (ko UI) in Brave 155 via Playwright (headed, signed-in profile copy) · account created the same minute, Free plan`
+
+**증상:** two things on a freshly created second account under the same login:
+
+- Zero Trust → 시작하기 → 「Zero Trust 무료」 요금제 선택 led to `/zero-trust/checkout/payment` with Apple Pay, Google Pay,
+  PayPal, card or bank fields, a billing address and two terms checkboxes. OPS-428 passed the same screen only because
+  that account already had a card on file. A new account never inherits one ("다른 계정의 기존 결제 수단 … 을
+  상속받지 않습니다" on the create dialog), so every Access feature — including the workers.dev "Cloudflare Access"
+  toggle — needs the owner's card first. A session cannot do this step.
+- Right after 「계정 생성」 a modal 「계정을 사용자와 연결 중…」 spun; navigating away left `/{account}/api-tokens` with an
+  empty main area for about two minutes. The page's own calls `GET /accounts/{id}` and `/access/organizations` answered
+  403 while `/memberships` already listed the account as `accepted`. A new tab two minutes later rendered normally.
+  The account API token page now offers a template 「Full account and zone access」 next to 「Write all resources」.
+
+**해결:** plan Access only for accounts with a payment method; for a private preview without one, gate in the Worker
+(a key sent once in the URL fragment, a cookie holding its digest; see OPS-524 for what such a gate misses). After
+creating an account, wait until `GET /accounts/{id}` answers 200 from the dashboard session before driving its pages.
+
+---
+
+## OPS-523 — Resend free plan: a fourth sending domain is refused ("domain limit of your plan"), and 「Create team」 is a paid feature
+
+`측정 2026-10-19 · resend.com dashboard (Google sign-in) · free plan with three verified domains`
+
+**증상:** 「Add domain」 on an account with three verified domains opened 「Upgrade to add new domains — You have reached the
+domain limit of your plan」 (Pro $20/month, 10 domains). OPS-355 found a second domain accepted on the free plan; the
+cap is three. The team menu's 「Create team」 opened `/team/create` marked 「Paid feature」, so a separate free team is not
+a way around it.
+
+**해결:** before promising mail from a new domain, count the Resend account's domains. Free options are removing an
+unused domain or another sender; Cloudflare Email Sending may still answer 401 code 2036 (OPS-340, again on a new
+account on 2026-10-19). Either way it is the owner's decision; DNS for the sender can wait.
+
+---
+
+## OPS-524 — Workers static assets are served before the Worker runs: an Astro middleware gate on workers.dev leaves every `public/` file reachable
+
+`측정 2026-10-19 · Astro 7.3.3 · @astrojs/cloudflare 14.3.2 · wrangler 4.135.0 deploy (dist/server/wrangler.json, assets.directory ../client) · workers.dev`
+
+**증상:** a private preview put every page behind an Astro middleware (closed page unless a cookie). Pages, API and
+`/__preview` were gated, but `/fonts/*.woff2`, `/images/*` and an untracked `public/concepts/` folder of design-review
+HTML boards from another session (`/concepts/index.html`, 7.5 MB) answered 200 to anyone: requests that match a static
+asset never reach the Worker, so middleware cannot see them. `/_headers` in `public/` is consumed (404) and its rules
+applied (`Parsed 3 valid header rules` in `astro preview`).
+
+**해결:** treat everything in `public/` as public. Remove what must not ship from `dist/client` between build and deploy
+(here `rmSync("dist/client/concepts")` in the deploy script) or move it out of `public/`; check with `curl` on the
+deployed host, not in dev where the same files are also served directly.
+
+---
+
+## OPS-525 — LuLu on the Air: `MINIFLARE_WORKERD_PATH` also fixes `astro preview`; a symlink to an allowed `workerd` does not
+
+`측정 2026-10-19 · MacBook Air M1 · LuLu (alert mode) · astro 7.3.3 preview · @astrojs/cloudflare 14.3.2 · workerd 1.20261012.1`
+
+**증상:** in a new checkout, a Turnstile `siteverify` call from the Worker under `astro preview` failed after its 8 s
+timeout on every request; `curl` from the same Mac answered in under a second. A probe Worker under `wrangler dev`
+timed out on `https://example.com/` too (OPS-476: LuLu holds new `workerd` paths). Replacing the checkout's
+`node_modules/@cloudflare/workerd-darwin-arm64/bin/workerd` with a **symlink** to an allowed binary did not help.
+Starting the preview with `MINIFLARE_WORKERD_PATH=<allowed workerd of the same version>` did: the probe answered 200 in
+121 ms and `siteverify` in 181 ms, and the real sign-up went through.
+
+Also: `npm run preview -- --port 4417` runs `astro preview --host 127.0.0.1 --port 4417`, so
+`pkill -f "astro preview --port 4417"` matches nothing and the old server keeps the port; the "restarted" server was
+the old one. Kill by port: `kill $(lsof -ti tcp:4417 -sTCP:LISTEN)`.
+
+**해결:** find an allowed binary of the same version (`plutil -convert xml1 -o - /Library/Objective-See/LuLu/rules.plist |
+grep workerd`, then each path's `package.json` version) and export `MINIFLARE_WORKERD_PATH` for `astro preview` and
+`wrangler dev` alike. Stop servers by port, not by command line.
