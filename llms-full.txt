@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T03:34:54Z · 소스 커밋 `04b5f3d` · 이 파일은 자동 생성물이다.
+생성 2026-10-20T04:20:30Z · 소스 커밋 `9086c04` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -18809,4 +18809,33 @@ itself was in `dist/server/entry.mjs` and `triggers.crons` from `wrangler.jsonc`
 `<dir>/v3`. To exercise a cron handler of an Astro Worker locally, call the handler's function through
 `getPlatformProxy` (OPS-106) rather than `/__scheduled`, and check `grep scheduled dist/server/entry.mjs` plus
 `"triggers"` in `dist/server/wrangler.json` for the deploy itself.
+
+## OPS-535 — Loading ~39,000 rows into a Workers Free D1 spends the whole day's write quota; the next INSERT fails with "exceeded D1's free tier daily row write limit"
+
+`측정 2026-10-20 · Cloudflare D1 (Workers Free) · wrangler 4.135.0 `d1 execute --remote --file``
+
+**증상:** a new production D1 got two migrations, 4,499 rows in one table and 34,403 rows (with an index on a foreign key
+column) in another, loaded in batches of 500. Two hours later the first real sign-up failed: the Worker caught
+`Error: D1_ERROR: Your account has exceeded D1's free tier daily row write limit. Upgrade to a paid plan or wait until
+tomorrow (midnight UTC) to continue.` Reads kept working. Rows written count each index entry, so ~39,000 rows with
+indexes reached the 100,000-a-day account limit; the limit is per account, so every D1 database of the account stopped
+taking writes until 00:00 UTC.
+
+**해결:** load bulk reference data the day before a launch, or into a store without the quota (a Worker can run under
+`wrangler dev` with a persisted local D1, OPS-332), or on Workers Paid. Afterwards load only the rows that changed. Log
+the caught error in API catch blocks: a generic "could not save" answer hid this cause until `wrangler tail` showed the
+message.
+
+## OPS-536 — `wrangler dev --local-upstream <host>` behind a proxy: forwarding `Host: <host>` makes same-origin POST checks fail; keep the loopback Host
+
+`측정 2026-10-20 · wrangler 4.135.0 dev (Astro 7 Cloudflare adapter output) · Node http proxy in Docker on Linux arm64`
+
+**증상:** a Worker that rejects a POST unless `Origin` equals `new URL(request.url).origin` ran under `wrangler dev
+--local-upstream dongnesosik.com` behind a small Node proxy. Every POST through the proxy answered the rejection,
+while the same POST sent straight to `127.0.0.1:8788` with Node `fetch` (which drops a custom Host) passed. With
+`http.request` the result depended only on the Host header: `Host: dongnesosik.com` → rejected,
+`Host: 127.0.0.1:8788` or none → accepted. GET pages were fine either way.
+
+**해결:** forward with `host: "127.0.0.1:8788"` and let `--local-upstream` present the public host to the Worker. Test
+a POST through the full path (proxy and Traefik) before switching traffic, not only GETs.
 
