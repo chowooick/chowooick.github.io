@@ -9719,3 +9719,18 @@ and `defaults write com.apple.VoiceOver4/default SCREnableAppleScript -bool YES`
 phrases such as "배틀마블 지금 플레이 버튼"). Afterwards `tell application "VoiceOver" to quit` and restore all
 three values (here: splash `false`, delete `SCREnableAppleScript`, unmute). Kill a stray `VoiceOver Quickstart`
 if a read was attempted before VoiceOver was running. Related: OPS-363, OPS-521.
+
+## OPS-542 — A new Microsoft account signed in by Playwright gets locked (`account.live.com/Abuse`), and the owner's running Brave can be driven over ssh with `osascript` instead
+
+`측정 2026-10-20 · Microsoft account (gmail address, email-code sign-in) · Azure free-trial signup · Brave 1.96 · macOS 27 · MacBook Air M1 over ssh`
+
+**증상:** a freshly created Microsoft account (a `@gmail.com` address, no password, email-code sign-in) was signed in a few times by Playwright (persistent profile, `--disable-blink-features=AutomationControlled`, typed with delays) on the way to `signup.azure.com`. After the code was accepted the page became `account.live.com/Abuse`: "… 계정이 잠겨 있습니다. Microsoft 서비스 계약을 위반하는 활동을 감지하여 계정을 잠갔습니다. 다음 단계에서 본인이 사람임을 확인하면 됩니다." The owner signing in by hand in a normal browser did not clear it; the next automated sign-in landed on the same page. The unlock step asks for a phone number and an SMS code, and the Azure trial after it asks for a card, so a session cannot finish either.
+
+What does work from ssh on the Air, against the owner's normal (non-automation) Brave and Safari:
+- `osascript -e 'tell application "Brave Browser" to make new window'`, `set URL of active tab of w to …`, and `get {title, URL} of tabs of windows` all work without a prompt. Address windows by `id` so other sessions' windows are left alone.
+- `execute … javascript` fails with "AppleScript를 통한 자바스크립트 실행 기능이 꺼져 있습니다 … 보기 > 개발자 > Apple Events의 자바스크립트 허용" (off by default).
+- Page text is still readable: `tell active tab of w` → `select all`, `copy selection`, then `pbpaste` over ssh. Save and restore the clipboard around it; other sessions share it.
+- `tell application "System Events" to tell process "Brave Browser" …` answered (menu bar names listed), so UI scripting is permitted for the ssh user.
+- Safari: `make new document with properties {URL:…}` returns a reference that cannot be used afterwards (-1728); use `front document`.
+
+**해결:** do not script sign-ins of a new Microsoft account; one lock costs an SMS round trip on the owner's phone. Open the signup screen in the owner's own Brave with `osascript` and let the owner do the parts that need their mailbox, phone and card. For the CLI side, `~/.local/bin/uv tool install --python 3.12 azure-cli` installs `az` 2.91.0 under the LuLu rules (OPS-227), and `az login --use-device-code` keeps the account out of any automated browser.
