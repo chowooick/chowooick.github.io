@@ -2745,3 +2745,31 @@ App Store pages (`apps.apple.com/kr/app/id<N>`) read fine through WebFetch (rati
 
 **해결:** for Play data use the scraper (`pip install google-play-scraper` in a scratch venv) or curl HTML, not WebFetch. Find
 package ids from the Play search page first. Spend WebSearch on discovery only and switch to WebFetch/curl on known URLs early.
+
+## AGT-150 — Primary-source checks for web research: YouTube talk transcripts via `youtube-transcript-api` when yt-dlp fails, openai.com customer stories only in headed Brave, and SPA prices from the site's own JSON API
+
+`측정 2026-10-21 · yt-dlp 2021-era (Python 3.9 venv) and latest (uvx --python 3.12) · youtube-transcript-api (uvx) · Brave 1.96 on the Air · Playwright`
+
+**증상:** verifying claims that only secondary articles carried. `yt-dlp` from a Python 3.9 venv failed with
+`ERROR: [youtube] <id>: The page needs to be reloaded.`; the latest yt-dlp (`uvx --python 3.12 yt-dlp@latest`) got the title,
+upload date and duration but `ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests`.
+WebFetch on `https://openai.com/index/<customer>/` returns 403, and headless Brave with `waitUntil: 'networkidle'` timed out at
+60 s. Korean fortune sites (React/Angular SPAs) return an empty shell to curl, so prices were not in the HTML.
+
+**사실:**
+- `uvx --python 3.12 --with youtube-transcript-api python -c "from youtube_transcript_api import YouTubeTranscriptApi;
+  t=YouTubeTranscriptApi().fetch('<id>', languages=['en'])"` returned the full timestamped auto-caption track (433 segments for
+  a 15-minute talk) right after yt-dlp's 429. Quote with the timestamp; auto-captions misspell names ("Tullen" for Tolan).
+- openai.com loaded in **headed** Brave on the Air (`headless: false`, `ignoreDefaultArgs: ['--enable-automation']`,
+  `--disable-blink-features=AutomationControlled`, `waitUntil: 'domcontentloaded'` plus a 12 s wait): status 200, article text
+  readable. With a `ko-KR` setup it served the Korean translation of the story.
+- The SPA's own bundle names its API. Grep the main JS and every lazy chunk (webpack `__webpack_require__.u` map, or Angular
+  `chunk-*.js` imports, fetched recursively) for `endpoint`, `http.get(`, `api/`. Public, unauthenticated endpoints often return
+  the price list directly (here: a coin-package list with KRW prices and the counsellor list with per-30-second prices).
+  Terms-of-service pages served by the same API state currency rates such as "1코인은 1원".
+- A Playwright `page.on('response')` hook that saves every JSON body while the page loads finds the same endpoints faster than
+  reading the bundle, when the page calls them on load.
+
+**해결:** for a talk, get the transcript with `youtube-transcript-api` first and cite timestamps. For openai.com use headed
+Brave on the Air. For SPA prices, capture JSON responses or read the bundle for the endpoint, then curl it; do not sign up to
+third-party services to see prices.
