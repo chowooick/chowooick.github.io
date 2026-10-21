@@ -2659,3 +2659,14 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 같은 URL을 Air에서 Playwright `chromium.launch({ executablePath: Brave, headless: false, ignoreDefaultArgs: ['--enable-automation'], args: ['--disable-blink-features=AutomationControlled'] })`로 열고 `networkidle` 뒤 3초 기다려 `innerText('body')`를 읽으면 가게명, 주소, 정가와 판매가(`$16.50 $5.49`), 픽업창(`Collect: 16:00 – 18:00`), 평점과 세부 평점까지 나왔다. 도시 목록 경로(`/find/<도시>`)는 404다.
 
 **해결:** 봇 차단(Vercel Checkpoint 등)이 있는 공개 페이지는 WebFetch·curl을 반복하지 말고 Air의 Brave를 headed로 띄워 본문 텍스트를 읽는다. 조사 결과에는 열람 날짜를 붙인다(상자 목록은 날마다 바뀐다).
+
+## AGT-144 — Alpine calls any function an expression evaluates to: `x-show="toast.undo"` with `undo` holding a callback runs the undo on every render
+
+`측정 2026-10-20 · Alpine.js 3.14.9 · Brave 1.96 (Chromium 154) headless · CUCKOO admin console`
+
+**증상:** a toast kept an "undo" callback in state (`toast: {text, undo: () => setStatus(id, before)}`) and showed its button with `x-show="toast.undo"`. Every status change was immediately reverted: the event log showed the `done` event and, 16 ms later, a `new` event for the same record. No console error.
+
+- Alpine's evaluator runs the expression and, if the result is a function, calls it (that is how `x-on:click="save"` works without parentheses). `x-show`, `x-text`, `x-bind` and `$watch` expressions do the same, so reading a property that holds a function executes it on every reactive re-evaluation.
+- `x-show="!!toast.undo"` returns a boolean; the property is read, not called. The revert stopped and the browser test's event log had exactly one event per click.
+
+**해결:** never let a directive expression end on a function-valued property. Coerce it (`!!x.fn`, `typeof x.fn === 'function'`) or keep a separate boolean (`hasUndo`). Related: AGT-134 (empty strings on boolean attributes).

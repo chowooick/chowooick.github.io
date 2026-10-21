@@ -9896,3 +9896,11 @@ affected; image, CSS and JS extensions are cached by default, 404 included.
 requesting the others, or purge what was requested too early: `POST /zones/<zone>/purge_cache` with
 `{"files": [...]}` listing the URL on **every** hostname (a Cloudflare for SaaS custom hostname such as
 `pa.example.com` is purged through the same zone). The next request was `MISS` with the new file.
+
+## OPS-553 — `rsync --exclude dist` also drops `node_modules/*/dist`: copying a working tree that way leaves Astro's CLI unable to start (`Cannot find module …/node_modules/astro/dist/cli/index.js`)
+
+`측정 2026-10-20 · rsync 3.x (macOS) · Astro 7.3.3 · Node 26 on the Air`
+
+**증상:** a new release directory was made with `rsync -a --exclude dist --exclude .astro old/ new/` so the old build output would not come along. `npm test` (tsx) still passed, but `npx astro check` and `npm run build` failed at once with `ERR_MODULE_NOT_FOUND … node_modules/astro/dist/cli/index.js`. An unanchored `--exclude dist` matches a directory named `dist` at any depth, and most packages ship their code in `dist/`.
+
+**해결:** anchor build-output excludes to the transfer root: `--exclude /dist --exclude /.astro` (or exclude `node_modules` and run `npm ci` in the copy). If it already happened, `rm -rf node_modules && npm ci` restores it.
