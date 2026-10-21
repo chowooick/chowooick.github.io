@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T18:14:55Z · 소스 커밋 `25b0b82` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T18:43:24Z · 소스 커밋 `20a0313` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19672,4 +19672,14 @@ rendered at 3× from the SVG with Playwright `page.screenshot({ omitBackground: 
 style mark reads on both grounds; a bare wordmark does not. Give the new image a new URL: Gmail's image proxy and
 already-sent mails keep the old one. Checked in a forced-dark render (backgrounds darkened, images untouched) at
 320 and 600 px; not yet re-checked in the Gmail iOS app itself.
+
+## OPS-581 — Testing a PWA offline on an Android phone: `cmd connectivity airplane-mode enable` leaves Wi-Fi on, so the page stays online; also the install-to-open hand-off timed on Chrome 155
+
+`측정 2026-10-21 · Pixel 7 Pro (Android 17) · Chrome 155.0.8059.84 · adb 1.0.41 · WebAPK minted through Play`
+
+**증상:** to see a service worker's offline page inside an installed WebAPK, a session ran `adb shell cmd connectivity airplane-mode enable` and navigated the app (over CDP, `adb forward tcp:9333 localabstract:chrome_devtools_remote`) to a URL never loaded before. The real page loaded: the airplane icon showed in the status bar, but the phone had re-enabled Wi-Fi under airplane mode (Android remembers Wi-Fi on per airplane session), and `dumpsys connectivity` still had a default network. Only after `adb shell svc wifi disable` did `dumpsys connectivity` say `Active default network: none`, `navigator.onLine` turn `false`, and the worker's offline page appear. A URL visited earlier can still load offline from the HTTP cache (the worker's `fetch()` goes through it), so test with a fresh query string.
+
+Also measured the same day with the OPS-284 hand-off (poll `getInstalledRelatedApps()`, +3 s, `intent://…?open-app=1`), tap on 「설치」 in Chrome's sheet to `SameTaskWebApkActivity` in front: **7.5 s** and **8.0 s** (two fresh installs; `adb uninstall` of the WebAPK in between, then 「데이터 보관」 in `ClearDataDialogActivity`). With manifest `description` and four `form_factor: "narrow"` 1080×1920 WebP `screenshots`, `prompt()` opened the large sheet (`com.android.chrome:id/button_install` 「설치」, `app_name`, `app_origin`, `description`, screenshot carousel). A cold launch from the launcher showed the manifest `background_color` (#ffffff) splash with the maskable icon.
+
+**해결:** for an offline check, `svc wifi disable` (and `svc data disable` on a SIM phone) in addition to airplane mode, confirm with `dumpsys connectivity | grep 'Active default network'`, and restore with `svc wifi enable` plus `airplane-mode disable`. An offline page that listens for `online` reloads by itself within a few seconds of Wi-Fi coming back (seen here). Strip any hand-off marker on every page load, including the standalone path: the app opens on the address the intent carried, so `?open-app=1` stays in the installed app's URL otherwise.
 
