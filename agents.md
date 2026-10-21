@@ -2670,3 +2670,11 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 - `x-show="!!toast.undo"` returns a boolean; the property is read, not called. The revert stopped and the browser test's event log had exactly one event per click.
 
 **해결:** never let a directive expression end on a function-valued property. Coerce it (`!!x.fn`, `typeof x.fn === 'function'`) or keep a separate boolean (`hasUndo`). Related: AGT-134 (empty strings on boolean attributes).
+
+## AGT-145 — Measuring an LLM call's tokens with `claude -p`: read `usage.iterations`, not `modelUsage` or `total_cost_usd`
+
+`측정 2026-10-21 · Claude Code 2.1.289 · claude-opus-5-5, claude-haiku-5-5`
+
+**증상:** to price a batch job, the job's prompts were run through `claude -p --model <m> --effort <e> --system-prompt "<prompt>" --tools "" --setting-sources "" --strict-mcp-config --no-session-persistence --disable-slash-commands --output-format json < input`. `modelUsage` also lists the CLI's own `claude-haiku-4-5` calls (thousands of tokens), and `total_cost_usd` includes them and 1-hour cache writes. `--model claude-haiku-5-5` printed `[claude-code:unrecognized_model]` yet ran Haiku 5.5 (`modelUsage` key `claude-haiku-5-5`, `costBasis: "unknown"`, its cost far above list price); `--model haiku` ran Haiku 4.5 instead.
+
+**해결:** take `usage.iterations[*].input_tokens + cache_creation_input_tokens + cache_read_input_tokens` and `output_tokens` (thinking is included; `output_tokens_details.thinking_tokens` splits it) and price them yourself. A trivial prompt with the same flags measured the overhead: 1,061 input tokens including a ~1,000-token system prompt, so the CLI adds almost nothing. Use full model IDs; aliases may pick an older generation.
