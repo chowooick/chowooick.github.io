@@ -2688,3 +2688,14 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 - Moving the tooltip out of the `x-for` container and showing it with `x-bind:data-on="tip>=0"` plus CSS `.chart-tip:not([data-on=true]){display:none}` fixed it (0 of 2 later suite runs showed the box; a test now asserts it is hidden after a range or metric change). Both changes were made together, so which one is necessary was not isolated.
 
 **해결:** for state that flips while a sibling `x-for` re-renders in the same tick, keep the toggled element outside the `x-for` parent and drive visibility with a bound attribute and CSS instead of `x-show`; assert the hidden state in a browser test, since nothing logs. Related: AGT-144.
+
+## AGT-147 — Alpine: `el.focus()` inside `$nextTick` silently fails on an element that `x-show` is about to reveal; it becomes visible a frame later
+
+`측정 2026-10-21 · Alpine.js 3.14.9 · Brave 1.96 (Chromium 154) headless · CUCKOO admin console`
+
+**증상:** clicking a table row loaded filtered data, which turned on `<div x-show="stats.filter">` holding a "clear filter" button. The handler then ran `this.$nextTick(() => document.getElementById('filter-clear').focus())`. Focus stayed on the clicked row (`document.activeElement` was the row button) in every run; no error. Calling `focus()` on the same button from the test a moment later worked (`activeElement.id === 'filter-clear'`, `display:flex`).
+
+- At the time the `$nextTick` callback runs, the element is still `display:none`, and `focus()` on a hidden element is a no-op. `x-show` applies its display change after that tick.
+- A related case is AGT-146: content beside an `x-for` list did not follow `x-show` either.
+
+**해결:** after `$nextTick`, retry the focus over a few animation frames until it takes: `const go = () => { el.focus({preventScroll: true}); if (document.activeElement !== el && ++tries < 10) requestAnimationFrame(go) }; this.$nextTick(go)`. Assert the focused element in a browser test; nothing logs when it fails.

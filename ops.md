@@ -10027,3 +10027,34 @@ This is the Fetch spec's rule for non-CORS requests (`no-referrer` serializes th
 - The app was in Testing with no test users, and the project owner's account still got through. Adding a test user by script failed: in the 대상 page's "Add users" panel the chip was accepted (`1 / 100`), but clicking `저장` (by locator, by mouse, by Enter) sent no request at all; the list stayed "사용자 0명".
 
 **해결:** for a one-off real sign-in, run the browser where the Google session is freshest (OPS-447) and forward the app's port to it rather than moving the app. For an owner-only admin, Testing mode with no test users is enough. For the console wizard itself (project create, `/auth/overview/create`), the selectors that worked: `getByLabel("프로젝트 이름")`, `input[formcontrolname=displayName]`, `cfc-select[formcontrolname=userSupportEmail]` then `getByRole("option", {name})`, `mat-radio-button` with text `외부` → its `input`, the contact chip `input[aria-label="이메일 텍스트 필드"]` + Enter, the last `input[type=checkbox]` (policy agreement, OPS-084), then `만들기`. The client page reads ID and secret as in OPS-332/OPS-342.
+
+## OPS-567 — A column flexbox with `flex-wrap: wrap` sizes each line to its widest child's max-content, so a horizontal chip scroller inside it overflows the phone screen
+
+`측정 2026-10-21 · Brave 1.96 (Chromium 154) · Playwright 1.58 · CUCKOO admin console, product page toolbar`
+
+**증상:** a toolbar `display:flex; flex-wrap:wrap` switched to `flex-direction:column; align-items:stretch` under 960 px. Its first child was a chip row with `overflow-x:auto` (seven category chips, `white-space:nowrap`). At a 390 px viewport the chip row and the search field below it were both 468 px wide and the page scrolled sideways. The old check `scrollWidth <= innerWidth` passed because a Playwright `isMobile` context widens the layout viewport (AGT-074).
+
+- In a multi-line (wrapping) flex container the cross size of each line comes from its items' content, not from the container. The chips' max-content width set the line width, and `align-items:stretch` stretched every item to it. `overflow-x:auto` on the chip row never got the chance to scroll.
+- `flex-wrap: nowrap` on the column container fixed it. Each item then stretches to the container width (390 → 358 px) and the chips scroll inside it.
+
+**해결:** when a wrapping row toolbar becomes a column on phones, set `flex-wrap: nowrap` in the same rule. Check overflow against the requested viewport width (`page.viewportSize().width`), not `innerWidth`.
+
+## OPS-568 — A screen-reader-only `<table>` with the usual 1 px `.visually-hidden` class still widens the page: tables ignore `width: 1px`
+
+`측정 2026-10-21 · Brave 1.96 (Chromium 154) · CUCKOO admin console chart`
+
+**증상:** a chart had a hidden data table for screen readers, `<table class="visually-hidden">` (`position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap`). With 4 columns it fitted. With 6 columns, a 320 px phone layout grew to 379 px. The elements past the edge were the `TABLE`, its `CAPTION`, `THEAD` and `TH`, all with `right` = 379.
+
+- A table's used width is at least its min-content width, so `width: 1px` does not shrink it. `white-space: nowrap` from the class makes every header cell a single line, which makes that minimum larger.
+
+**해결:** put the class on a wrapper `div` and leave the `table` unstyled: `<div class="visually-hidden"><table>…</table></div>`. The div keeps its 1 px box and clips the table. After the change the page was 320 px wide again.
+
+## OPS-569 — A full-page screenshot taken right after a link click on a page with `@view-transition { navigation: auto }` comes out stretched
+
+`측정 2026-10-21 · Brave 1.96 (Chromium 154) headless · Playwright 1.58 · CUCKOO admin console`
+
+**증상:** a test clicked a link from the home page to another page of the same site, waited for the URL and for Alpine, and took `page.screenshot({fullPage: true})`. In the 1440 × 1779 image, the main column's text was squashed and stretched sideways, and everything ended at y ≈ 960 with blank space below. The sidebar looked normal. Taken 400 ms later, the same page looked correct. An axe scan run in that state still passed.
+
+- The CSS cross-document view transition (0.16 s here) was still animating the root snapshot from the old page's size to the new one. To take a full-page shot, Playwright resizes the viewport to the document height, which rescales that snapshot.
+
+**해결:** after navigating by click on a site that opts into view transitions, wait out the transition before visual checks: `await page.waitForTimeout(<duration> + 250)`, or wait on `document.getAnimations()` emptying. A shot from a direct `page.goto` does not have this problem. Related: OPS-271 (`page.route` aborting view transitions).
