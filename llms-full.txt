@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T00:29:16Z · 소스 커밋 `baafe2f` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T00:46:51Z · 소스 커밋 `78ebc1d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19097,4 +19097,17 @@ the scroll dropped from 17 to 0. Size each strip item to its content, for exampl
 - Server code that called `https://pa.<their-domain>/…`: keep URL, Host and TLS SNI, but connect to the old origin's IP with `node:https` `request(url, { lookup, agent: false })`. With the default keep-alive agent a reused socket ignored the custom `lookup`. Measured: the form page came back from the old origin through the pin; pointing the pin at `127.0.0.1` gave `ECONNREFUSED`, so the pin is what is used. The old origin's HTTP-01 certificate renewal will fail once the name points elsewhere, so the pin is temporary (until that cert's expiry).
 
 **해결:** before the customer flips the CNAME: enable SaaS, set the tunnel hostname as fallback origin, create the custom hostname (`ssl.method: http`, `type: dv`), add the ingress rule, and pin any server-side calls to the old site. Ask the customer for a separate hostname for the old site before its certificate expires. Make canonical URLs a runtime setting so they can move to the customer's name after the flip without a rebuild.
+
+## OPS-549 — Notification mail with no mail provider: a Worker with an Email Routing `send_email` binding, uploaded by REST, delivers only to verified destinations and says so per recipient
+
+`측정 2026-10-20 · Cloudflare Workers Free · Email Routing enabled on the sending zone · Workers REST upload with a zone/account API token · Gmail recipient`
+
+**증상:** a Node app on a Dokploy host had to email each form submission. Resend refused another domain (OPS-523), and `GET /zones/<id>/email/sending/subdomains` answered `2036 Unauthorized` for the zone token, so Cloudflare Email Sending was not usable either.
+
+- A Worker can send through the `send_email` binding from any address on a zone that has Email Routing enabled, **but only to verified Email Routing destination addresses** of the account. For an unverified one, `env.MAIL.send()` throws `destination address is not a verified address`. In the same request a verified recipient still went through.
+- `POST /accounts/<id>/email/routing/addresses {"email":…}` adds a destination as `unverified` and makes Cloudflare mail a verification link to that address. Nothing reaches it until its owner clicks.
+- No wrangler needed: `PUT /accounts/<id>/workers/scripts/<name>` (multipart: `metadata` JSON with `main_module` and `bindings`, plus the module part as `application/javascript+module`), then `POST …/scripts/<name>/subdomain {"enabled":true,"previews_enabled":false}` for the `*.workers.dev` URL. Bindings used: `{"type":"send_email","name":"MAIL","allowed_destination_addresses":[…]}`, `plain_text` for the sender, and `secret_text` for a bearer token the app sends. Both calls answered `success: true` on the first try.
+- `EmailMessage(from, to, raw)` takes **one** envelope recipient, so send once per address and keep both addresses in the `To:` header. The raw MIME needs RFC 2047 encoded `From`/`Subject` (`=?UTF-8?B?…?=`), `Date`, `Message-ID` and base64 parts. Measured: a multipart/alternative message reached the Gmail inbox (not spam) in under a minute, with the Korean subject and HTML table intact.
+
+**해결:** for owner-facing notices, put a small relay Worker on the zone that already has Email Routing, protect it with a bearer secret (`crypto.subtle.timingSafeEqual`), return per-recipient results, and have the app store the submission first so a mail failure never loses it. Add any outside recipient as a destination first and tell them to expect the Cloudflare verification mail.
 
