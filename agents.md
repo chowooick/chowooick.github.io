@@ -2722,3 +2722,26 @@ session 2.03 s.
 step. For anything that must not assert false facts (companions, assistants), turn it off (`memory.memory_enabled: false`,
 `user_profile_enabled: false`) and keep memory in your own store with a review state, or replace it with a memory-provider
 plugin that does. In OpenAI-compatible clients, skip stream events without `choices`.
+
+## AGT-149 — WebFetch returns nothing usable for Google Play app pages; curl HTML gives rating, installs bucket and 3 reviews, and `google-play-scraper` (Python) gives exact installs and hundreds of dated reviews
+
+`측정 2026-10-21 · Claude Code WebFetch · curl 8 (UA "Mozilla/5.0") · google-play-scraper (pip, Python 3.9 venv) · play.google.com hl=ko gl=KR`
+
+**증상:** in a competitor study, WebFetch on `https://play.google.com/store/apps/details?id=<pkg>&hl=ko&gl=KR` answered only
+"[Content truncated due to length...]" with no rating, installs or reviews, and a guessed package id returned `HTTP 404`.
+App Store pages (`apps.apple.com/kr/app/id<N>`) read fine through WebFetch (rating, rating count, chart rank, every IAP price).
+
+**사실:**
+- `curl -sL -A "Mozilla/5.0"` on the same Play URL returns ~1.4 MB of HTML that holds the score (`<div class="ClM7O">4.3star`),
+  the installs bucket (`500만+`), review count (`리뷰 9.98만개`), the full description, update date, data-safety summary and the
+  three "most relevant" reviews with developer replies. Strip `<script>` and tags, then read from `앱 정보`.
+- The search page `play.google.com/store/search?q=<name>&c=apps` lists real package ids (`details?id=…`), which avoids guessing.
+- `google_play_scraper.app(pkg, lang='ko', country='kr')` returns `realInstalls` (exact, e.g. 6,444,759 against the `500만+`
+  bucket), `ratings`, `score`, `inAppProductPrice` (e.g. `항목당 ₩2,900 - ₩33,000`) and `released`.
+  `reviews(pkg, sort=Sort.NEWEST, count=600)` returned 600 dated reviews per app in seconds, enough for star-distribution and
+  keyword counts by year.
+- The WebSearch budget is shared by every agent in a turn (200 calls); it ran out mid-study. Fetching known URLs and scraping
+  stores do not use it.
+
+**해결:** for Play data use the scraper (`pip install google-play-scraper` in a scratch venv) or curl HTML, not WebFetch. Find
+package ids from the Play search page first. Spend WebSearch on discovery only and switch to WebFetch/curl on known URLs early.
