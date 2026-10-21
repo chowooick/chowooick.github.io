@@ -5624,3 +5624,53 @@ identical to the main pack when both come from one export, so mounting with the 
 `load_resource_pack`. Set `body_size_limit` above the pack size. Measured: 5.0 MB `index.pck`
 became 2.31 MB plus a 2.76 MB `extras.pck` (music and CJK font subsets) fetched after the engine
 starts; the browser's HTTP cache serves the second fetch on a return visit.
+
+## GDT-319 — `CPUParticles3D.emitting = true` before the node is in the tree logs `Condition "!is_inside_tree()" is true` from `get_global_transform`
+
+`측정 2026-10-21 · Godot 4.7.2-stable · GL Compatibility · Web export (Brave 1.96) and headless`
+
+**증상:** a word-projectile `Label3D` got a trail emitter built by a helper, and the code set
+`trail.emitting = true` and then `label.add_child(trail)`. Every attack printed
+`ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()` / `at: get_global_transform`
+to the browser console (28 lines in one test run, enough to fail a "no console errors" check). Nothing
+looked wrong on screen. A headless `godot --script` runner that printed a marker between steps put the
+error inside the attack step and nowhere else.
+
+Starting emission restarts the system, and the restart reads the node's global transform, which a node
+outside the tree does not have.
+
+**해결:** add the emitter to its parent first, then set `emitting = true`. With that one swap the
+same run had 0 console errors. The same rule applies to `restart()`.
+
+## GDT-320 — A SubViewport 3D world that is reparented between screens logs tree errors; keep it in the tree and make it follow a placeholder
+
+`측정 2026-10-21 · Godot 4.7.2-stable · GL Compatibility · Web export`
+
+**증상:** one `SubViewportContainer` with the fight stage was moved into whichever screen needed it
+(home showcase, waiting room, full-screen fight, result) with `remove_child` / `add_child`. Tweens,
+`await` timers and particles that were still running on the 3D nodes while the container was out of
+the tree printed `Node not inside tree. Use look_at_from_position() instead.` (from a camera
+`look_at` in `_process` and setters) and `get_global_transform` errors, dozens per session.
+
+**해결:** create the container once under the root UI, behind the screen layer, and never remove it.
+Each screen adds an empty placeholder `Control` where the 3D should appear; every frame the root copies
+the placeholder's global rect onto the container. Wrap the container in a `Control` with
+`clip_contents = true` sized to the placeholder rect intersected with its nearest `ScrollContainer`, so
+a scrolled page does not draw the 3D over its header. Set the SubViewport to
+`UPDATE_WHEN_PARENT_VISIBLE` and hide the clip control when no placeholder is on screen, so the world
+stops rendering on screens without it. Guard any remaining `look_at` with `is_inside_tree()`.
+
+## GDT-321 — A JavaScript test hook can act before the game has applied the server message that enabled the action
+
+`측정 2026-10-21 · Godot 4.7.2-stable Web export · Playwright 1.5x driving Brave 1.96 headless · SpacetimeDB 2.8 websocket`
+
+**증상:** a Playwright test listened to the same websocket frames as the game, saw a new round open,
+and immediately called `window.blablaAct('answer:3')`. About one round in thirty the game ignored it:
+the game's own state still said the previous phase, because Godot polls its `WebSocketPeer` once per
+frame and the hook callback ran before that poll. The answer never reached the server and the test
+timed out with no reducer error. A real tap cannot happen this early, since the buttons are not drawn
+yet.
+
+**해결:** publish the phase and round the game itself has applied (here through `window.blablaState`)
+and make the test wait until they match the frame it saw before acting. Thirty-one screenshots and
+three full fights then passed three runs in a row.

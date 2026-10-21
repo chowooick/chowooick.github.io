@@ -2887,3 +2887,35 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 함정 둘: ① 넓이를 다 쓰는 투명 라디오(`position:absolute;inset:0;opacity:0`) 위에 형제 span이 그려지면 Playwright `click()`이 "span … intercepts pointer events"로 30초 재시도 후 실패한다. 라디오에 `z-index:1`을 준다. ② 큰 글씨 단계에서 깨지는 곳은 눈으로 찾기 어렵다. 단계 0과 2에서 글자 노드 사각형끼리, 글자와 링크·버튼 상자끼리 겹치는 쌍과 `overflow:hidden` 안에서 잘리는 요소를 뽑아 **단계 2에서만 새로 생긴 것**만 보면 13페이지×5폭에서 실제 문제 4곳(버튼과 날짜 겹침, 스탬프 글자 넘침, 카드 제목 잘림, 전화 버튼 줄 넘침)으로 좁혀졌다. 고정·sticky 요소와 닫힌 `<details>` 안 글자는 빼야 오탐이 없다.
 
 **해결:** 위 식으로 빌드 때 바꾸고, 단계 0에서 계산값이 원래 값과 같은지와 단계 2에서 모든 페이지 `scrollWidth <= innerWidth`인지를 브라우저 테스트로 묶는다. 넘치는 곳은 `html[data-text="2"] …` 규칙으로 그 자리만 고친다.
+
+## AGT-158 — librosa `beat_track` reads a half-time trap track at 103.33 BPM instead of 155; seed it with `start_bpm`
+
+`측정 2026-10-21 · librosa 0.11 · CC0 half-time trap track, 74 s`
+
+**증상:** the detected tempo was 103.33 BPM (it locked onto a triplet pulse). The kick pattern repeated
+every 6.194 s, which is 2.67 bars at 103.33 BPM and therefore cannot be the real tempo.
+
+**해결:** check that a repeating pattern spans a whole number of bars at the detected tempo; when it
+does not, rerun `beat_track(start_bpm=<candidate>)`. With `start_bpm=155` the beats fitted with a 4.7 ms
+residual.
+
+## AGT-159 — WavLM speaker verification crashes on clips shorter than about 0.1 s; pad to 0.5 s
+
+`측정 2026-10-21 · microsoft/wavlm-base-plus-sv (transformers) · short TTS shouts`
+
+**증상:** `RuntimeError: Calculated padded input size per channel: (4). Kernel size: (7). Kernel size
+can't be greater than actual input size` for one-syllable shouts trimmed to under 0.1 s.
+
+**해결:** zero-pad the waveform to at least 0.5 s before the feature extractor. Similarity scores for
+longer clips are unchanged.
+
+## AGT-160 — Qwen3-TTS VoiceDesign cannot say some one-syllable Korean shouts ("독!") or "오류", however many seeds
+
+`측정 2026-10-21 · mlx-audio 0.5.7 · Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16 · Korean game voice lines`
+
+**증상:** 36 seeds of "독!" came back as 토크 / 도악 / 톡 in Whisper transcripts, and "오류" as "오리오".
+Longer lines in the same brief were read correctly.
+
+**해결:** change the line ("독 공격!", "에러, 에러!") or clone the approved character voice with the
+Base model for the problem line. Gate every take by transcript (Whisper) as well as by the acoustic
+age/gender check of AGT-089.

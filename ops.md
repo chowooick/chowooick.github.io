@@ -10351,3 +10351,15 @@ Relates to OPS-381 (a stale module after a skipped rebuild looks the same from t
 - Stripe: stored value is *restricted*, not prohibited: "Seller-maintained stored value or credits may be subject to limits." Payment facilitation is restricted too, including "receiving settlement proceeds for goods or services that you did not provide". Stripe Billing credits must not be used to "sell gift cards" or "offer stored value". Dispute fee $15, plus a $15 counter fee that is refunded only if you win. Stripe Tax: 0.5% per transaction where registered (no-code).
 
 **해결:** pay suppliers by ACH/bill pay instead of Zelle, or enroll the account and every recipient well before the first payout. Do not route consumer purchases through a Chase Zelle account. Put an order code in every Zelle memo and match by hand. Ask Stripe and PayPal/Venmo in writing before selling a prepaid balance through them.
+
+## OPS-589 — FreePD.com is closed (2026-10-21); OpenGameArt's CC0 filter and Kenney are the working CC0 music sources
+
+`측정 2026-10-21 · freepd.com, opengameart.org`
+
+**증상:** FreePD's main page shows "Site Closed" and its category pages (for example `upbeat.php`)
+return 404, so the long-standing public-domain music library is no longer usable for a game build.
+
+**해결:** search OpenGameArt with the license filter set to CC0 only and record the author and URL per
+file (authors used for an arcade game: Holizna, Fupi, G_P, Archonic, Robin Lamb). Kenney's audio packs
+are CC0 for effects. Check each OpenGameArt entry's license line on the page itself; the site mixes
+CC0, CC-BY and GPL entries in one listing.
