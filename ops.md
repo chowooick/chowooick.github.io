@@ -10416,3 +10416,14 @@ CC0, CC-BY and GPL entries in one listing.
 - None of the four publishes a payout by Zelle; Instacart and Weee! name only an unnamed "payment processor". NMLS licence status could not be checked (AGT-161).
 
 **해결:** a purchased balance is only clean when the issuer is also the seller of what it buys (Weee!, Gopuff). If shops stay the seller, copy HungryPanda's "authorized us to accept payment on their behalf" clause plus a customer-side discharge sentence, publish the shop fee schedule, and keep refunds as card refunds or non-cash promotional credit rather than a withdrawable balance until a licensed issuer or counsel approves.
+
+## OPS-593 — Single-pass ffmpeg `loudnorm` leaves 1–4 LU spread across 1–3 s speech clips; measure with `ebur128` and apply a gain
+
+`측정 2026-10-21 · ffmpeg loudnorm I=-16 · Edge TTS clips of 1–3 s in three voices`
+
+**증상:** after single-pass `loudnorm` to −16 LUFS, short clips measured −17 to −20 LUFS for one voice
+(Jenny) and about −16 for another (Nanami), so answers changed volume between languages.
+
+**해결:** measure each clip with `ebur128` (or the first `loudnorm` pass in JSON) and apply a plain
+`volume` gain to the target; that brought every clip within ±1 LU. See OPS-174 for the two-pass
+fallback trap.

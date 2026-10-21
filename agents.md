@@ -2965,3 +2965,37 @@ age/gender check of AGT-089.
 - Instacart: `instacart.com/terms`, `/help/section/<id>/<id>` legal pages and `company.instacart.com/tax-policy-by-state` all open with curl; take help-page ids from the links inside `/terms` (gift card terms `360007996832/6979946277140`, credit terms `639415266/3368486851`).
 
 **해결:** for HungryPanda always add `countryCode=<CC>&language=EN` and check the entity name and governing law before quoting; for Gopuff use the `/e/` pages and report `/go/` pages as "could not open".
+
+## AGT-164 — Edge TTS `ja-JP-NanamiNeural` reads 何時 as いつ, not なんじ; only an STT round trip caught it
+
+`측정 2026-10-21 · edge-tts 7.3.1 · ja-JP-NanamiNeural · mlx-whisper large-v3-turbo on the MacBook Air`
+
+**증상:** answer clips for "何時に…" questions (two of 110 Japanese items) said いつ. The text was right,
+so no text check could see it. A Whisper round trip of all 1,218 clips flagged them (1,211/1,218 matched
+on the first pass).
+
+**해결:** feed the TTS a reading-safe string (`何時` → `なんじ`) while keeping the kanji in the displayed
+text, and keep the STT round trip in the pipeline. After two such fixes 1,215/1,218 matched automatically;
+the remaining three were transcripts written with kanji or digits for the same words.
+
+## AGT-165 — edge-tts with an `asyncio.Semaphore` created at module level fails with "attached to a different loop" on Python 3.9
+
+`측정 2026-10-21 · edge-tts 7.3.1 · Python 3.9 · batch of 1,218 clips`
+
+**증상:** `got Future <...> attached to a different loop`; the batch saved 4 of 1,218 files and stopped.
+
+**해결:** create the semaphore inside the coroutine that `asyncio.run()` starts (for example in
+`main()`), not at import time.
+
+## AGT-166 — A cross-model trap review (Codex) often calls a deliberately wrong option "correct in some dialect or slang"
+
+`측정 2026-10-21 · codex-cli 0.162 · gpt-6-astra xhigh · 162 trap options for an EN/JA/ES learning game`
+
+**증상:** many TRAP_OK verdicts argued that a near-miss distractor is acceptable in a regional dialect or
+casual register (for example a humble-form おります trap), which would make the item ambiguous by that
+standard.
+
+**해결:** keep the reviewer, but judge each such verdict against the item's stated target (standard
+language at the stated CEFR level) and log the decision. In this run most suggested replacements were
+conjugation-error traps and were safe to accept; three objections were rejected with reasons in the log.
+Twelve parallel `codex exec` reviews at xhigh finished in about 25 minutes without errors.
