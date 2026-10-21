@@ -10297,3 +10297,18 @@ output shows only the 403 line among other noise.
 stop the script when publish fails (`set -e`, or check for `Created new database`/`Updated database` in its output), and
 confirm the module with `curl -s http://127.0.0.1:<port>/v1/database/<db>/schema?version=9` before running tests.
 Relates to OPS-381 (a stale module after a skipped rebuild looks the same from the test side).
+
+## OPS-585 — Testing a Firebase Google sign-in after Google starts refusing the automated browser: open the real chooser, then `signInWithCustomToken` on the page's own Firebase instance; the SpacetimeDB identity is the same as a popup sign-in
+
+`측정 2026-10-21 · Firebase JS SDK 12.17.1 (project mnori1) · Brave 1.96 headless, Playwright 1.58 on the MacBook Air · SpacetimeDB 2.8.0 standalone · Godot 4.7.2 web build`
+
+**증상:** a browser test drove the real Google popup (copy of the Air's signed-in profile, headless). The first two runs signed in. From the third run on, picking the account in the chooser led to `accounts.google.com/v3/signin/rejected` ("로그인할 수 없음 · 브라우저 또는 앱이 안전하지 않을 수 있습니다", OPS-566), and the game waited for an account that never came. Nothing on the page reports this: the popup just stays open.
+
+**사실:**
+- A page that loads Firebase from `https://www.gstatic.com/firebasejs/<ver>/firebase-auth.js` can be signed in from the test with `page.evaluate(async t => { const A = await import('<same URL>'); await A.signInWithCustomToken(A.getAuth(), t); }, token)`. Same URL, same module instance, so `getAuth()` is the app's own `Auth` and its `onAuthStateChanged` listeners fire as for a popup sign-in.
+- The custom token needs the account's uid: `POST https://identitytoolkit.googleapis.com/v1/projects/<id>/accounts:lookup {"email":[...]}` with a cloud-platform token from the Admin SDK service account, then an RS256 JWT `{iss: sa, sub: sa, aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit", uid, exp: iat+3600}` signed with the account's key (Node's `crypto.sign`, no SDK). The mnori.com hub container keeps that account in `FIREBASE_SERVICE_ACCOUNT` **base64-encoded**, not as JSON; a parser that echoes its input on failure prints the private key into the log.
+- SpacetimeDB derived the same identity (`c200c3e8…`) from the custom-token session as from the earlier real popup session: the identity comes from `iss|sub`, and `sub` is the uid either way.
+- Clicking the game's own Google button first and leaving the popup open keeps the click path under test (whatever the game sends before opening the popup still goes out); close the popup afterwards, which the game sees as `auth/popup-closed-by-user`.
+- Two things that look like failures and are not: Chromium logs `Cross-Origin-Opener-Policy policy would block the window.closed call` as console errors during every Firebase popup, and the sign-in still completes. And on `http://localhost` an MNORI-SSO page (hub cookie on `.mnori.com`) signs itself out on reload, because it cannot see the hub cookie and follows the hub; check reload persistence only on a `*.mnori.com` origin.
+
+**해결:** keep one real-popup run for the chooser itself, and make the repeatable test mint a custom token (script reads the service account from stdin, writes the token to a 0600 file) and sign in with it as above. Filter the COOP line out of the test's console-error check.
