@@ -10203,7 +10203,7 @@ Same session, same browser: a PWA install check in `chromium.launchPersistentCon
 
 **증상:** a project folder was renamed with `mv ~/work/<old> ~/work/<new>`; nothing else changed.
 
-- Python (uv): `uv sync` reported nothing to do, and `.venv/bin/uvicorn` still started with
+- Python (uv): `uv sync -q` exited without error, and afterwards `.venv/bin/uvicorn` still started with
   `#!/Users/<user>/work/<old>/server/.venv/bin/python`. `uv run pytest` then printed
   `error: Failed to spawn: `pytest`` / `Caused by: No such file or directory (os error 2)`. Every console
   script in the venv (uvicorn, pytest, …) is affected; `uv run python -m …` still works, so a service started
