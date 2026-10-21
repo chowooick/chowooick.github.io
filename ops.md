@@ -10001,3 +10001,29 @@ requesting the others, or purge what was requested too early: `POST /zones/<zone
 - After filling homepage, privacy and terms URLs and one contact email, `저장` enabled and the domain removal saved.
 
 **해결:** when a console form's save button stays disabled with no message, list `form .ng-invalid` elements (their `formcontrolname`) to find the required fields. Fill them with the product's real pages; do not leave the brand half-edited. Related: OPS-084 (the same fields gate "앱 게시").
+
+## OPS-565 — `Referrer-Policy: no-referrer` makes Chromium send `Origin: null` with a same-origin form POST; `fetch()` POSTs from the same page keep the real origin
+
+`측정 2026-10-21 · Brave 1.97 (Chromium 155) headless via Playwright on the Air · plain Node http server`
+
+**증상:** an admin page served with `Referrer-Policy: no-referrer` had a sign-out `<form method="post">` to its own origin. The server's same-origin check (`Origin` must equal the site) refused it, while the page's JSON `fetch()` POSTs to the same server passed the same check. A page on 127.0.0.1 measured both in one browser:
+
+- policy `no-referrer`: form POST `origin=null`, `sec-fetch-site=same-origin`; fetch POST `origin=http://127.0.0.1:4499`.
+- policy `same-origin`: form POST and fetch POST both `origin=http://127.0.0.1:4499`.
+
+This is the Fetch spec's rule for non-CORS requests (`no-referrer` serializes the origin as `null` for methods other than GET/HEAD); `fetch()` from the page is CORS-mode and is not affected.
+
+**해결:** on pages that post forms to themselves and check `Origin`, use `Referrer-Policy: same-origin` (still nothing is sent to other sites), or post with `fetch()`. Do not relax the server check to accept `null`: any sandboxed or `data:` page sends that too. `Sec-Fetch-Site: same-origin` stays correct under both policies and is a useful second check.
+
+## OPS-566 — Google OAuth sign-in to a new web client from an automation profile: headless Brave is refused, headed Brave on the Air wants a passkey, headed Chrome for Testing on the main Mac passes; a Testing-mode app lets its project owner in without a test-user entry
+
+`측정 2026-10-21 · Google Auth Platform (Korean UI), new project, external, publishing status Testing, no test users · Brave 1.97 on the Air (copy of ~/kc-test/profile) · Chrome for Testing (ms-playwright chromium-1243) on the main Mac (copy of ~/.gstack/chromium-profile)`
+
+**증상:** a server-side code flow (PKCE, `scope=openid email`) had to be tested once with the owner's real account.
+
+- Headless Brave with the Air's signed-in profile copy: the account chooser appeared; clicking the account went to `accounts.google.com/v3/signin/rejected` — "로그인할 수 없음 · 브라우저 또는 앱이 안전하지 않을 수 있습니다". The same profile drives the Cloud console headless without trouble, because no new sign-in happens there.
+- Headed Brave (off-screen) with the same copy: the chooser led to `/v3/signin/challenge/pk` (passkey) and stopped.
+- Headed Chrome for Testing on the main Mac with a copy of the gstack profile, off-screen (`--window-position=-2400,-2400`), as in OPS-447: chooser → `challenge/pk` passed on its own → `SetSID` → consent `signin/oauth/id` → `계속` → the app's callback; session set. The app ran on the Air; the Mac reached it through `ssh -f -N -L 4417:127.0.0.1:4417 air`, so the registered loopback redirect URI `http://127.0.0.1:4417/...` matched.
+- The app was in Testing with no test users, and the project owner's account still got through. Adding a test user by script failed: in the 대상 page's "Add users" panel the chip was accepted (`1 / 100`), but clicking `저장` (by locator, by mouse, by Enter) sent no request at all; the list stayed "사용자 0명".
+
+**해결:** for a one-off real sign-in, run the browser where the Google session is freshest (OPS-447) and forward the app's port to it rather than moving the app. For an owner-only admin, Testing mode with no test users is enough. For the console wizard itself (project create, `/auth/overview/create`), the selectors that worked: `getByLabel("프로젝트 이름")`, `input[formcontrolname=displayName]`, `cfc-select[formcontrolname=userSupportEmail]` then `getByRole("option", {name})`, `mat-radio-button` with text `외부` → its `input`, the contact chip `input[aria-label="이메일 텍스트 필드"]` + Enter, the last `input[type=checkbox]` (policy agreement, OPS-084), then `만들기`. The client page reads ID and secret as in OPS-332/OPS-342.
