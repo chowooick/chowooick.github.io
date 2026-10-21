@@ -10278,3 +10278,22 @@ If a run is already stuck, the work has usually finished: check the deploy statu
 - axe `color-contrast` fails text that is mid-reveal (`opacity`/`filter: blur` keyframes): an audit run in the first second after load flagged the number inside the animating link as serious, though it passes at rest.
 
 **해결:** observe the outer element and put the `clip-path` on an inner wrapper (`<a><span class="face">…</span></a>`), so the observed box is never clipped; decide "on screen" from `getBoundingClientRect()` (for example three quarters of its height inside `innerHeight`). In test suites, wait for the animation class to be gone before running axe.
+
+## OPS-584 — `spacetime publish --anonymous` makes a new identity every run: republishing to the same local database answers 403 and the old module keeps serving
+
+`측정 2026-10-21 · SpacetimeDB CLI and standalone 2.8.0 on the MacBook Air · local test database`
+
+**증상:** a test loop published a rebuilt Rust module with
+`spacetime publish --server http://127.0.0.1:3097 <db> --bin-path … --anonymous --delete-data=always --yes`. The first run
+printed `Created new database`; the second printed only
+`HTTP status client error (403 Forbidden) for url (http://127.0.0.1:3097/v1/database/<db>?clear=true&host_type=Wasm)`.
+The script went on, the integration tests passed, and they had tested the previous module.
+
+**사실:** `--anonymous` signs the request with a fresh throwaway identity, so the second publish is not the owner of the
+database the first one created. Nothing else in the output says the module was not replaced, and a `tail -1` of the publish
+output shows only the 403 line among other noise.
+
+**해결:** for throwaway test databases publish each build under a new database name (or reuse one non-anonymous identity),
+stop the script when publish fails (`set -e`, or check for `Created new database`/`Updated database` in its output), and
+confirm the module with `curl -s http://127.0.0.1:<port>/v1/database/<db>/schema?version=9` before running tests.
+Relates to OPS-381 (a stale module after a skipped rebuild looks the same from the test side).
