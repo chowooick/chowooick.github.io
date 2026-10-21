@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T23:10:39Z · 소스 커밋 `5648c24` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T23:13:22Z · 소스 커밋 `e4eb5d7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9588,6 +9588,21 @@ age/gender check of AGT-089.
 - Stripe's own licence list opens: `https://stripe.com/legal/spc/licenses` (`/spc/licenses` redirects; `/licenses` is 404) lists each state regulator, including NJ Department of Banking and Insurance.
 
 **해결:** fetch these URLs directly instead of searching; read TGTG with headed Brave; for licences, report NMLS/NJ DOBI as "could not check" and cite company filings or the provider's own licence page instead of guessing.
+
+## AGT-162 — Where Starbucks, Amazon, Etsy and Shopify payment terms open for research: Etsy needs headed Brave, Seller Central needs a JS browser, and the Shopify site keeps a Korean locale cookie
+
+`측정 2026-10-21 · curl 8.x (Chrome UA, --compressed) · WebFetch · gstack browse (headless Chromium) · Brave 1.96 headed via playwright-core on the Air`
+
+**증상:** an agent needs exact payment, gift-card and seller-agreement text from the four large platforms. The URLs that search results and the pages themselves cite return 404, 403, an empty JS shell or a page in the wrong language.
+
+**사실:**
+- Starbucks: the Card Terms that the page itself cites (`/card/card-terms-and-conditions`, `/gift-cards/manage/card-terms-and-conditions`) are 404 to curl. The live copy is `https://www.starbucks.com/terms/manage-gift-cards/`. Rewards terms: `/terms/rewards`.
+- Amazon: gift card terms are at `https://www.amazon.com/gp/help/customer/display.html?nodeId=GNG9PXYZUMQT72QK`. `/gc-legal` redirects there, and the old `nodeId=GU36FRVMVRX5VDSR` returns only the navigation shell. Money transmitter licences: `pay.amazon.com/help/82972` and `/82975` both open with curl, and they list **different NJ licence numbers** (`#LO67873` and `#LO6846`).
+- Amazon Seller Central help (`sellercentral.amazon.com/help/hub/reference/external/G1791`, the Business Solutions Agreement) gives curl and WebFetch a 2 KB shell. `gstack browse goto` plus `wait --networkidle` plus `text` returns the full 115 KB agreement. The Marketplace Tax Collection page (`G202211260`) did not render even in the browser. An Amazon-hosted copy at `https://digprjsurvey.amazon.com/csad/help/node/202211260` opens with curl.
+- Etsy: `etsy.com/legal/*` answers 403 to curl and WebFetch, and gives an empty body to gstack's headless Chromium. Headed Brave on the Air reads every page. US gift card terms: `https://www.etsy.com/legal/policy/etsy-gift-card-terms-and-conditions/1251821444158`; the index is `/legal/gift-cards`. `/legal/giftcards`, `/legal/purchase-protection` and `/legal/licenses` redirect to `/legal?archived=true`.
+- Shopify: Brave on the Air served `shopify.com/legal/terms` and `/pricing` in **Korean**, even with `locale: "en-US"` and an `Accept-Language` header, because a locale cookie stayed in the profile. curl gets English. `help.shopify.com/en/...` and `shop.app` pages came back in English. US processor list: `https://www.shopify.com/legal/processor-list`. Gift card rules: `https://www.shopify.com/legal/terms-gift-cards`. `/legal/payment-processors` and `/legal/gift-cards-terms` are 404.
+
+**해결:** use the URLs above. For Seller Central use a JS browser, and for Etsy use headed Brave. On shopify.com use curl, or a fresh browser profile, and check the page language before quoting. Licence lookups stay "could not check" (AGT-161).
 
 ---
 
@@ -19975,4 +19990,25 @@ CC0, CC-BY and GPL entries in one listing.
 - Sales tax: DoorDash and Uber collect from customers and remit as marketplace facilitator where required; Uber lists New Jersey from 4/1/2021.
 
 **해결:** keep the shop as seller in writing, pair shop-side "collection agent" wording with customer-side "payment discharges your debt to the shop" wording, move shop money through a licensed processor's connected accounts rather than your own account, pay weekly by ACH, write the refund-cost split into the shop contract, and treat a prepaid balance as a licensing question (subsidiary issuer with caps, or a bank-partner issuer) before launch.
+
+## OPS-591 — How Amazon, Etsy, Shopify and Starbucks let a balance pay sellers: a separate issuer LLC plus a licensed or agent collector, Shopify bans cross-merchant gift cards, and the caps cluster at $2,000
+
+`측정 2026-10-21 · Amazon Balance & Gift Card Terms, BSA (US), Conditions of Use 2026-08-14 · Etsy Payments Policy 2026-07-31, Etsy US Gift Card Terms (cards after 2024-05-01) · Shopify ToS 2026-10-20, Gift Card & Store Credit Service Terms 2024-01-24 · Starbucks Card Terms 2023-07-24 · 10-Ks FY2025 · NJ statutes through P.L.2026 c.50`
+
+**증상:** a small marketplace wants one pre-loaded, Starbucks-style balance that customers can spend at many independent shops. It assumes the closed-loop exemption ("redeemable by the issuer in goods or services") covers it.
+
+**사실:**
+- Starbucks sells almost everything its card buys. "We issue the Starbucks Card", and the value is "a prepayment for the goods and services of participating stores". Limits: "not more than $500 in value", "$2,000 ... in a single day", "$10,000 on any given day". No expiry and no fees. FY2025 breakage was $200.4M (company stores) plus $22.0M (licensed stores), and the card liability was $1,751.7M, held as deferred revenue, not segregated.
+- Amazon: "Amazon.com Gift Cards are issued by ACI Gift Cards LLC" (not Amazon.com Services LLC). For sellers: "Amazon Payments, Inc. may process the redemption of the portion of your Amazon.com Balance used to purchase goods and services sold by third parties". Amazon Payments, Inc. is the seller's agent ("buyers satisfy their obligations to you ... when we receive the Sales Proceeds") and is a licensed money transmitter with an NJ licence listed. Payout is "bi-weekly (14 day)". Gift card liability was $5.6B at 2025-12-31.
+- Etsy: "Etsy Gifting, LLC is the sole card issuer and sole obligor ... Etsy, Inc. is neither the Card Issuer nor an obligor" (a "novation"). The card is spendable at any shop on Etsy Payments, $25–$2,000 per card, $10,000 per account, no expiry, "may be subject to escheat". "Shop-Specific Gift Certificates are not permitted on Etsy." Etsy, Inc. is each seller's collection agent, and the 10-K names no US money transmitter licence.
+- Shopify: merchant gift cards must be "closed-loop (i.e., the Gift Card may only be used at your locations for purchase of goods and services from you and no other merchant or company)", with redemption capped at "$2,000 during any one day". Shopify "does not provide or issue Gift Cards". Its only cross-merchant value, Shop Cash, is unpurchased: "has no cash value ... only promotional", and it expires after 180 days (US). The money itself moves through Stripe Payments Company as the merchant's agent "for the limited purpose of directing, receiving, holding and settling funds".
+- The $2,000 figure matches FinCEN: "not a prepaid program if ... closed loop prepaid access to funds not to exceed $2,000 maximum value ... on any day" (31 CFR 1010.100(ff)(4)(iii)(A)). That this is why the companies chose it is an inference; none of them says so.
+- New Jersey:
+  - Any collector that "collects payment ... and transmits that payment to the marketplace seller" is a marketplace facilitator and owes NJ sales tax (N.J.S.A. 54:32B-3.6).
+  - Stored value cards are presumed abandoned after 5 years without activity, and 60% of the value escheats.
+  - Issuers that sold "$250,000 or less" in the past year are exempt.
+  - Funds "shall not expire".
+  - A balance under $5 must be refunded in cash on request, except for cards usable at unaffiliated merchants (N.J.S.A. 46:30B-42.1).
+
+**해결:** do not launch a purchased multi-shop balance as a plain ledger. Either be the seller of record for what the balance buys (Starbucks), or put the balance in a separate issuer entity and have a licensed processor or agent redeem it for the shops (Amazon, Etsy). Start with unpurchased, expiring promotional credit (Shop Cash style). Cap at or below $2,000 a day, and plan for NJ escheat and marketplace-facilitator tax from day one.
 
