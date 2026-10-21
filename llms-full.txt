@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T23:14:40Z · 소스 커밋 `bc5dce0` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T23:42:06Z · 소스 커밋 `1d77272` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9617,6 +9617,40 @@ age/gender check of AGT-089.
 - Instacart: `instacart.com/terms`, `/help/section/<id>/<id>` legal pages and `company.instacart.com/tax-policy-by-state` all open with curl; take help-page ids from the links inside `/terms` (gift card terms `360007996832/6979946277140`, credit terms `639415266/3368486851`).
 
 **해결:** for HungryPanda always add `countryCode=<CC>&language=EN` and check the entity name and governing law before quoting; for Gopuff use the `/e/` pages and report `/go/` pages as "could not open".
+
+## AGT-164 — Edge TTS `ja-JP-NanamiNeural` reads 何時 as いつ, not なんじ; only an STT round trip caught it
+
+`측정 2026-10-21 · edge-tts 7.3.1 · ja-JP-NanamiNeural · mlx-whisper large-v3-turbo on the MacBook Air`
+
+**증상:** answer clips for "何時に…" questions (two of 110 Japanese items) said いつ. The text was right,
+so no text check could see it. A Whisper round trip of all 1,218 clips flagged them (1,211/1,218 matched
+on the first pass).
+
+**해결:** feed the TTS a reading-safe string (`何時` → `なんじ`) while keeping the kanji in the displayed
+text, and keep the STT round trip in the pipeline. After two such fixes 1,215/1,218 matched automatically;
+the remaining three were transcripts written with kanji or digits for the same words.
+
+## AGT-165 — edge-tts with an `asyncio.Semaphore` created at module level fails with "attached to a different loop" on Python 3.9
+
+`측정 2026-10-21 · edge-tts 7.3.1 · Python 3.9 · batch of 1,218 clips`
+
+**증상:** `got Future <...> attached to a different loop`; the batch saved 4 of 1,218 files and stopped.
+
+**해결:** create the semaphore inside the coroutine that `asyncio.run()` starts (for example in
+`main()`), not at import time.
+
+## AGT-166 — A cross-model trap review (Codex) often calls a deliberately wrong option "correct in some dialect or slang"
+
+`측정 2026-10-21 · codex-cli 0.162 · gpt-6-astra xhigh · 162 trap options for an EN/JA/ES learning game`
+
+**증상:** many TRAP_OK verdicts argued that a near-miss distractor is acceptable in a regional dialect or
+casual register (for example a humble-form おります trap), which would make the item ambiguous by that
+standard.
+
+**해결:** keep the reviewer, but judge each such verdict against the item's stated target (standard
+language at the stated CEFR level) and log the decision. In this run most suggested replacements were
+conjugation-error traps and were safe to accept; three objections were rejected with reasons in the log.
+Twelve parallel `codex exec` reviews at xhigh finished in about 25 minutes without errors.
 
 ---
 
@@ -20040,4 +20074,15 @@ CC0, CC-BY and GPL entries in one listing.
 - None of the four publishes a payout by Zelle; Instacart and Weee! name only an unnamed "payment processor". NMLS licence status could not be checked (AGT-161).
 
 **해결:** a purchased balance is only clean when the issuer is also the seller of what it buys (Weee!, Gopuff). If shops stay the seller, copy HungryPanda's "authorized us to accept payment on their behalf" clause plus a customer-side discharge sentence, publish the shop fee schedule, and keep refunds as card refunds or non-cash promotional credit rather than a withdrawable balance until a licensed issuer or counsel approves.
+
+## OPS-593 — Single-pass ffmpeg `loudnorm` leaves 1–4 LU spread across 1–3 s speech clips; measure with `ebur128` and apply a gain
+
+`측정 2026-10-21 · ffmpeg loudnorm I=-16 · Edge TTS clips of 1–3 s in three voices`
+
+**증상:** after single-pass `loudnorm` to −16 LUFS, short clips measured −17 to −20 LUFS for one voice
+(Jenny) and about −16 for another (Nanami), so answers changed volume between languages.
+
+**해결:** measure each clip with `ebur128` (or the first `loudnorm` pass in JSON) and apply a plain
+`volume` gain to the target; that brought every clip within ±1 LU. See OPS-174 for the two-pass
+fallback trap.
 
