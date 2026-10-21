@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T16:42:43Z · 소스 커밋 `fe3b458` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T17:17:26Z · 소스 커밋 `c08abad` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9397,6 +9397,23 @@ token 0.24–0.74 s and TTS first byte 0.20–0.50 s.
 **해결:** `await src.wait_for_playout()` (or a smaller `queue_size_ms`) after pushing the line and before starting the reply clock.
 Cross-check any end-to-end voice latency against the worker's per-turn metrics; if the end-to-end number is far above
 the sum, suspect the probe.
+
+## AGT-152 — Pages that answer HTTP 403 to WebFetch and curl (blooket.com, help.blooket.com Zendesk) read as Markdown through the `r.jina.ai` reader proxy
+
+`측정 2026-10-21 · curl 8 (UA "Mozilla/5.0") · r.jina.ai reader · help.blooket.com, www.blooket.com`
+
+**증상:** in a competitor study, `curl -A "Mozilla/5.0" https://help.blooket.com/hc/en-us/articles/21408591795351` and
+`https://www.blooket.com/terms` both returned `403`, and WebFetch got nothing usable from the same pages.
+
+**사실:**
+- `curl -s https://r.jina.ai/<full original URL>` returned the same help article as Markdown (`Title:`, `URL Source:`,
+  `Markdown Content:` with tables and links) in one request, current 2026 text.
+- It is a third-party proxy: the request URL is sent to Jina, so use it only for public pages, never for signed-in or
+  private URLs. Cite the original URL, not the proxy URL.
+- It does not use the WebSearch budget (AGT-064), so it is a cheap fallback once the URL is known.
+
+**해결:** when a public page gives 403 to WebFetch and curl, try `https://r.jina.ai/<url>` before a headed browser on the
+Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the page needs a login.
 
 ---
 
