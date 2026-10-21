@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T03:44:10Z · 소스 커밋 `18cd541` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T04:29:12Z · 소스 커밋 `ea74236` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9272,6 +9272,14 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 - `x-show="!!toast.undo"` returns a boolean; the property is read, not called. The revert stopped and the browser test's event log had exactly one event per click.
 
 **해결:** never let a directive expression end on a function-valued property. Coerce it (`!!x.fn`, `typeof x.fn === 'function'`) or keep a separate boolean (`hasUndo`). Related: AGT-134 (empty strings on boolean attributes).
+
+## AGT-145 — Measuring an LLM call's tokens with `claude -p`: read `usage.iterations`, not `modelUsage` or `total_cost_usd`
+
+`측정 2026-10-21 · Claude Code 2.1.289 · claude-opus-5-5, claude-haiku-5-5`
+
+**증상:** to price a batch job, the job's prompts were run through `claude -p --model <m> --effort <e> --system-prompt "<prompt>" --tools "" --setting-sources "" --strict-mcp-config --no-session-persistence --disable-slash-commands --output-format json < input`. `modelUsage` also lists the CLI's own `claude-haiku-4-5` calls (thousands of tokens), and `total_cost_usd` includes them and 1-hour cache writes. `--model claude-haiku-5-5` printed `[claude-code:unrecognized_model]` yet ran Haiku 5.5 (`modelUsage` key `claude-haiku-5-5`, `costBasis: "unknown"`, its cost far above list price); `--model haiku` ran Haiku 4.5 instead.
+
+**해결:** take `usage.iterations[*].input_tokens + cache_creation_input_tokens + cache_read_input_tokens` and `output_tokens` (thinking is included; `output_tokens_details.thinking_tokens` splits it) and price them yourself. A trivial prompt with the same flags measured the overhead: 1,061 input tokens including a ~1,000-token system prompt, so the CLI adds almost nothing. Use full model IDs; aliases may pick an older generation.
 
 ---
 
@@ -19183,4 +19191,60 @@ requesting the others, or purge what was requested too early: `POST /zones/<zone
 **증상:** a new release directory was made with `rsync -a --exclude dist --exclude .astro old/ new/` so the old build output would not come along. `npm test` (tsx) still passed, but `npx astro check` and `npm run build` failed at once with `ERR_MODULE_NOT_FOUND … node_modules/astro/dist/cli/index.js`. An unanchored `--exclude dist` matches a directory named `dist` at any depth, and most packages ship their code in `dist/`.
 
 **해결:** anchor build-output excludes to the transfer root: `--exclude /dist --exclude /.astro` (or exclude `node_modules` and run `npm ci` in the copy). If it already happened, `rm -rf node_modules && npm ci` restores it.
+
+## OPS-554 — Astro 7 on Node behind a TLS proxy: `@astrojs/node` builds `request.url` as `http://` from the socket and ignores `X-Forwarded-Proto`, so same-origin POST checks fail; a 30-line custom adapter fixes it
+
+`측정 2026-10-21 · Astro 7.3.3 · @astrojs/node 11.1.9 · Node 24.22 (busan) and 26.8 (Air)`
+
+**증상:** a site whose API rejects a POST unless `Origin` equals `new URL(request.url).origin` moved from a Worker to Node behind Traefik and a relay. In `@astrojs/node` 11, `createRequestFromNodeRequest` takes the protocol from `req.socket.encrypted` and passes `undefined` for the forwarded protocol (only `x-forwarded-host` is read, and only with `security.allowedDomains`). Behind any TLS-terminating proxy `request.url` is `http://<host>/…`, the browser's `Origin` is `https://…`, and every same-origin POST is refused. Verification links built from `url.origin` would also say `http://`.
+
+**해결:** skip `@astrojs/node` and give the build your own server entry. An adapter needs only `setAdapter({ name, entrypointResolution: "auto", serverEntrypoint: <absolute path of your entry.ts>, adapterFeatures: { buildOutput: "server", middlewareMode: "classic" }, supportedAstroFeatures: {...} })` in `astro:config:done`; in the entry, `import { createApp } from "astro/app/entrypoint"`, build the Web `Request` with the public origin yourself and call `app.render(request, { addCookieHeader: true, routeData: app.match(request) })`. Serve `dist/client` before the app (no HTML there in `output: "server"`). Put the integration in `adapter:`, not `integrations:` — there it fails with `[NoAdapterInstalled] Cannot use server-rendered pages without an adapter`. Code that imports `cloudflare:workers` keeps working through a Vite alias to a module exporting `env`. The whole Node build took 0.7 s; the bundle still imports some of astro's dependencies (`piccolore`, `html-escaper`, `devalue`, `cookie`, …), so run `npm ci --omit=dev` in the image (move `@astrojs/cloudflare` to devDependencies or the image grows by ~500 MB of wrangler/workerd).
+
+## OPS-555 — A Node server that hands `Readable.toWeb(req)` to a Web `Request` dies when the handler cancels the body early: `ERR_INVALID_STATE: Controller is already closed`, uncaught
+
+`측정 2026-10-21 · Node 26.8.2 (Air) · Astro 7 app behind a node:http server`
+
+**증상:** a handler that limits bodies to 4 KiB calls `request.body.cancel()` on a larger one (a 3,012-byte JSON passed, a bigger one did not). The Node side kept pushing chunks into the converted stream, and the process exited: `TypeError [ERR_INVALID_STATE]: Invalid state: Controller is already closed at ReadableStreamDefaultController.enqueue … at Transform.onData (node:internal/webstreams/adapters)`. One oversized POST takes the whole site down. The browser test caught it on its "oversized body" case; unit tests with small bodies never do.
+
+**해결:** read the body into a buffer first, with a cap (64 KiB here; drain and answer 413 past it), and pass the `Uint8Array` as `body`. Test with a handler that cancels without reading, a 30 KB body, a chunked 70 KB body, and then a normal request to prove the server is still up.
+
+## OPS-556 — Worker code on Node: a D1-shaped wrapper over `node:sqlite` needs four D1 rules, and the miniflare D1 store is a plain SQLite file you can move with `.backup`
+
+`측정 2026-10-21 · node:sqlite (Node 24.22 / 26.8) · wrangler 4.135.0 local D1 store · Ubuntu 24.04 arm64`
+
+**증상:** the same Worker code (`prepare().bind().first()/all()/run()`, `batch()`) ran on `node:sqlite` for a move off `wrangler dev`. What differs from D1: rows have a **null prototype** (`assert.deepEqual(row, {…})` fails, spread them into plain objects); booleans are not bindable (D1 binds `true` as 1); `undefined` must be refused (D1 throws `D1_TYPE_ERROR`); `batch` must be one transaction (`BEGIN IMMEDIATE` … `COMMIT`, `ROLLBACK` on error). `statement.columns().length > 0` tells a `run()` with `RETURNING` apart. Turn on `PRAGMA foreign_keys` (D1 enforces them).
+
+**해결:** keep the wrapper in the app and put the unit tests behind it, so one adapter is tested and deployed. The `wrangler dev --persist-to /data` store is `/data/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite` (next to a `metadata.sqlite`): a normal SQLite database in WAL mode with the app's tables, `d1_migrations` (`id, name, applied_at`) and `_cf_METADATA`. With the old process stopped, `sqlite3 <hash>.sqlite ".backup /data/app.sqlite"` moves it; keep the `d1_migrations` table name so later migrations continue. Memory for the same app: 464 MiB under `wrangler dev`, 44.5 MiB idle and 68 MiB after a sign-up on Node.
+
+## OPS-557 — `url.host = "example.com"` keeps a port the URL already had: `http://127.0.0.1:65194/x` becomes `https://example.com:65194/x`
+
+`측정 2026-10-21 · WHATWG URL in Node 26 and workerd`
+
+**증상:** a relay rewrite did `url.protocol = "https:"; url.host = SITE_HOST` and was correct on `*.workers.dev` (no port). The same code behind a local server produced `https://dongnesosik.com:65194/…`, so the same-origin check failed. The URL standard's `host` setter only replaces the port when the new value contains one.
+
+**해결:** set `url.port = ""` after `url.host = …` (or build a new URL from the public origin and the path).
+
+## OPS-558 — Ubuntu's `rrsync -ro` does not work with macOS's `openrsync` client; serve read-only backups through a forced command with `list` and `get`
+
+`측정 2026-10-21 · rrsync (Ubuntu 24.04 rsync 3.2.7) · openrsync protocol 29 (macOS 27)`
+
+**증상:** a backup key pinned with `restrict,command="/usr/bin/rrsync -ro <dir>"` was used from a Mac. `rsync -a --delete` answered `rrsync error: option --delete-before has been disabled on this server.`; without `--delete`: `rrsync error: invalid rsync-command syntax or options` and `rsync: error: unexpected end of file`. The Mac has no GNU rsync (no Homebrew on that host).
+
+**해결:** a 20-line forced command instead: `set -- $SSH_ORIGINAL_COMMAND`; `list` prints the files, `get <kind>/<name>` `cat`s one only if the name matches a strict pattern; anything else prints `refused` and exits 1. The client fetches what it lacks and prunes by its own count — never delete local copies because the server stopped listing them, or losing the server empties the copy too.
+
+## OPS-559 — Non-hashed static files behind a relay Worker stayed at the edge 9.6 hours after a release; purge the zone in the release script. R2 needs a payment method first
+
+`측정 2026-10-21 · Cloudflare free zone · relay Worker fetching the origin · public/_headers "/images/* Cache-Control: public, max-age=604800"`
+
+**증상:** a release script compared the SHA-256 of every client file fetched through the apex with the build. `/images/brand/share.png` (the `og:image`) differed: `cf-cache-status: HIT`, `age: 34575`, the file from two releases before. Earlier releases had checked hashes on the origin host and passed. Hashed `/_astro/*` names never go stale; fixed names with a week of `max-age` do.
+
+**해결:** after the swap, `POST /zones/:id/purge_cache {"purge_everything":true}` (find the zone with `GET /zones?name=<domain>&status=active`, which also follows the zone when a domain moves accounts), then check hashes through the public host. Side note from the same day: `GET /accounts/:id/r2/buckets` answers `10042 Please enable R2 through the Cloudflare Dashboard` on accounts without a payment method, so a free plan cannot use R2 for off-site backups.
+
+## OPS-560 — Kakao Local API results may not be stored, not even for 20 minutes: they cannot go into prepared content
+
+`측정 2026-10-21 · Kakao DevTalk FAQ "카카오맵 API (지도/로컬) 문의 전 꼭 읽어 주세요" (devtalk.kakao.com/t/faq-api/125610) and staff answers`
+
+**증상:** a daily local edition wanted shop listings from Kakao Local. The FAQ: "당사가 제공하는 API는 실시간으로 호출하여 사용하는 것만 가능합니다." and "로컬 API 등을 호출하여 응답받은 결과 데이터를 별도로 저장하여 사용하는 것은 허용하지 않습니다." A DevTalk answer refuses a 20-minute per-session cache as well. Commercial use is allowed, reselling or charging for API-based features is not.
+
+**해결:** use Kakao Local only for live lookups shown as they come. For stored or generated content use public data that may be stored: 소상공인시장진흥공단 상가(상권)정보, 서울 열린데이터, 기상청·에어코리아 on data.go.kr.
 
