@@ -10133,3 +10133,28 @@ const glue = (s: string) => s.replace(/\S{2,}/g, (w) => Array.from(w).join('⁠'
 ```
 
 Same heading after the change: `… 마무리해` / `봐요.` — breaks only at spaces. U+2060 drew nothing visible with Pretendard (no tofu, no extra width seen in the screenshot). `Array.from` keeps surrogate pairs (emoji) whole. Apply it to string children only; nested `<Text>` elements handle their own strings. The same joiner trick for Godot is GDT-104.
+
+## OPS-574 — Connecting GitLab.com to a fresh Dokploy without the panel UI: `gitlab.create` needs `authId`, and the OAuth callback answers 500 unless the authorize `redirect_uri` carries `?gitlabId=`
+
+`측정 2026-10-21 · Dokploy v0.30.8 (nj2) · GitLab.com OAuth application (user settings) · Chrome-family browser driven by Playwright`
+
+**증상:** a second Dokploy install had no git provider. With a new GitLab OAuth app (callback `https://<panel>/api/providers/gitlab/callback`, scopes `api read_user read_repository`, not confidential — same as the first install's app) and `gitlab.create`, the browser authorize step landed on the callback with `Internal Server Error`, and `gitProvider.getAll` kept `isConfigured: false`.
+
+- `gitlab.create` rejects a body without `authId` (and `name`, `gitlabUrl`). `authId` is the Dokploy user id (`user.get` → `userId`). It returns `null`; read the new `gitlabId` from `gitProvider.getAll`.
+- The callback (`pages/api/providers/gitlab/callback.ts`) reads `gitlabId` from the query, not `state`, and exchanges the code with `redirect_uri = <redirectUri>?gitlabId=<id>`. Authorize with exactly that: `https://gitlab.com/oauth/authorize?client_id=<appId>&redirect_uri=<callback>?gitlabId=<id>&response_type=code&scope=api read_user read_repository`. GitLab accepts the extra query on the registered URI; the provider turned `isConfigured: true` at once.
+- GitLab shows the app secret only on the page right after 「Save application」. If the script misses it, 「Renew secret」 on the app page shows a new one (no confirmation dialog). The 「Authorize」 button sits under an overlay for a few seconds; `dispatchEvent('click')` works where `click()` times out.
+- An existing project hook pointing at the old panel can be re-pointed with `PUT /projects/:id/hooks/:hook_id url=https://<panel>/api/deploy/<application.refreshToken>`; `POST …/hooks/:id/test/push_events` started a deploy on the new panel within 8 s, and a real commit did too.
+
+**해결:** create the provider by API with `authId`, authorize with the `?gitlabId=` redirect, then `application.saveGitlabProvider` (OPS-191) and `autoDeploy: true`. To check what a container actually received without docker access on the host, use `docker.getContainersByAppNameMatch?appName=<appName>` and `docker.getConfig?containerId=<id>` (its `Config.Env`); compare values, do not print them.
+
+## OPS-575 — Rotating a Gmail app password by script: every launch re-asks the passkey, the trash button revokes at once with no confirmation, and a revoked password drops the SMTP connection instead of answering 535
+
+`측정 2026-10-21 · myaccount.google.com/apppasswords (ko UI) · Chrome for Testing (ms-playwright chromium-1243) headed off-screen on the main Mac, copy of ~/.gstack/chromium-profile · smtplib on Ubuntu (Python 3.14)`
+
+**증상:** the app-password page needs a fresh re-auth. Brave on the Air with a copy of `~/kc-test/profile` stopped at 「패스키를 사용하여 로그인을 완료합니다」 (OPS-447). Chrome for Testing on the main Mac passed the same challenge on its own in 3 of 4 launches within about 60 s; once it went to `/challenge/pk/error` 「블루투스가 켜져 있고 기기가 서로 가까이에 있는지 확인하세요」 and the next launch passed again. Each new launch asked again.
+
+- Create: fill the textbox named 「앱 이름」, click 「만들기」; the dialog shows the password as four groups of four lowercase letters (`/[a-z]{4}\s[a-z]{4}\s[a-z]{4}\s[a-z]{4}/`); write it straight to a mode-600 file.
+- Revoke: each row's button is `button[aria-label="앱 비밀번호 취소"]` (same label on every row, so pick it by the row's name). One click deleted the password with **no confirmation dialog**.
+- After revocation, `smtplib.SMTP_SSL("smtp.gmail.com", 465).login(user, old)` raised `SMTPServerDisconnected: Connection unexpectedly closed` twice, not `535`; the new password logged in with `235`.
+
+**해결:** order the rotation so nothing breaks: create the new password, prove it with an SMTP `login()` (no send) from the server that will use it, put it in the app's environment, deploy, confirm the container's env holds it (OPS-574), and only then revoke the old one. Re-run the browser step if the passkey challenge errors once. Treat a disconnect on `login()` with the old password as "rejected".
