@@ -2936,3 +2936,18 @@ age/gender check of AGT-089.
 - Stripe's own licence list opens: `https://stripe.com/legal/spc/licenses` (`/spc/licenses` redirects; `/licenses` is 404) lists each state regulator, including NJ Department of Banking and Insurance.
 
 **해결:** fetch these URLs directly instead of searching; read TGTG with headed Brave; for licences, report NMLS/NJ DOBI as "could not check" and cite company filings or the provider's own licence page instead of guessing.
+
+## AGT-162 — Where Starbucks, Amazon, Etsy and Shopify payment terms open for research: Etsy needs headed Brave, Seller Central needs a JS browser, and the Shopify site keeps a Korean locale cookie
+
+`측정 2026-10-21 · curl 8.x (Chrome UA, --compressed) · WebFetch · gstack browse (headless Chromium) · Brave 1.96 headed via playwright-core on the Air`
+
+**증상:** an agent needs exact payment, gift-card and seller-agreement text from the four large platforms. The URLs that search results and the pages themselves cite return 404, 403, an empty JS shell or a page in the wrong language.
+
+**사실:**
+- Starbucks: the Card Terms that the page itself cites (`/card/card-terms-and-conditions`, `/gift-cards/manage/card-terms-and-conditions`) are 404 to curl. The live copy is `https://www.starbucks.com/terms/manage-gift-cards/`. Rewards terms: `/terms/rewards`.
+- Amazon: gift card terms are at `https://www.amazon.com/gp/help/customer/display.html?nodeId=GNG9PXYZUMQT72QK`. `/gc-legal` redirects there, and the old `nodeId=GU36FRVMVRX5VDSR` returns only the navigation shell. Money transmitter licences: `pay.amazon.com/help/82972` and `/82975` both open with curl, and they list **different NJ licence numbers** (`#LO67873` and `#LO6846`).
+- Amazon Seller Central help (`sellercentral.amazon.com/help/hub/reference/external/G1791`, the Business Solutions Agreement) gives curl and WebFetch a 2 KB shell. `gstack browse goto` plus `wait --networkidle` plus `text` returns the full 115 KB agreement. The Marketplace Tax Collection page (`G202211260`) did not render even in the browser. An Amazon-hosted copy at `https://digprjsurvey.amazon.com/csad/help/node/202211260` opens with curl.
+- Etsy: `etsy.com/legal/*` answers 403 to curl and WebFetch, and gives an empty body to gstack's headless Chromium. Headed Brave on the Air reads every page. US gift card terms: `https://www.etsy.com/legal/policy/etsy-gift-card-terms-and-conditions/1251821444158`; the index is `/legal/gift-cards`. `/legal/giftcards`, `/legal/purchase-protection` and `/legal/licenses` redirect to `/legal?archived=true`.
+- Shopify: Brave on the Air served `shopify.com/legal/terms` and `/pricing` in **Korean**, even with `locale: "en-US"` and an `Accept-Language` header, because a locale cookie stayed in the profile. curl gets English. `help.shopify.com/en/...` and `shop.app` pages came back in English. US processor list: `https://www.shopify.com/legal/processor-list`. Gift card rules: `https://www.shopify.com/legal/terms-gift-cards`. `/legal/payment-processors` and `/legal/gift-cards-terms` are 404.
+
+**해결:** use the URLs above. For Seller Central use a JS browser, and for Etsy use headed Brave. On shopify.com use curl, or a fresh browser profile, and check the page language before quoting. Licence lookups stay "could not check" (AGT-161).

@@ -10380,3 +10380,24 @@ CC0, CC-BY and GPL entries in one listing.
 - Sales tax: DoorDash and Uber collect from customers and remit as marketplace facilitator where required; Uber lists New Jersey from 4/1/2021.
 
 **해결:** keep the shop as seller in writing, pair shop-side "collection agent" wording with customer-side "payment discharges your debt to the shop" wording, move shop money through a licensed processor's connected accounts rather than your own account, pay weekly by ACH, write the refund-cost split into the shop contract, and treat a prepaid balance as a licensing question (subsidiary issuer with caps, or a bank-partner issuer) before launch.
+
+## OPS-591 — How Amazon, Etsy, Shopify and Starbucks let a balance pay sellers: a separate issuer LLC plus a licensed or agent collector, Shopify bans cross-merchant gift cards, and every cap sits at $2,000 a day
+
+`측정 2026-10-21 · Amazon Balance & Gift Card Terms, BSA (US), Conditions of Use 2026-08-14 · Etsy Payments Policy 2026-07-31, Etsy US Gift Card Terms (cards after 2024-05-01) · Shopify ToS 2026-10-20, Gift Card & Store Credit Service Terms 2024-01-24 · Starbucks Card Terms 2023-07-24 · 10-Ks FY2025 · NJ statutes through P.L.2026 c.50`
+
+**증상:** a small marketplace wants one pre-loaded, Starbucks-style balance that customers can spend at many independent shops. It assumes the closed-loop exemption ("redeemable by the issuer in goods or services") covers it.
+
+**사실:**
+- Starbucks sells almost everything its card buys. "We issue the Starbucks Card", and the value is "a prepayment for the goods and services of participating stores". Limits: "not more than $500 in value", "$2,000 ... in a single day", "$10,000 on any given day". No expiry and no fees. FY2025 breakage was $200.4M (company stores) plus $22.0M (licensed stores), and the card liability was $1,751.7M, held as deferred revenue, not segregated.
+- Amazon: "Amazon.com Gift Cards are issued by ACI Gift Cards LLC" (not Amazon.com Services LLC). For sellers: "Amazon Payments, Inc. may process the redemption of the portion of your Amazon.com Balance used to purchase goods and services sold by third parties". Amazon Payments, Inc. is the seller's agent ("buyers satisfy their obligations to you ... when we receive the Sales Proceeds") and is a licensed money transmitter with an NJ licence listed. Payout is "bi-weekly (14 day)". Gift card liability was $5.6B at 2025-12-31.
+- Etsy: "Etsy Gifting, LLC is the sole card issuer and sole obligor ... Etsy, Inc. is neither the Card Issuer nor an obligor" (a "novation"). The card is spendable at any shop on Etsy Payments, $25–$2,000 per card, $10,000 per account, no expiry, "may be subject to escheat". "Shop-Specific Gift Certificates are not permitted on Etsy." Etsy, Inc. is each seller's collection agent, and the 10-K names no US money transmitter licence.
+- Shopify: merchant gift cards must be "closed-loop (i.e., the Gift Card may only be used at your locations for purchase of goods and services from you and no other merchant or company)", with redemption capped at "$2,000 during any one day". Shopify "does not provide or issue Gift Cards". Its only cross-merchant value, Shop Cash, is unpurchased: "has no cash value ... only promotional", and it expires after 180 days (US). The money itself moves through Stripe Payments Company as the merchant's agent "for the limited purpose of directing, receiving, holding and settling funds".
+- The $2,000 figure matches FinCEN: "not a prepaid program if ... closed loop prepaid access to funds not to exceed $2,000 maximum value ... on any day" (31 CFR 1010.100(ff)(4)(iii)(A)). That this is why the companies chose it is an inference; none of them says so.
+- New Jersey:
+  - Any collector that "collects payment ... and transmits that payment to the marketplace seller" is a marketplace facilitator and owes NJ sales tax (N.J.S.A. 54:32B-3.6).
+  - Stored value cards are presumed abandoned after 5 years without activity, and 60% of the value escheats.
+  - Issuers that sold "$250,000 or less" in the past year are exempt.
+  - Funds "shall not expire".
+  - A balance under $5 must be refunded in cash on request, except for cards usable at unaffiliated merchants (N.J.S.A. 46:30B-42.1).
+
+**해결:** do not launch a purchased multi-shop balance as a plain ledger. Either be the seller of record for what the balance buys (Starbucks), or put the balance in a separate issuer entity and have a licensed processor or agent redeem it for the shops (Amazon, Etsy). Start with unpurchased, expiring promotional credit (Shop Cash style). Cap at or below $2,000 a day, and plan for NJ escheat and marketplace-facilitator tax from day one.
