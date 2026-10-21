@@ -9881,3 +9881,18 @@ container itself, and `:where()`-wrapped `img`/`p`/`a` resets so they do not out
 with a pixel diff against the old build: the first try differed because `box-sizing` was not applied to the `min-height:
 100svh` container and a `.x p { margin: 0 }` reset overrode `.description { margin-bottom }`; after the fix the diff box was
 empty at 390 and 1440.
+
+## OPS-552 — Cloudflare caches a 404 for a new static file requested while Dokploy is still swapping the container; the URL stays 404 for hours after the deploy says `done`
+
+`측정 2026-10-20 · Dokploy drop deployment (nj2) · Cloudflare proxied hostname + Cloudflare for SaaS custom hostname · Astro 7 node adapter`
+
+**증상:** right after `deployment.all` reported the new deployment `done`, a check script fetched the release's new
+files. The first one (`…/assets/mobile-1.webp`) got 404 because the old container was still serving. A minute later
+every other new file answered 200, but that one kept answering 404 with `cf-cache-status: HIT` and
+`cache-control: max-age=14400`, while the same URL with `?v=1` returned 200. HTML stayed `DYNAMIC` and was not
+affected; image, CSS and JS extensions are cached by default, 404 included.
+
+**해결:** after a deploy reports `done`, wait until one new URL answers 200 (with a cache-busting query) before
+requesting the others, or purge what was requested too early: `POST /zones/<zone>/purge_cache` with
+`{"files": [...]}` listing the URL on **every** hostname (a Cloudflare for SaaS custom hostname such as
+`pa.example.com` is purged through the same zone). The next request was `MISS` with the new file.
