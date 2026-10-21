@@ -10182,3 +10182,17 @@ Same session, same browser: a PWA install check in `chromium.launchPersistentCon
 - `hdiutil detach $DEV` frees the memory at the end.
 
 **해결:** for tests whose result depends on the machine's free space or files, give them a RAM disk of their own instead of loosening the check or cleaning someone else's files. Keep the disk warning itself: on the Air it is true.
+
+## OPS-578 — Naver without a Naver sign-in: IndexNow to `searchadvisor.naver.com/indexnow` takes 4,503 URLs at once; `api.indexnow.org` refuses a brand-new key for about 20 minutes
+
+`측정 2026-10-22 · IndexNow protocol, JSON POST · key file at the site root · Astro site behind a Cloudflare Worker`
+
+**증상:** a site had to be registered with Naver search, but no browser profile on the Air held a Naver sign-in and the password is the owner's. Naver Search Advisor (ownership, sitemap upload, reports) cannot be used without it.
+
+**사실:**
+- Naver accepts IndexNow (listed on indexnow.org since 2023). With the key served as `https://<host>/<key>.txt` (body = the key), `POST https://searchadvisor.naver.com/indexnow` with `{ host, key, keyLocation, urlList }` answered `200` (empty body) for 4,503 URLs in one request (the limit is 10,000).
+- The same body to `https://api.indexnow.org/indexnow` a few minutes after the key file went live answered `403 {"errorCode":"SiteVerificationNotCompleted","message":"Site Verification is not completed. Please wait for some time for the verification to complete and try again."}`; about 20 minutes later it answered `200` for all 4,503.
+- A later single-URL request to Naver with only the site root `https://<host>/` answered `422 Invalid urls`, while a single other page answered `200`. Cause not established (possibly a recent duplicate); the root had been in the accepted batch.
+- Korean paths are sent percent-encoded exactly as the sitemap lists them (`encodeURI`).
+
+**해결:** when a console needs a sign-in nobody can give, push the URLs with IndexNow: one key file, one script that reads the live sitemap and posts it to both endpoints. Retry `api.indexnow.org` after half an hour if it says the site is not verified yet. Search Advisor's reports still need the sign-in.
