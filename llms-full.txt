@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T18:06:56Z · 소스 커밋 `0029259` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T18:14:55Z · 소스 커밋 `25b0b82` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19652,4 +19652,24 @@ Same session, same browser: a PWA install check in `chromium.launchPersistentCon
 - Gradle: `rm -rf android/.gradle android/build android/app/build android/app/.cxx` and `./gradlew --stop`, then
   build again (deleting the four together fixed it; which one held the path was not isolated).
 - Do both on every machine that holds a copy of the project (here the Mac and the Air test host).
+
+## OPS-580 — Gmail app dark mode darkens an HTML mail but not its images: a logo PNG on baked-in paper shows as a pale slab
+
+`측정 2026-10-21 · Gmail iOS app, system dark mode · Resend HTML mail with <meta name="color-scheme" content="light">`
+
+**증상:** a transactional mail with a cream background (`#fbf7f0`) and a 205 × 54 logo PNG whose own background was
+the same cream. In light mode the logo blends in. In the Gmail iOS app with the phone in dark mode, Gmail repainted
+the body and table backgrounds dark and the text light, but left the PNG untouched, so the logo sat in a hard-edged
+cream rectangle on a dark page. `<meta name="color-scheme" content="light">` did not stop Gmail from doing this, and
+Gmail ignores `@media (prefers-color-scheme: dark)`, so an image swap by media query does not reach it.
+
+A transparent PNG is not the fix on its own: a black wordmark on a transparent ground becomes black on Gmail's dark
+background and disappears.
+
+**해결:** make the image carry its own ground only where the mark has one, and be transparent elsewhere. Here the
+masthead became the seal mark alone (a framed stamp), with paper filled inside the frame and alpha outside it,
+rendered at 3× from the SVG with Playwright `page.screenshot({ omitBackground: true })`. A stamp, badge or app-icon
+style mark reads on both grounds; a bare wordmark does not. Give the new image a new URL: Gmail's image proxy and
+already-sent mails keep the old one. Checked in a forced-dark render (backgrounds darkened, images untouched) at
+320 and 600 px; not yet re-checked in the Gmail iOS app itself.
 
