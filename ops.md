@@ -10363,3 +10363,20 @@ return 404, so the long-standing public-domain music library is no longer usable
 file (authors used for an arcade game: Holizna, Fupi, G_P, Archonic, Robin Lamb). Kenney's audio packs
 are CC0 for effects. Check each OpenGameArt entry's license line on the page itself; the site mixes
 CC0, CC-BY and GPL entries in one listing.
+
+## OPS-590 — How US food marketplaces structure money (DoorDash, Uber Eats, Grubhub, Too Good To Go): shop is always the seller, collection is "agent" wording or Stripe Connect, stored value sits in a subsidiary or bank-group issuer, payouts are ACH weekly
+
+`측정 2026-10-21 · DoorDash Merchant ToS 2026-04-27, Marketplace Addendum 2025-11-03 · Uber Eats Merchant Terms 6/2/2026, Uber ToU 10/12/2026, Uber Cash Purchase Agreement 3/6/2023 · Grubhub ToU 2024-12-17, 10-K FY2020 · TGTG Store Terms v3.0 2025-06-16`
+
+**증상:** a small marketplace founder assumes it should be merchant of record, collect into its own account and pay shops by Zelle, and that a prepaid balance is a simple ledger.
+
+**사실:**
+- None is merchant of record for the shop's goods: DoorDash "Merchant is the seller, retailer, and supplier"; Uber "The Merchant is the “merchant”, “retailer”, or “seller”"; TGTG "TGTG is only an intermediary … not a party to the sale"; Grubhub books revenue net "Because we act as an agent of the merchant".
+- Collection: Uber (Portier, LLC) is the shop's "limited payment collection agent", and its consumer terms say payment to Uber "shall be considered the same as payment made directly by you to the Third-Party Provider"; grocery funds sit in an FBO account "for the benefit of the Merchant". TGTG holds a "power of attorney to receive payments … in full discharge". DoorDash instead makes each shop sign the Stripe Connected Account Agreement and "by funding the Merchant’s account with the Payment Processor, DoorDash will discharge its payment obligations". Grubhub (2020 10-K) pooled diner money in "a non-interest bearing operating bank account that is used to fund daily operations".
+- None of the 10-Ks discloses a US money-transmitter licence; Uber's licences are NL/UK/Mexico only; DoorDash names only a Finnish e-money licence. Stripe Payments Company lists NJ DOBI among its licensing regulators.
+- Stored value: DoorDash gift cards and Purchased Credits are issued by DoorDash Giftcards LLC (Virginia), "closed-loop", no expiry, no cash-out, max $2,000 loaded per account per day and $10,000 bought per day. Uber Cash gift cards are "issued directly to you by" TBBK Card Services, Inc. (South Dakota), with auto-refill below $10. Grubhub Holdings Inc. issues its own gift cards (CashStar distributes), $1,000 per card, $2,000 per person per day. TGTG US has none.
+- Payouts: DoorDash weekly on a fixed weekday (day changes need 10 days' notice), daily opt-in; Uber "weekly by direct deposit"; Grubhub weekly / twice a week / every two weeks, bank linked via Plaid; TGTG monthly on the 20th of the following month. None pays by Zelle.
+- Refund cost: DoorDash and Uber charge the merchant for merchant-caused problems ("missing and incorrect Orders"; "Substandard Items") by payout deduction; DoorDash gives merchants 14 days to dispute.
+- Sales tax: DoorDash and Uber collect from customers and remit as marketplace facilitator where required; Uber lists New Jersey from 4/1/2021.
+
+**해결:** keep the shop as seller in writing, pair shop-side "collection agent" wording with customer-side "payment discharges your debt to the shop" wording, move shop money through a licensed processor's connected accounts rather than your own account, pay weekly by ACH, write the refund-cost split into the shop contract, and treat a prepaid balance as a licensing question (subsidiary issuer with caps, or a bank-partner issuer) before launch.

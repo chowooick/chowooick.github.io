@@ -2919,3 +2919,20 @@ Longer lines in the same brief were read correctly.
 **해결:** change the line ("독 공격!", "에러, 에러!") or clone the approved character voice with the
 Base model for the problem line. Gate every take by transcript (Whisper) as well as by the acoustic
 age/gender check of AGT-089.
+
+## AGT-161 — Where US marketplace terms and licence lists open for research: DoorDash/Uber legal pages and SEC EDGAR open with curl; Too Good To Go needs headed Brave; NMLS Consumer Access and NJ DOBI licence search block automation
+
+`측정 2026-10-21 · curl 8.x (Chrome UA, --compressed) · r.jina.ai · Brave 1.96 headed via playwright-core on the Air`
+
+**증상:** an agent comparing delivery/marketplace payment structures needs exact merchant, consumer and gift-card terms plus state money-transmitter licence lookups. Some sites answer 429/403/CAPTCHA, guessed URLs 404, and one merchant contract is behind a login, which tempts quoting search snippets.
+
+**사실:**
+- DoorDash: `https://help.doordash.com/legal/document?type=<slug>&region=US&locale=en-US` redirects to `/en-us/legal/article/<slug>` and is server-rendered (curl 200). Slugs: `mx-terms-of-service`, `mx-marketplace-addendum`, `cx-terms-and-conditions`, `cx-giftcard-terms` (not `cx-gift-card-terms`, 404), `cx-credit-purchase-terms`, `cx-promo-and-credits-terms`. `doordash.com/gift-cards/terms/` answers 403 (Cloudflare). The marketplace-facilitator state list on `merchants.doordash.com/en-us/learning-center/merchant-tax-facilitator` does not render as text even in headed Brave.
+- Uber: `https://www.uber.com/us/en/legal/<slug>/` opens with curl (old `/legal/en/document/?name=...` links redirect there). `uber-gift-cards-terms-of-use` and `uber.com/legal/gift` both land on the Uber Cash Purchase Agreement. Merchant FAQ: `merchants.ubereats.com/us/en/faq/`.
+- Grubhub: merchant contract is at `restaurant.grubhub.com/terms` behind a login (curl and r.jina.ai both get the sign-in shell). Public merchant answers are `get.grubhub.com/faq/...` pages; list them from `get.grubhub.com/gh_faq-sitemap.xml` and `page-sitemap.xml`. Gift-card terms are on `grubhub.cashstar.com/about/terms_and_conditions`; `grubhub.com/legal/gift-card-terms` is 404.
+- Too Good To Go `/en-us/legal/*` pages: curl and WebFetch get 429 / Vercel Security Checkpoint, and r.jina.ai also returned 429 for the store terms; headed Brave on the Air read every page (extends AGT-143). The US user terms slug is `terms-and-conditions-using-the-app`; `terms-and-conditions` is 404.
+- SEC EDGAR: `https://data.sec.gov/submissions/CIK<10 digits>.json` with a descriptive User-Agent lists every 10-K's accession and primary document; the `.htm` then downloads with curl.
+- NMLS Consumer Access: curl gets a Cloudflare 403 page; headed Brave reaches `TuringTestPage.aspx` with a typed CAPTCHA. Stop there. NJ DOBI `www20.state.nj.us/DOBI_LicSearch/bnkSearch.jsp` answers an Incapsula block to curl and an empty page to headed Brave.
+- Stripe's own licence list opens: `https://stripe.com/legal/spc/licenses` (`/spc/licenses` redirects; `/licenses` is 404) lists each state regulator, including NJ Department of Banking and Insurance.
+
+**해결:** fetch these URLs directly instead of searching; read TGTG with headed Brave; for licences, report NMLS/NJ DOBI as "could not check" and cite company filings or the provider's own licence page instead of guessing.
