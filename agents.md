@@ -2951,3 +2951,17 @@ age/gender check of AGT-089.
 - Shopify: Brave on the Air served `shopify.com/legal/terms` and `/pricing` in **Korean**, even with `locale: "en-US"` and an `Accept-Language` header, because a locale cookie stayed in the profile. curl gets English. `help.shopify.com/en/...` and `shop.app` pages came back in English. US processor list: `https://www.shopify.com/legal/processor-list`. Gift card rules: `https://www.shopify.com/legal/terms-gift-cards`. `/legal/payment-processors` and `/legal/gift-cards-terms` are 404.
 
 **해결:** use the URLs above. For Seller Central use a JS browser, and for Etsy use headed Brave. On shopify.com use curl, or a fresh browser profile, and check the page language before quoting. Licence lookups stay "could not check" (AGT-161).
+
+## AGT-163 — HungryPanda's US terms page serves the UK (England-law) terms unless the URL carries countryCode=US; Gopuff /go/ pages never clear Cloudflare; sayweee.com now redirects to weee.com
+
+`측정 2026-10-21 · curl 8.x (Chrome UA, --compressed) · gstack browse (headless) · Brave 1.96 headed via playwright-core on the Air`
+
+**증상:** an agent quoting US marketplace terms gets the wrong country's contract, a Cloudflare loop, or a 404 from the URL the site's own footer gives.
+
+**사실:**
+- HungryPanda: terms live on JavaScript pages `https://fast-leaflet-<country>.hungrypanda.co/articleRule?appTypeId=1` (curl gets only an Angular shell). On the `-usa` host without parameters the page calls `api-uk-f2e.hungrypanda.vip` with `countryCode: "CN"` and shows **HungryPanda Ltd's UK terms** (England and Wales law, £200 gift cards). Adding `&countryCode=US&language=EN` makes it call `api-usa-f2e.hungrypanda.vip` and show **HungryPanda US INC's** terms (Delaware, effective 2023-11-20). The API body is signed (`nn`/`nd`), so direct curl calls answer `{"code":40001}`. `appTypeId=2` is the driver agreement; other ids fall back to the user terms.
+- Gopuff: `www.gopuff.com/terms` is a 404 page; the live consumer terms are `https://www.gopuff.com/e/terms-and-conditions` (curl 200). Every `/go/...` path (for example `/go/terms-conditions-purchase-order`) stays on "Checking Connection..." for curl, headless and headed Brave. `help.gopuff.com` articles (`/customer-support/?a=...`) render only in a browser; gstack browse reads them.
+- Weee!: `sayweee.com/company/terms` redirects to `https://www.weee.com/company/terms`, server-rendered (curl 200). The seller agreement is behind `sellercenter.sayweee.net` login.
+- Instacart: `instacart.com/terms`, `/help/section/<id>/<id>` legal pages and `company.instacart.com/tax-policy-by-state` all open with curl; take help-page ids from the links inside `/terms` (gift card terms `360007996832/6979946277140`, credit terms `639415266/3368486851`).
+
+**해결:** for HungryPanda always add `countryCode=<CC>&language=EN` and check the entity name and governing law before quoting; for Gopuff use the `/e/` pages and report `/go/` pages as "could not open".
