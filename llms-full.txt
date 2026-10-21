@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-20T23:44:12Z · 소스 커밋 `0bb2f37` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T00:29:16Z · 소스 커밋 `baafe2f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19084,4 +19084,17 @@ card's left ~90 px as padding, and that padding is exactly what the peek shows.
 the scroll dropped from 17 to 0. Size each strip item to its content, for example a phone card at about 52 % of the strip
 (min 176 px) and a browser frame at 80 %, so the peek shows the picture. To check: after scrolling, count
 `[...document.images].filter(i => !i.complete)` and look at the strip in a screenshot.
+
+## OPS-548 — Serving a customer's domain (CNAME to a tunnel hostname) on a free zone: Cloudflare for SaaS checkout, tunnel host as fallback origin, an ingress rule per custom hostname, and server code that still calls the old site on that name
+
+`측정 2026-10-20 · Cloudflare free zone, Cloudflare for SaaS (usage-based) · dashboard ko UI in Brave 155 via CDP · cloudflared remote-managed tunnel run by Dokploy · Node 24/26 node:https`
+
+**증상:** another company was asked to add `CNAME pa.<their-domain> → app.<our-zone>`, where `app.<our-zone>` is a proxied CNAME to a Cloudflare Tunnel. Without Cloudflare for SaaS such a request reaches Cloudflare with a hostname no zone owns and fails; the API answers `custom_hostnames` with `1404 No quota has been allocated` and `fallback_origin` with `1456` (OPS-415). The old site on that name (WordPress) was also the target of our own server-side form submission, so after the CNAME flip the server would have called itself.
+
+- Dashboard: zone → SSL/TLS → 사용자 설정 호스트 이름 → 「Cloudflare for SaaS 사용」 → checkout page `…/checkout/payment` ($0/개월, 사용량 기반, card on file). Its two consent checkboxes are hidden `input[aria-hidden]` (Playwright `check()` fails with "outside of the viewport"); clicking the label text (`getByText('에 동의합니다')`, `getByText('에 대해 이 카드를 청구하도록')`) ticks them, then `활성화` → `…/checkout/confirmation` 「구매 완료」. The zone API token worked for everything after that.
+- `PUT /zones/<id>/custom_hostnames/fallback_origin {"origin":"app.<our-zone>"}` (the proxied tunnel CNAME itself) went `initializing` → `active` in under a minute. A custom hostname created before that shows `verification_errors: ["fallback origin is not active yet"]`; after it, the hostname stays `pending` with HTTP DCV `pending_validation` until the customer's CNAME exists, and validates by itself once it does.
+- The tunnel matches on the **custom** hostname (the Host header stays `pa.<their-domain>`), so its ingress needs a rule for that name too (`PUT …/cfd_tunnel/<id>/configurations`, applied with no restart). Requests to `pa.<their-domain>` hit the edge before the flip but the hostname is not served until it is active.
+- Server code that called `https://pa.<their-domain>/…`: keep URL, Host and TLS SNI, but connect to the old origin's IP with `node:https` `request(url, { lookup, agent: false })`. With the default keep-alive agent a reused socket ignored the custom `lookup`. Measured: the form page came back from the old origin through the pin; pointing the pin at `127.0.0.1` gave `ECONNREFUSED`, so the pin is what is used. The old origin's HTTP-01 certificate renewal will fail once the name points elsewhere, so the pin is temporary (until that cert's expiry).
+
+**해결:** before the customer flips the CNAME: enable SaaS, set the tunnel hostname as fallback origin, create the custom hostname (`ssl.method: http`, `type: dv`), add the ingress rule, and pin any server-side calls to the old site. Ask the customer for a separate hostname for the old site before its certificate expires. Make canonical URLs a runtime setting so they can move to the customer's name after the flip without a rebuild.
 
