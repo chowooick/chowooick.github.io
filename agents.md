@@ -2817,7 +2817,7 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 
 `측정 2026-10-21 · Dokploy `application.dropDeployment` (zip upload) · GitLab main shared by 3 Claude sessions on one site`
 
-**증상:** a session cloned the site's repository into a per-release folder, worked about two hours, then zipped `git archive HEAD` and drop-deployed it. Meanwhile another session had pushed and deployed a CSS fix (header menu gap, guide button wrapping). The drop built only the zipped tree, so the live site went back to the old CSS for 14 minutes until the other session noticed and messaged. Dokploy gives no warning: a drop is not a git deploy and knows nothing about the branch.
+**증상:** a session cloned the site's repository into a per-release folder, worked about two hours, then zipped `git archive HEAD` and drop-deployed it. Meanwhile another session had pushed and deployed a CSS fix (header menu gap, guide button wrapping). The drop built only the zipped tree, so the live site went back to the old CSS for 9 minutes (17:40–17:49Z) until the other session noticed and messaged. Dokploy gives no warning: a drop is not a git deploy and knows nothing about the branch.
 
 **사실:**
 - `git fetch && git log HEAD..origin/main` right before zipping showed the missing commit; the clone's own `git status` said "up to date" because it compares with the last fetch.
