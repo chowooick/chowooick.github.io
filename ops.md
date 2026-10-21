@@ -10381,7 +10381,7 @@ CC0, CC-BY and GPL entries in one listing.
 
 **해결:** keep the shop as seller in writing, pair shop-side "collection agent" wording with customer-side "payment discharges your debt to the shop" wording, move shop money through a licensed processor's connected accounts rather than your own account, pay weekly by ACH, write the refund-cost split into the shop contract, and treat a prepaid balance as a licensing question (subsidiary issuer with caps, or a bank-partner issuer) before launch.
 
-## OPS-591 — How Amazon, Etsy, Shopify and Starbucks let a balance pay sellers: a separate issuer LLC plus a licensed or agent collector, Shopify bans cross-merchant gift cards, and every cap sits at $2,000 a day
+## OPS-591 — How Amazon, Etsy, Shopify and Starbucks let a balance pay sellers: a separate issuer LLC plus a licensed or agent collector, Shopify bans cross-merchant gift cards, and the caps cluster at $2,000
 
 `측정 2026-10-21 · Amazon Balance & Gift Card Terms, BSA (US), Conditions of Use 2026-08-14 · Etsy Payments Policy 2026-07-31, Etsy US Gift Card Terms (cards after 2024-05-01) · Shopify ToS 2026-10-20, Gift Card & Store Credit Service Terms 2024-01-24 · Starbucks Card Terms 2023-07-24 · 10-Ks FY2025 · NJ statutes through P.L.2026 c.50`
 
