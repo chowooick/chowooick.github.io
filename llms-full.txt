@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T22:30:35Z · 소스 커밋 `e7a4846` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T22:33:18Z · 소스 커밋 `6884e45` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9456,6 +9456,23 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 - ecode360 search results show the municipal code only as a snippet; the ordinance itself could not be opened by WebFetch.
 
 **해결:** for current NJ statute text download the Legislature's statutes bundle once and grep it; for N.J.A.C. use LII; for case law use the CourtListener search API; for municipal ordinances report "could not open" and give the health department's contact instead of quoting a snippet.
+
+## AGT-156 — US payments, sales-tax and revenue-accounting research: which primary sources open with curl (NJ Taxation PDFs, Deloitte DART for ASC text, bank Zelle terms) and which answer 403/404
+
+`측정 2026-10-21 · curl 8.x with a Chrome User-Agent and --compressed, macOS; pdftotext -layout`
+
+**증상:** an agent asked for exact quotes on sales tax, payment-provider terms and ASC 606 gets 403 from `fasb.org` ASU PDFs, 404 from many old `nj.gov/treasury/taxation/*.shtml` and Venmo `/legal/us-*` URLs, and is tempted to quote search snippets.
+
+**사실:**
+- NJ Division of Taxation PDFs open: `/treasury/taxation/pdf/pubs/sales/su4.pdf` (Sales Tax Guide S&U-4, rev. 07/22, has the taxable/exempt item table, NJ-REG timing and the 4-year record rule), `su1.pdf` (Restaurants, rev. 3/23), `anj9.pdf` (Coupons, rev. 12/17), `other_forms/sales/st3.pdf`, `pubs/tb/tb55.pdf`. 404 on 2026-10-21: `pubs/tb/tb71.pdf`, `su7.pdf`, `su_over.shtml`, `cbt/minimumtax.shtml`, `businesses/cbt/index.shtml`. `pdf/current/cbt/cbt100i.pdf` serves the **2019** CBT-100 instructions, so date-check what "current" returns.
+- N.J.A.C. 18:24 (sales tax rules) opens on LII as `https://www.law.cornell.edu/regulations/new-jersey/N-J-A-C-18-24-27-2` (AGT-155 pattern).
+- NJ unclaimed property: `https://www.unclaimedproperty.nj.gov/BusinessFAQs.shtml` and `https://www.nj.gov/treasury/unclaimed-property/pdf/HolderGuidelines.pdf` open. UEZ municipality list: `https://www.nj.gov/dca/uez/support/index.shtml` (the "UEZ Locations" menu item).
+- FASB: `fasb.org/page/document?pdf=ASU...` answers 403. Deloitte DART codification pages (`dart.deloitte.com/USDART/home/codification/revenue/asc606-10/roadmap-revenue-recognition/...`) return 200 to curl and quote the ASC paragraphs verbatim (e.g. 606-10-55-49, Example 47 55-318A–C). A guessed DART URL returns "Tree node not found" with 200, so take subpage links from the chapter page.
+- IRS: `https://www.irs.gov/instructions/i1099mec` and `/businesses/understanding-your-form-1099-k` open. eCFR title 26 works via the versioner API with `--compressed` (`title-26.xml?part=1&section=1.451-8`).
+- Banks: Chase's Zelle terms are a PDF at `static.chasecdn.com/content/dam/legal-agreements/library/en/chasenet_la/versions/chasenet_la.pdf`; chase.com Zelle FAQ and business Zelle pages 404. Bank of America's Zelle limits are inside `https://www.bankofamerica.com/online-banking/service-agreement.go` (§4); its old Zelle FAQ URLs 404. `zellepay.com/legal/user-service-agreement` answers 403; the domain moved to `zelle.com`.
+- Venmo: `/legal/us-fees/`, `/legal/us-purchase-protection/`, `/legal/us-acceptable-use/` answer 404; fees are at `https://venmo.com/resources/our-fees/`, Purchase Protection is inside `https://venmo.com/legal/us-user-agreement/`, and the acceptable-use policy it links is PayPal's (`paypal.com/us/legalhub/paypal/acceptableuse-full`). Stripe `/pricing`, `/legal/ssa`, `/legal/ssa-service-terms`, `/legal/restricted-businesses`, `/tax/pricing` and `docs.stripe.com` pages all open with curl; per-transaction Radar pricing loads client-side and did not appear.
+
+**해결:** go to these URLs first; for ASC text cite the paragraph number and quote it from DART, saying FASB itself was not opened; for anything that 404s, report it rather than quote a snippet.
 
 ---
 
@@ -19798,4 +19815,20 @@ Relates to OPS-381 (a stale module after a skipped rebuild looks the same from t
 - The zip's member names are CP949 (macOS `unzip` fails with "Illegal byte sequence"; decode `cp437 → cp949` in Python). The shapefile's .dbf is UTF-8 (its .cpg says so), EPSG 5181. 1,650 상권: 골목상권 1,090, 전통시장 305, 발달상권 249, 관광특구 6, each tagged with one 행정동.
 
 **해결:** read `infSeq` from `<form name="frmFile">`, `seq` from the `downloadFile` call, and check the file is a zip before using it.
+
+## OPS-588 — Taking customer payments and paying suppliers by Zelle, Venmo or Stripe: the terms that bite a small US merchant (Chase "not intended for the purchase of goods from retailers", BoA new-recipient caps, Venmo 180-day holds, stored-value restrictions)
+
+`측정 2026-10-21 · Chase Zelle Service Agreement (last updated 10/16/2026) · BoA Online Banking Service Agreement (effective 2026-10-19) · Venmo User Agreement (effective 2026-08-24) · Stripe Restricted Businesses (2026-09-22)`
+
+**증상:** a startup plans to collect consumer orders by Zelle/Venmo/card and pay ~20 suppliers weekly by Zelle, and assumes the published daily limits are the only constraint.
+
+**사실:**
+- Chase Zelle terms: "The Service is not intended, and should not be used, for the purchase of goods from retailers, merchants, or the like". Business Banking send limits are per-transaction tiers set dynamically: $1,000 / $5,000 / $7,500 / $15,000 per day; "We do not currently limit the dollar amount you may receive". Chase's deposit agreement lets it debit funds back when the sending bank says a payment was "procured by fraud, scam or financial exploitation", "even if you have already withdrawn the funds".
+- Bank of America Zelle (consumer or small business accounts): no receiving limit; send limits $2,000/day (≤15 days enrolled), $4,000 (16–30), $8,000 (31–60), $15,000 (60+), each "/ 20 transactions"; monthly $100,000 / 120 transactions; recipients not enrolled in Zelle $2,000/day and newly added recipients $4,000/day for the first 5 days. "NEITHER WE NOR ZELLE OFFER PURCHASE PROTECTION FOR AUTHORIZED PAYMENTS."
+- Reg E covers only consumer accounts (12 CFR 1005.2(b)(1) "primarily for personal, family, or household purposes"); a business account has no Reg E error-resolution rights.
+- No Zelle API for reconciling incoming payments was found; J.P. Morgan's Zelle Disbursements API only sends.
+- Venmo business profile: 1.9% + $0.10 per payment received; risk-based holds "may remain in place for up to 180 days"; unverified profiles $2,499.99/week sending. Purchase Protection lets buyers dispute within 180 days; the seller pays the payment plus fees on a loss. Excluded from Purchase Protection: "stored value items such as gift cards and pre-paid cards". The PayPal AUP Venmo links needs pre-approval for "the sale of stored value cards".
+- Stripe: stored value is *restricted*, not prohibited: "Seller-maintained stored value or credits may be subject to limits." Payment facilitation is restricted too, including "receiving settlement proceeds for goods or services that you did not provide". Stripe Billing credits must not be used to "sell gift cards" or "offer stored value". Dispute fee $15, plus a $15 counter fee that is refunded only if you win. Stripe Tax: 0.5% per transaction where registered (no-code).
+
+**해결:** pay suppliers by ACH/bill pay instead of Zelle, or enroll the account and every recipient well before the first payout. Do not route consumer purchases through a Chase Zelle account. Put an order code in every Zelle memo and match by hand. Ask Stripe and PayPal/Venmo in writing before selling a prepaid balance through them.
 
