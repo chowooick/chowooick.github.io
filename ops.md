@@ -10312,3 +10312,26 @@ Relates to OPS-381 (a stale module after a skipped rebuild looks the same from t
 - Two things that look like failures and are not: Chromium logs `Cross-Origin-Opener-Policy policy would block the window.closed call` as console errors during every Firebase popup, and the sign-in still completes. And on `http://localhost` an MNORI-SSO page (hub cookie on `.mnori.com`) signs itself out on reload, because it cannot see the hub cookie and follows the hub; check reload persistence only on a `*.mnori.com` origin.
 
 **해결:** keep one real-popup run for the chooser itself, and make the repeatable test mint a custom token (script reads the service account from stdin, writes the token to a 0600 file) and sign in with it as above. Filter the COOP line out of the test's console-error check.
+
+## OPS-586 — data.go.kr file datasets download with curl and no login: two POST/GET calls, and 상가(상권)정보 carries each shop's 5-digit postal code
+
+`측정 2026-10-21 · data.go.kr 15083033 소상공인시장진흥공단_상가(상권)정보_20260630`
+
+**증상:** the 다운로드 button on a data.go.kr file dataset runs JavaScript (`fileDetailObj.fn_fileDataDown`), so the page holds no file link, and a captcha modal appears only after a per-file limit.
+
+- `curl -X POST https://www.data.go.kr/tcs/dss/selectFileDataDownload.do -d "publicDataDetailPk=<uddi:… from the page's hidden input publicDataDetailPk>&publicDataPk=<dataset no>&atchFileId=&fileDetailSn=1&publicDataTyCode=PR0051"` answers JSON with `status: true` and `atchFileId` (`FILE_000000003695831`).
+- `curl -L -A "Mozilla/5.0" -e "https://www.data.go.kr/data/<no>/fileData.do" "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=<id>&fileDetailSn=1"` returns the file. No account, key or cookie.
+- 상가(상권)정보: 352,699,739-byte zip, one UTF-8 CSV per 시도 (2026 editions have `전남광주`), 2,771,992 shops, CP949 member names. The server sent 150–200 KB/s (about 35 min); start it detached. Columns include 행정동코드·법정동코드·`신우편번호` (5-digit 기초구역번호)·경도·위도, so shops join a postal-code table directly: 492 of 2,771,992 rows had a code missing from Korea Post's 2026-10-08 edition.
+
+**해결:** script the two calls; take `publicDataDetailPk` from the dataset page. Quarterly editions change `atchFileId`, so look it up each time.
+
+## OPS-587 — 서울 열린데이터광장 file download: POST to datafile.seoul.go.kr with the page's own infSeq, or it answers a 183-byte "잘못된 접근" page
+
+`측정 2026-10-21 · data.seoul.go.kr OA-15560 서울시 상권분석서비스(영역-상권)`
+
+**증상:** `POST https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?&useCache=false` with `infId=OA-15560&seq=5&infSeq=2` (the `infSeq` of the API form) returned HTML: `alert('잘못된 접근입니다. 파일 목록에서 다시 선택하세요.')`, saved as a .zip.
+
+- The page has two hidden forms; the file form `frmFile` carries its own `infSeq` (3 here), and `seq` is the number in `downloadFile('5')`. With `infId=OA-15560&seq=5&infSeq=3&seqNo=` and a Referer of the dataset page it returned the 2,123,078-byte zip. Other `seq` values answer the same 183-byte page.
+- The zip's member names are CP949 (macOS `unzip` fails with "Illegal byte sequence"; decode `cp437 → cp949` in Python). The shapefile's .dbf is UTF-8 (its .cpg says so), EPSG 5181. 1,650 상권: 골목상권 1,090, 전통시장 305, 발달상권 249, 관광특구 6, each tagged with one 행정동.
+
+**해결:** read `infSeq` from `<form name="frmFile">`, `seq` from the `downloadFile` call, and check the file is a zip before using it.
