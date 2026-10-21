@@ -2699,3 +2699,26 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 - A related case is AGT-146: content beside an `x-for` list did not follow `x-show` either.
 
 **해결:** after `$nextTick`, retry the focus over a few animation frames until it takes: `const go = () => { el.focus({preventScroll: true}); if (document.activeElement !== el && ++tries < 10) requestAnimationFrame(go) }; this.$nextTick(go)`. Assert the focused element in a browser test; nothing logs when it fails.
+
+## AGT-148 — Hermes Agent's automatic user memory stored a question as its opposite ("did I say I already have it?" → "already has it"), and its API stream sends non-`choices` tool events that break OpenAI-style parsers
+
+`측정 2026-10-21 · Hermes Agent v0.22.2 (nousresearch/hermes-agent:latest, gateway API server) · model deepseek-flash via provider custom · memory_enabled + user_profile_enabled (defaults) · MacBook Air M1, colima vz`
+
+**증상:** a ten-turn Korean companion conversation through Hermes' `/v1/chat/completions` (`stream: true`, one `X-Hermes-Session-Id`)
+left six lines in `/opt/data/memories/USER.md`. Turn 9 was the user asking 「나 그 자격증 이미 있다고 했었나?」 and the assistant
+correctly answering that it had not heard that, yet USER.md gained 「정보처리기사 자격증을 이미 보유함(시험 예정인 것은 별개)」.
+「팀장님이 또 야근하래」 became 「팀장이 야근을 자주 요구함」. In a fresh session the assistant then stated the false fact
+("자격증은 이미 하나 갖고 있대요") and answered "what do I have next week?" with the weekend trip instead of next Tuesday's exam.
+Only one of the six writes appeared as a tool event in the reply stream; the rest were written outside the replies.
+
+The same stream carries events with no `choices` key, e.g. `{"tool": "memory", "emoji": "🧠", "label": "+user: …", "toolCallId": …, "status": "running"}`.
+A parser doing `json.loads(line[5:])["choices"][0]` dies with `KeyError: 'choices'` on the first turn that writes memory.
+
+Latency against the same prompts sent straight to DeepSeek (`thinking: disabled`, from the Air): first content delta median 0.89 s
+(20 turns, 0.68–1.00) direct, 1.14 s (10 turns, 1.00–2.28) through Hermes. The memory-tool turn took 2.28 s and the first turn of a
+session 2.03 s.
+
+**해결:** treat Hermes' built-in memory as unverified: it writes straight into the prompt of every later session with no review
+step. For anything that must not assert false facts (companions, assistants), turn it off (`memory.memory_enabled: false`,
+`user_profile_enabled: false`) and keep memory in your own store with a review state, or replace it with a memory-provider
+plugin that does. In OpenAI-compatible clients, skip stream events without `choices`.
