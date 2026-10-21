@@ -2876,7 +2876,7 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 
 `측정 2026-10-21 · Astro 7.3.3(Vite, lightningcss 압축) · Brave 1.96(Chromium 154) headless · cuckoo.mnori.com 글씨 크기 기능`
 
-**증상:** CSS가 `font-size:12px` 같은 px 값 수천 개(이 사이트 2,800여 개, 6~11px 글자 다수)라 `html{font-size:…}`나 rem 전환으로는 아무것도 커지지 않는다. `zoom`은 레이아웃째 커져 미디어 쿼리가 따라오지 않아 320px 화면에서 가로로 넘친다.
+**증상:** CSS가 `font-size:12px` 같은 px 값 수천 개(이 사이트 공개 화면 CSS에 3,400여 개, 6~11px 글자 다수)라 `html{font-size:…}`나 rem 전환으로는 아무것도 커지지 않는다. `zoom`은 레이아웃째 커져 미디어 쿼리가 따라오지 않아 320px 화면에서 가로로 넘친다.
 
 - PostCSS 플러그인 하나로 `font-size`, px `line-height`, `font` 단축 속성의 첫 px 크기를 위 식으로 바꾼다. 변수가 없으면 `min(크기, 크기)` = 원래 값이라 기본 화면은 그대로다(계산값 9px→9px, 18px→18px 실측). `0`, em·%·vw만 있는 값, 이미 바꾼 값은 건드리지 않는다. `clamp(…)` 값도 그대로 감싸면 된다.
 - 단계는 `<html data-text>`에 변수 셋을 둔다. `--ts:1.28;--tb:3px;--tc:8px`이면 9px→14.5, 12px→18.4, 40px→48: 작은 글자는 많이, 제목은 최대 `--tc`만 커져 히어로 배치가 버틴다.
