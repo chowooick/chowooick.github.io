@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T21:50:27Z · 소스 커밋 `d1b8b35` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T21:54:48Z · 소스 커밋 `adc2f77` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9426,6 +9426,21 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 - Docs-only commits also land on main between your rebase and your push, so the push can still be rejected after a clean deploy; the deployed code is then the same, only the commit id changes (tell peers the new id).
 
 **해결:** immediately before every drop: `git fetch`, rebase onto `origin/main`, rebuild and rerun the quick checks, then `git archive`. Push right after the deploy is verified, and message the sessions working on the same site with the deployed commit id so they base their next drop on it.
+
+## AGT-154 — US statute text for legal research: Justia, FindLaw, LegiScan and amlegal answer 403 to WebFetch and curl; session-law, LII, eCFR-API and Legistar copies open
+
+`측정 2026-10-21 · WebFetch and curl 8.x from macOS, browser User-Agent set`
+
+**증상:** an agent asked for exact statute quotes (New Jersey codes, NYC Admin Code, CFR) gets `HTTP 403 Forbidden` from `law.justia.com`, `codes.findlaw.com`, `legiscan.com` and `codelibrary.amlegal.com`, even with a Chrome User-Agent. `dspace.njstatelib.org` returns a CrowdSec bot check instead of the PDF. Search snippets then tempt the agent to quote from memory.
+
+**사실:**
+- New Jersey: the session laws and bills on `https://pub.njleg.gov/bills/<session>/PL<yy>/<chapter>_.HTM` (for example `/bills/2012/PL12/14_.HTM`) open with plain curl and carry the full amended section text; an introduced amending bill (`/bills/2024/S0500/70_I1.HTM`) shows the current section with `[deleted]` brackets. Old `njleg.state.nj.us` bill links 302 to `pub.njleg.gov`.
+- State regulations: `https://www.law.cornell.edu/regulations/<state>/...` returns 200 to curl.
+- CFR: `https://www.ecfr.gov/api/versioner/v1/full/<YYYY-MM-DD>/title-<n>.xml?section=<x>` answers 406 "This endpoint requires response compression" unless curl gets `--compressed`.
+- NYC: enacted local-law PDFs on `legistar.council.nyc.gov/View.ashx?...&M=F` download with curl; `pdftotext -layout` reads them.
+- FinCEN ruling PDFs on `fincen.gov` download fine; WebFetch could not read their compressed streams, `pdftotext` could.
+
+**해결:** for exact legal quotes go to the official session law, LII, the eCFR API with `--compressed`, or the council's PDF, and extract text with `pdftotext` or a short HTML-stripping script. Say "not found" rather than quote a search snippet.
 
 ---
 
