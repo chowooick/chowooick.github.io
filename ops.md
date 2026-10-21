@@ -10119,3 +10119,17 @@ Afterwards `http://example.com/` answered `200` over plain HTTP. Before, the req
 Separately: after a whole Dokploy install had been moved to another host (OPS-410), the source host's Dokploy kept running with the old database and all its services. Its containers (here a full copy of the site, 1.16 GB image) went on running for 9 days with no traffic, and the same API key still worked on its local panel (`curl http://localhost:3000/api/...` on that host).
 
 **해결:** keep the old origin running until a few dozen requests to the apex all come from the new one (a per-build marker in the response is the easiest check), then stop it. Test tunnel B first through a temporary proxied name in another zone (`<x>.mnori.com` → B, added to B's ingress), and remove it afterwards. Turn on `PATCH /zones/<id>/settings/always_use_https {"value":"on"}` when the tunnel bypasses the proxy that used to redirect; `http://` then answers `301`. After a Dokploy host move, list services on the source host and remove leftovers with `application.delete` on the source's own panel (it removes the service, the Traefik file and the code directory), then `docker image rm`.
+
+## OPS-573 — React Native `<Text>` on Android breaks Korean between any two syllables (`봐` / `요.`); U+2060 WORD JOINER between the characters of each word makes it break only at spaces
+
+`측정 2026-10-21 · React Native 0.88 (Expo SDK 58, release APK, Hermes) · Android 16 on Pixel 7 Pro · Pretendard (embedded TTF)`
+
+**증상:** a centred heading `무난한 날이에요. 하던 일 하나만 마무리해 봐요.` (21 px, two lines at 1440 px screen width) wrapped as `… 마무리해 봐` / `요.` — the line broke inside the word `봐요`, leaving one syllable alone. The web build of the same component does not do this, because it sets CSS `word-break: keep-all` (react-native-web passes it through). Android's `Text` has no keep-all equivalent among RN's props: `textBreakStrategy` (`simple` / `highQuality` / `balanced`) chooses how lines are balanced, not where Korean may break, and iOS-only `lineBreakStrategyIOS="hangul-word"` does nothing on Android.
+
+**해결:** on Android only, rewrite string children before rendering: join the characters of every run of two or more non-space characters with U+2060 (WORD JOINER):
+
+```ts
+const glue = (s: string) => s.replace(/\S{2,}/g, (w) => Array.from(w).join('⁠'));
+```
+
+Same heading after the change: `… 마무리해` / `봐요.` — breaks only at spaces. U+2060 drew nothing visible with Pretendard (no tofu, no extra width seen in the screenshot). `Array.from` keeps surrogate pairs (emoji) whole. Apply it to string children only; nested `<Text>` elements handle their own strings. The same joiner trick for Godot is GDT-104.
