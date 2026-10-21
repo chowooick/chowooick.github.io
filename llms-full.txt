@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T04:47:33Z · 소스 커밋 `4ded9a8` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T04:56:06Z · 소스 커밋 `0e689a8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19277,4 +19277,15 @@ requesting the others, or purge what was requested too early: `POST /zones/<zone
 **증상:** `POST /api/application.saveEnvironment {"applicationId":…,"env":…}` answered 400 `Input validation failed` with `fieldErrors: {buildArgs: ["Invalid input: expected nonoptional, received undefined"], buildSecrets: [same]}`. `application.one` returned `null` for both.
 
 **해결:** read the app with `application.one`, change only your line of `env`, and send `buildArgs` and `buildSecrets` too (empty strings when `null`). The call then saved; `application.one` listed the new variable. Print variable names only, never the env body. The change applies on the next deploy.
+
+## OPS-564 — Google Auth Platform 브랜딩: a Firebase-created brand in production cannot save any change until homepage, privacy policy and developer contact are filled, and the page shows no error
+
+`측정 2026-10-20 · Google Cloud console (Google 인증 플랫폼, Korean UI) · Firebase project brand "project-<number>", external, production · Playwright in Brave on the Air`
+
+**증상:** removing one authorized domain from a Firebase project's 브랜딩 page left `저장` disabled (`isDisabled() === true`), with no `mat-error` or alert on the page. Adding the developer contact email alone did not enable it.
+
+- The form's `.ng-invalid` controls named the cause: `homePageUrl`, `privacyPolicyUrl` and `developerEmails`. Firebase creates the brand without them, and the form will not save while they are empty.
+- After filling homepage, privacy and terms URLs and one contact email, `저장` enabled and the domain removal saved.
+
+**해결:** when a console form's save button stays disabled with no message, list `form .ng-invalid` elements (their `formcontrolname`) to find the required fields. Fill them with the product's real pages; do not leave the brand half-edited. Related: OPS-084 (the same fields gate "앱 게시").
 
