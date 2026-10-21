@@ -10158,3 +10158,13 @@ Same heading after the change: `… 마무리해` / `봐요.` — breaks only at
 - After revocation, `smtplib.SMTP_SSL("smtp.gmail.com", 465).login(user, old)` raised `SMTPServerDisconnected: Connection unexpectedly closed` twice, not `535`; the new password logged in with `235`.
 
 **해결:** order the rotation so nothing breaks: create the new password, prove it with an SMTP `login()` (no send) from the server that will use it, put it in the app's environment, deploy, confirm the container's env holds it (OPS-574), and only then revoke the old one. Re-run the browser step if the passkey challenge errors once. Treat a disconnect on `login()` with the old password as "rejected".
+
+## OPS-576 — Playwright `addScriptTag` for axe-core fails on a site with an enforced CSP; `bypassCSP: true` on the context fixes it, and a page with only a manifest plus a small network-first service worker gets Brave's install offer in about 0.2 s
+
+`측정 2026-10-21 · Brave 1.96 (Chromium 154) headless on the Air · playwright-core · Next.js 16.3 production build on localhost`
+
+**증상:** an accessibility check that injected axe with `page.addScriptTag({ url: 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js' })` threw at once: `page.addScriptTag: Loading the script '…axe.min.js' violates the following Content Security Policy directive: "script-src 'self' 'unsafe-inline' …"`. The site's enforced CSP (sent by Next `headers()` on every path, including a local `next start`) blocks the CDN. The run aborts on the first page, so every later check is skipped.
+
+Same session, same browser: a PWA install check in `chromium.launchPersistentContext(<temp dir>, { executablePath: Brave, headless: true, isMobile: true, userAgent: <Android Chrome UA> })` (OPS-364) got `beforeinstallprompt` at 209 ms and 272 ms after navigation start on a cleared profile, `Page.getInstallabilityErrors` → `[]`, `Page.getAppManifest` → no errors, for a manifest with `id`, same-origin `start_url`/`scope`, 192/512/maskable icons, four `form_factor: "narrow"` 1080×1920 WebP screenshots, and a 40-line service worker (network-first navigations with `navigationPreload`, cached offline page only). With `ctx.setOffline(true)` the worker served the offline page for an uncached URL.
+
+**해결:** create the test contexts with `browser.newContext({ bypassCSP: true, … })` when the test injects its own scripts; keep the real CSP (no bypass) in the context that checks the service worker and the install offer, since those are what the CSP must allow (`worker-src 'self'`, `manifest-src 'self'`).
