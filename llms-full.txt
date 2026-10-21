@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T14:08:52Z · 소스 커밋 `1ac75f2` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T14:33:45Z · 소스 커밋 `46a33e6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19389,4 +19389,23 @@ This is the Fetch spec's rule for non-CORS requests (`no-referrer` serializes th
 - The CSS cross-document view transition (0.16 s here) was still animating the root snapshot from the old page's size to the new one. To take a full-page shot, Playwright resizes the viewport to the document height, which rescales that snapshot.
 
 **해결:** after navigating by click on a site that opts into view transitions, wait out the transition before visual checks: `await page.waitForTimeout(<duration> + 250)`, or wait on `document.getAnimations()` emptying. A shot from a direct `page.goto` does not have this problem. Related: OPS-271 (`page.route` aborting view transitions).
+
+## OPS-570 — Playwright `emulateMedia({colorScheme:'dark'})` on a page with `<picture><source media="(prefers-color-scheme: dark)">` + `loading="lazy"`: the full-page screenshot shows empty frames
+
+`측정 2026-10-21 · playwright-core 1.58 · Brave 1.96 (Chromium 154, headless) on macOS · Astro 7 SSR page with 14 lazy screenshots`
+
+**증상:** a light-mode pass scrolled the page, every `<img>` was `complete` with a `naturalWidth`, and the full-page
+screenshot was correct. Right after `page.emulateMedia({colorScheme:'dark'})` the same page's full-page screenshot
+had black, empty frames for every picture below the first screen; axe and the overflow check still passed.
+
+- Switching the colour scheme makes each `<picture>` pick its dark `<source>`: a new URL, so the browser drops the
+  loaded light image and starts the dark one. With `loading="lazy"` it only fetches the ones near the viewport;
+  `fullPage: true` does not scroll, so the rest stay unloaded.
+- A related trap on the same page: a "scroll through to trigger lazy images" loop of `scrollTo(0, y)` every 40 ms
+  never got far, because the site sets `html{scroll-behavior:smooth}` and each call restarts the animation (OPS-150).
+
+**해결:** after every `emulateMedia` colour change, scroll through again with
+`scrollTo({top: y, behavior: 'instant'})`, then wait for
+`[...document.querySelectorAll('img')].every(i => i.complete)` and assert `naturalWidth > 0` before the
+screenshot. The page itself is fine: a real dark-mode reader loads the dark sources as they scroll.
 
