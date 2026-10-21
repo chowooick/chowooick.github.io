@@ -9960,3 +9960,33 @@ requesting the others, or purge what was requested too early: `POST /zones/<zone
 **증상:** a daily local edition wanted shop listings from Kakao Local. The FAQ: "당사가 제공하는 API는 실시간으로 호출하여 사용하는 것만 가능합니다." and "로컬 API 등을 호출하여 응답받은 결과 데이터를 별도로 저장하여 사용하는 것은 허용하지 않습니다." A DevTalk answer refuses a 20-minute per-session cache as well. Commercial use is allowed, reselling or charging for API-based features is not.
 
 **해결:** use Kakao Local only for live lookups shown as they come. For stored or generated content use public data that may be stored: 소상공인시장진흥공단 상가(상권)정보, 서울 열린데이터, 기상청·에어코리아 on data.go.kr.
+
+## OPS-561 — A `SameSite=Strict` session cookie set by an OAuth callback is not sent on the callback's own redirect: the user lands signed out, intermittently
+
+`측정 2026-10-20 · Brave 1.97 (Chromium 155) headless on the Air · Astro 7 node server behind Cloudflare · Google OAuth (code + PKCE)`
+
+**증상:** `/admin/callback` exchanged the code, set `__Host-…_admin=…; HttpOnly; Secure; SameSite=Strict` and answered `303 Location: /admin`. `/admin` then rendered the sign-in screen with no error. It happened on some sign-ins and not others (2 of 3 runs in one sequence).
+
+- The navigation chain started on `accounts.google.com`, so the request that follows the 303 is still a cross-site navigation, and the browser leaves `Strict` cookies off it. The cookie *was* stored: reloading `/admin` showed the console.
+- Whether the earlier run passed seems to depend on whether Google answered from its own page click (chooser) or redirected straight back. Do not rely on it.
+
+**해결:** on success, answer the callback with a tiny `200` HTML page that sets the cookies and navigates itself (`<meta http-equiv="refresh" content="0;url=/admin">` plus `location.replace('/admin')`). The page's own navigation is same-site, so the `Strict` cookie goes along. After that change, 3 of 3 real sign-ins reached the console. Error outcomes can keep plain redirects, since they carry no cookie the next page needs. (The alternative, `SameSite=Lax`, also works but weakens the session cookie.)
+
+## OPS-562 — Google's account chooser shows the brand's app name: a Firebase-created brand reads "project-<number>(으)로 이동"; a project with its own branding reads its app name, unverified and with no logo
+
+`측정 2026-10-20 · Google Cloud console (Google 인증 플랫폼, Korean UI) · Brave 1.97 on the Air, signed-in profile copy`
+
+**증상:** an admin page signing in through a shared Firebase project showed "계정을 선택하세요 · project-896121654173(으)로 이동": Firebase had created the OAuth brand with the default name, even though the Cloud project itself is called "MNORI". The signed-out identifier page showed the redirect domain instead ("to continue to mnori1.firebaseapp.com"). So the two Google screens name the app differently.
+
+- A new project with branding filled (app name "CUCKOO Rental America", homepage, privacy and terms URLs, one authorized domain, no logo), external audience, and "앱 게시" → 확인 (production at once, no review for `openid email profile`): the signed-in chooser read "CUCKOO Rental America(으)로 이동" and the footer "앱을 사용하기 전에 CUCKOO Rental America의 개인정보처리방침 및 서비스 약관을 검토하세요". This differs from OPS-491, where the chooser showed the domain; what decides between name and domain is not known.
+- Console automation notes: the project-create page's inputs have no `type` attribute (`input[type=text]` matches nothing; use `#p6ntest-name-input`, and `#p6ntest-id-input` after clicking `프로젝트 ID를 수정합니다.`); "시작하기" on `/auth/overview` and "앱 게시" on `/auth/audience` are not `role=button` (use `getByText(…, {exact:true})`); the branding page's URL fields are `input[id$="mat-input-1|2|3"]`, and after `도메인 추가` the domain field is `mat-input-5`.
+
+**해결:** to show your own product name on Google's chooser, do not share another product's Firebase/OAuth brand. Give the site its own Cloud project with branding and its own web client, and use authorization code + PKCE on the server.
+
+## OPS-563 — Dokploy `application.saveEnvironment` rejects a call without `buildArgs` and `buildSecrets`, even when the app has none
+
+`측정 2026-10-20 · Dokploy API (nj2) · application.saveEnvironment`
+
+**증상:** `POST /api/application.saveEnvironment {"applicationId":…,"env":…}` answered 400 `Input validation failed` with `fieldErrors: {buildArgs: ["Invalid input: expected nonoptional, received undefined"], buildSecrets: [same]}`. `application.one` returned `null` for both.
+
+**해결:** read the app with `application.one`, change only your line of `env`, and send `buildArgs` and `buildSecrets` too (empty strings when `null`). The call then saved; `application.one` listed the new variable. Print variable names only, never the env body. The change applies on the next deploy.
