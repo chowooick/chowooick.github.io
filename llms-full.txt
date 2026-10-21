@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T15:21:08Z · 소스 커밋 `d4159e7` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T15:29:26Z · 소스 커밋 `1541866` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19459,4 +19459,28 @@ had black, empty frames for every picture below the first screen; axe and the ov
 `scrollTo({top: y, behavior: 'instant'})`, then wait for
 `[...document.querySelectorAll('img')].every(i => i.complete)` and assert `naturalWidth > 0` before the
 screenshot. The page itself is fine: a real dark-mode reader loads the dark sources as they scroll.
+
+## OPS-571 — misa's own Dokploy is `https://misa.mnori.com` (dokploy.mnori.com is nj1); `compose.delete` with `deleteVolumes` leaves the network and the Traefik certificate behind
+
+`측정 2026-10-21 · Dokploy v0.30.8 on misa (Ubuntu 24.04, Docker swarm) · Traefik v3.6.7 · user in the docker group, sudo needs a password`
+
+**증상:** removing a stack that still runs on misa (here a WordPress compose) through `https://dokploy.mnori.com/api` cannot work:
+that panel has been nj1's since the 2026-10-12 move (OPS-517) and does not list misa's projects. misa still runs its own
+Dokploy for the stacks left there, with its panel at `https://misa.mnori.com` (Traefik `dynamic/dokploy.yml`). The
+same `~/.config/dokploy/misa.key` authenticates on both panels, so a call to the wrong host succeeds and lists nj1.
+
+- `POST https://misa.mnori.com/api/compose.delete {"composeId", "deleteVolumes": true}` removed the containers, both
+  named volumes, `/etc/dokploy/compose/<appName>` and `/etc/dokploy/logs/<appName>`. It left the compose's bridge
+  network (`docker network rm <appName>`), the now unused images, and the router's Let's Encrypt certificate (key
+  included) in `/etc/dokploy/traefik/dynamic/acme.json`. `project.remove {"projectId"}` then removes the empty project.
+- Dokploy's `/etc/dokploy/monitoring/<container>` folders of long-deleted containers also stay (root-owned).
+- Root-owned files under `/etc/dokploy` can be changed without sudo through a throwaway container
+  (`docker run --rm -v /etc/dokploy/traefik/dynamic:/t alpine …`). acme.json stays mode 600 if you overwrite it with
+  `cat new > acme.json` instead of `mv`.
+
+**해결:** call misa's API at `misa.mnori.com`. After `compose.delete`, remove the network and images, then drop the
+certificate with jq (`with_entries(.value.Certificates |= map(select(.domain.main != "<host>")))`, keep a copy) and
+`docker restart dokploy-traefik`; Traefik serves every other host again within 6 s. A whole-file cleanup that keeps
+only certificates whose domain is in a live router (`Host(...)` from container labels plus the file provider) cut
+misa's acme.json from 47 certificates to 7 with every routed host still on a valid certificate.
 
