@@ -10266,3 +10266,15 @@ Run interactively on the Air itself, nothing looks wrong.
 **해결:** start the master with `stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL`
 (shell: `ssh -fN … </dev/null >/dev/null 2>&1`), and close it when done with `ssh -S <socket> -O exit <host>`.
 If a run is already stuck, the work has usually finished: check the deploy status, then stop the local task.
+
+## OPS-583 — A "play when on screen" animation never starts if the observed element is folded with `clip-path`: IntersectionObserver measures the clipped area, so the ratio never reaches a high threshold
+
+`측정 2026-10-21 · Brave 1.96 (Chromium 154) headless and headed on the MacBook Air · IntersectionObserver · axe-core 4.10`
+
+**증상:** a link was shown "folded" before it was seen (`clip-path: inset(0 calc(100% - 56px) 0 0 round 999px)` on the `<a>`, leaving only a round icon) and an `IntersectionObserver` on the same `<a>` was to unfold it once it was on screen. With `threshold: 0.9` it never fired; with `threshold: [0,.25,.5,.75,1]` plus a check of `getBoundingClientRect()` it still stayed folded after being scrolled fully into view. No error anywhere: the element just stays a circle.
+
+**사실:**
+- The intersection rectangle respects the target's own `clip-path`, while the ratio is taken against the unclipped box. A target clipped to a fifth of its width reports at most about 0.2, so every higher threshold is never crossed and the callback does not run again after the first `0`.
+- axe `color-contrast` fails text that is mid-reveal (`opacity`/`filter: blur` keyframes): an audit run in the first second after load flagged the number inside the animating link as serious, though it passes at rest.
+
+**해결:** observe the outer element and put the `clip-path` on an inner wrapper (`<a><span class="face">…</span></a>`), so the observed box is never clipped; decide "on screen" from `getBoundingClientRect()` (for example three quarters of its height inside `innerHeight`). In test suites, wait for the animation class to be gone before running axe.
