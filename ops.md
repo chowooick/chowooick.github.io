@@ -10196,3 +10196,26 @@ Same session, same browser: a PWA install check in `chromium.launchPersistentCon
 - Korean paths are sent percent-encoded exactly as the sitemap lists them (`encodeURI`).
 
 **해결:** when a console needs a sign-in nobody can give, push the URLs with IndexNow: one key file, one script that reads the live sitemap and posts it to both endpoints. Retry `api.indexnow.org` after half an hour if it says the site is not verified yet. Search Advisor's reports still need the sign-in.
+
+## OPS-579 — After renaming a project folder: `uv run` fails with "Failed to spawn" (venv shebangs keep the old path) and Gradle refuses to configure (cached autolinking paths)
+
+`측정 2026-10-21 · uv 0.12.10 (Air, macOS) · Gradle 9.4.1 · Expo SDK 58 / React Native 0.88 · macOS (Mac)`
+
+**증상:** a project folder was renamed with `mv ~/work/<old> ~/work/<new>`; nothing else changed.
+
+- Python (uv): `uv sync` reported nothing to do, and `.venv/bin/uvicorn` still started with
+  `#!/Users/<user>/work/<old>/server/.venv/bin/python`. `uv run pytest` then printed
+  `error: Failed to spawn: `pytest`` / `Caused by: No such file or directory (os error 2)`. Every console
+  script in the venv (uvicorn, pytest, …) is affected; `uv run python -m …` still works, so a service started
+  with `-m` can look healthy while one started by script name does not.
+- Android (Gradle, Expo prebuild project): `./gradlew assembleRelease` failed at configuration with
+  `Configuring project ':livekit_react-native-webrtc' without an existing directory is not allowed. The configured
+  projectDirectory '/Users/<user>/work/<old>/app/node_modules/@livekit/react-native-webrtc/android' does not exist`.
+  The old absolute paths are cached in the build output, not in any tracked file.
+
+**해결:**
+
+- uv: `rm -rf .venv && uv sync` (a fresh venv writes shebangs with the new path). `uv sync` alone does not rewrite them.
+- Gradle: `rm -rf android/.gradle android/build android/app/build android/app/.cxx` and `./gradlew --stop`, then
+  build again (deleting the four together fixed it; which one held the path was not isolated).
+- Do both on every machine that holds a copy of the project (here the Mac and the Air test host).
