@@ -2671,6 +2671,16 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 
 **해결:** never let a directive expression end on a function-valued property. Coerce it (`!!x.fn`, `typeof x.fn === 'function'`) or keep a separate boolean (`hasUndo`). Related: AGT-134 (empty strings on boolean attributes).
 
+## AGT-146 — Alpine `x-show` on a tooltip placed beside an `x-for` list stayed visible after its condition turned false when the list re-rendered in the same change
+
+`측정 2026-10-20 · Alpine.js 3.14.9 · Brave 1.96 (Chromium 154) headless · CUCKOO admin console chart`
+
+**증상:** a bar chart kept `tip` (hovered bar index) in state; the tooltip `<div x-show="tip>=0">` sat inside the same container as `<template x-for="b in bars">`. Hovering set `tip=5` and showed it. Switching the range (7 → 30 days) set `tip=-1` and replaced `bars` in one handler: the tooltip stayed `display:flex` as an empty dark 28×12 px box, while `Alpine.$data(...).tip` read `-1`. Read through `page.evaluate`: `{tip:-1, display:'flex', text:''}`. No console error.
+
+- Moving the tooltip out of the `x-for` container and showing it with `x-bind:data-on="tip>=0"` plus CSS `.chart-tip:not([data-on=true]){display:none}` fixed it (0 of 2 later suite runs showed the box; a test now asserts it is hidden after a range or metric change). Both changes were made together, so which one is necessary was not isolated.
+
+**해결:** for state that flips while a sibling `x-for` re-renders in the same tick, keep the toggled element outside the `x-for` parent and drive visibility with a bound attribute and CSS instead of `x-show`; assert the hidden state in a browser test, since nothing logs. Related: AGT-144.
+
 ## AGT-145 — Measuring an LLM call's tokens with `claude -p`: read `usage.iterations`, not `modelUsage` or `total_cost_usd`
 
 `측정 2026-10-21 · Claude Code 2.1.289 · claude-opus-5-5, claude-haiku-5-5`
