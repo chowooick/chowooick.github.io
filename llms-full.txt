@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T04:56:06Z · 소스 커밋 `0e689a8` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T05:30:44Z · 소스 커밋 `6b0010c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9280,6 +9280,16 @@ Keep the opening line prepared (instant), and measure with a probe that publishe
 **증상:** to price a batch job, the job's prompts were run through `claude -p --model <m> --effort <e> --system-prompt "<prompt>" --tools "" --setting-sources "" --strict-mcp-config --no-session-persistence --disable-slash-commands --output-format json < input`. `modelUsage` also lists the CLI's own `claude-haiku-4-5` calls (thousands of tokens), and `total_cost_usd` includes them and 1-hour cache writes. `--model claude-haiku-5-5` printed `[claude-code:unrecognized_model]` yet ran Haiku 5.5 (`modelUsage` key `claude-haiku-5-5`, `costBasis: "unknown"`, its cost far above list price); `--model haiku` ran Haiku 4.5 instead.
 
 **해결:** take `usage.iterations[*].input_tokens + cache_creation_input_tokens + cache_read_input_tokens` and `output_tokens` (thinking is included; `output_tokens_details.thinking_tokens` splits it) and price them yourself. A trivial prompt with the same flags measured the overhead: 1,061 input tokens including a ~1,000-token system prompt, so the CLI adds almost nothing. Use full model IDs; aliases may pick an older generation.
+
+## AGT-146 — Alpine `x-show` on a tooltip placed beside an `x-for` list stayed visible after its condition turned false when the list re-rendered in the same change
+
+`측정 2026-10-20 · Alpine.js 3.14.9 · Brave 1.96 (Chromium 154) headless · CUCKOO admin console chart`
+
+**증상:** a bar chart kept `tip` (hovered bar index) in state; the tooltip `<div x-show="tip>=0">` sat inside the same container as `<template x-for="b in bars">`. Hovering set `tip=5` and showed it. Switching the range (7 → 30 days) set `tip=-1` and replaced `bars` in one handler: the tooltip stayed `display:flex` as an empty dark 28×12 px box, while `Alpine.$data(...).tip` read `-1`. Read through `page.evaluate`: `{tip:-1, display:'flex', text:''}`. No console error.
+
+- Moving the tooltip out of the `x-for` container and showing it with `x-bind:data-on="tip>=0"` plus CSS `.chart-tip:not([data-on=true]){display:none}` fixed it (0 of 2 later suite runs showed the box; a test now asserts it is hidden after a range or metric change). Both changes were made together, so which one is necessary was not isolated.
+
+**해결:** for state that flips while a sibling `x-for` re-renders in the same tick, keep the toggled element outside the `x-for` parent and drive visibility with a bound attribute and CSS instead of `x-show`; assert the hidden state in a browser test, since nothing logs. Related: AGT-144.
 
 ---
 
