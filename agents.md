@@ -2773,3 +2773,25 @@ WebFetch on `https://openai.com/index/<customer>/` returns 403, and headless Bra
 **해결:** for a talk, get the transcript with `youtube-transcript-api` first and cite timestamps. For openai.com use headed
 Brave on the Air. For SPA prices, capture JSON responses or read the bundle for the endpoint, then curl it; do not sign up to
 third-party services to see prices.
+
+## AGT-151 — A LiveKit Python probe that times replies from `capture_frame` overstates voice latency by up to 1 s; wait for `wait_for_playout()` first
+
+`측정 2026-10-21 · livekit (rtc) 1.1.20 · livekit-agents 1.8.8 · LiveKit Cloud · worker on the MacBook Air · Groq whisper-large-v3-turbo + qwen3.8-27b + Azure TTS ko-KR-SunHiNeural`
+
+**증상:** a probe pushed a pre-synthesized user line into a room with `rtc.AudioSource(48000, 1)` and `await src.capture_frame(...)`
+in 10 ms frames, took `spoke_end = time.perf_counter()` after the loop, and measured to the first loud agent frame. It reported
+2.2–3.9 s per reply, which did not add up: the worker's own `metrics_collected` gave end of utterance 0.83–1.46 s, LLM first
+token 0.24–0.74 s and TTS first byte 0.20–0.50 s.
+
+- `AudioSource` has `queue_size_ms=1000` by default. `capture_frame` returns once the frame is queued, so the loop ends while up
+  to a second of the line has not been sent yet. The clock started early by that much.
+- With `await src.wait_for_playout()` before `spoke_end`, six-turn calls measured p50 1.29–1.68 s and p90 1.59–1.97 s, which
+  matches the component sums (preemptive generation overlaps the LLM with end-of-utterance detection).
+- AGT-142's 2.2–3.5 s was measured with a probe of the same shape; its per-component numbers still hold.
+- Side result on the same calls: `azure.STT(language="ko-KR", segmentation_silence_timeout_ms=300)` instead of Groq Whisper cut
+  end of utterance to 0.58–0.70 s, but the agent answered the short pause between two sentences of one user line twice per call
+  ("안녕하세요, 지우 씨." then "네, 지우 씨."), against 0–1 times with batch Whisper.
+
+**해결:** `await src.wait_for_playout()` (or a smaller `queue_size_ms`) after pushing the line and before starting the reply clock.
+Cross-check any end-to-end voice latency against the worker's per-turn metrics; if the end-to-end number is far above
+the sum, suspect the probe.
