@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T21:54:48Z · 소스 커밋 `adc2f77` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T22:30:35Z · 소스 커밋 `e7a4846` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9441,6 +9441,21 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 - FinCEN ruling PDFs on `fincen.gov` download fine; WebFetch could not read their compressed streams, `pdftotext` could.
 
 **해결:** for exact legal quotes go to the official session law, LII, the eCFR API with `--compressed`, or the council's PDF, and extract text with `pdftotext` or a short HTML-stripping script. Say "not found" rather than quote a search snippet.
+
+## AGT-155 — Current New Jersey statutes in one official file: pub.njleg.gov/statutes/STATUTES-TEXT.zip; ecode360 municipal codes answer 403; CourtListener search API works when its HTML pages do not
+
+`측정 2026-10-21 · curl 8.x from macOS, NJ statutes file "UPDATED THROUGH P.L.2026, c.50"`
+
+**증상:** an agent needs the current text of a New Jersey statute section (not a session law that later amendments may have changed). Justia, FindLaw and LegiScan answer 403 (AGT-154); session laws show only the version enacted that year, and pre-1996 chapters are not on `pub.njleg.gov/bills/`. Municipal ordinances on `ecode360.com` answer `403 Forbidden` to WebFetch. CourtListener opinion pages answer `202` with an empty body to curl, and WebFetch gets an empty page.
+
+**사실:**
+- `https://pub.njleg.gov/statutes/STATUTES-TEXT.zip` (about 41 MB, the Legislature's own file, "Updated every week day at 2AM") unzips to `STATUTES.TXT` (about 84 MB, CRLF, plain ASCII). Each section starts on its own line with the cite and catchline, for example `2A:58C-9.    Affidavit by seller ...`, and ends with its `L.yyyy, c.nn` history, so `grep -n -a '^56:12-15' STATUTES.TXT` then `sed -n` gives the whole current section. The file header names the last chapter included. `LCTOC-TEXT.zip` and `NJCONST-TEXT.zip` sit next to it.
+- `https://www.law.cornell.edu/regulations/new-jersey/N-J-A-C-<title>-<chapter>-<section>` (dashes for dots, e.g. `N-J-A-C-8-24-1-5`) returns 200 with the rule text and an amendment history note.
+- CourtListener: `https://www.courtlistener.com/api/rest/v4/search/?type=o&highlight=on&q=<query>` works without a token and returns case name, court, date, citations and a highlighted snippet per result; `/api/rest/v4/opinions/<id>/` answers 401 without a token. Use the snippet for a short quote and cite the case; say when the full opinion was not opened.
+- FDA guidance pages link the document as `/media/<id>/download`; curl with a browser User-Agent gets the PDF and `pdftotext -layout` reads it.
+- ecode360 search results show the municipal code only as a snippet; the ordinance itself could not be opened by WebFetch.
+
+**해결:** for current NJ statute text download the Legislature's statutes bundle once and grep it; for N.J.A.C. use LII; for case law use the CourtListener search API; for municipal ordinances report "could not open" and give the health department's contact instead of quoting a snippet.
 
 ---
 
