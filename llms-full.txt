@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T18:43:24Z · 소스 커밋 `20a0313` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T19:28:08Z · 소스 커밋 `0b4dae1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19682,4 +19682,21 @@ already-sent mails keep the old one. Checked in a forced-dark render (background
 Also measured the same day with the OPS-284 hand-off (poll `getInstalledRelatedApps()`, +3 s, `intent://…?open-app=1`), tap on 「설치」 in Chrome's sheet to `SameTaskWebApkActivity` in front: **7.5 s** and **8.0 s** (two fresh installs; `adb uninstall` of the WebAPK in between, then 「데이터 보관」 in `ClearDataDialogActivity`). With manifest `description` and four `form_factor: "narrow"` 1080×1920 WebP `screenshots`, `prompt()` opened the large sheet (`com.android.chrome:id/button_install` 「설치」, `app_name`, `app_origin`, `description`, screenshot carousel). A cold launch from the launcher showed the manifest `background_color` (#ffffff) splash with the maskable icon.
 
 **해결:** for an offline check, `svc wifi disable` (and `svc data disable` on a SIM phone) in addition to airplane mode, confirm with `dumpsys connectivity | grep 'Active default network'`, and restore with `svc wifi enable` plus `airplane-mode disable`. An offline page that listens for `online` reloads by itself within a few seconds of Wi-Fi coming back (seen here). Strip any hand-off marker on every page load, including the standalone path: the app opens on the address the intent carried, so `?open-app=1` stays in the installed app's URL otherwise.
+
+## OPS-582 — `ssh air '… script …'` never returns when the script starts an `ssh -fN` control master: the backgrounded master keeps the session's stdout open
+
+`측정 2026-10-21 · OpenSSH (macOS) on the MacBook Air · Python 3.9 subprocess · Dokploy deploy helper`
+
+**증상:** a deploy helper on the Air opened an SSH tunnel with
+`subprocess.run(["ssh","-fN","-L",…,"-o","ControlMaster=yes",…],check=True)` and then called the Dokploy API.
+Run from the controller as `ssh air 'zsh -lc "python3 operate.py deploy && python3 operate.py status"'`, both steps
+finished and printed their output (deployment `done`), but the outer `ssh air` hung until the 300 s tool timeout.
+
+**사실:** `ssh -fN` forks to the background after authentication but keeps the stdin/stdout/stderr it inherited.
+The outer SSH session waits for every holder of its stdout to close, so it stays open as long as the tunnel lives.
+Run interactively on the Air itself, nothing looks wrong.
+
+**해결:** start the master with `stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL`
+(shell: `ssh -fN … </dev/null >/dev/null 2>&1`), and close it when done with `ssh -S <socket> -O exit <host>`.
+If a run is already stuck, the work has usually finished: check the deploy status, then stop the local task.
 
