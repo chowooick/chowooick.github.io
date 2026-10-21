@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T00:46:51Z · 소스 커밋 `78ebc1d` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T02:25:07Z · 소스 커밋 `cf685d0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19110,4 +19110,43 @@ the scroll dropped from 17 to 0. Size each strip item to its content, for exampl
 - `EmailMessage(from, to, raw)` takes **one** envelope recipient, so send once per address and keep both addresses in the `To:` header. The raw MIME needs RFC 2047 encoded `From`/`Subject` (`=?UTF-8?B?…?=`), `Date`, `Message-ID` and base64 parts. Measured: a multipart/alternative message reached the Gmail inbox (not spam) in under a minute, with the Korean subject and HTML table intact.
 
 **해결:** for owner-facing notices, put a small relay Worker on the zone that already has Email Routing, protect it with a bearer secret (`crypto.subtle.timingSafeEqual`), return per-recipient results, and have the app store the submission first so a mail failure never loses it. Add any outside recipient as a destination first and tell them to expect the Cloudflare verification mail.
+
+## OPS-550 — Lighthouse mobile TBT: below-the-fold `content-visibility: auto` blocks near the first screen still lay out in the first-paint task; reveal them one per task, and do not use a CSS animation of `content-visibility` (it causes CLS)
+
+`측정 2026-10-20 · Lighthouse 13.5.0 DevTools throttling (4× CPU) · headless Brave 155 · Next 16.3.2 page, 412 × 823 mobile`
+
+**증상:** a long page whose sections below the hero already had `content-visibility: auto` still had a 56–68 ms task right
+after FCP: `Layout` of 342 of 395 objects. The services section starts on the first screen of a phone, so it and its first
+groups count as near the viewport and are laid out in the frame after first paint. With the base page at TBT 24 ms, this
+one task kept the new page at 27–33 ms.
+
+Measured in a proxy A/B (5 Lighthouse runs each): per-group `content-visibility: auto` alone did nothing (the groups are
+within the proximity margin); `content-visibility: hidden` on the groups removed the task (diagnostic only). Starting the
+groups `hidden` and turning them to `auto` after the first frame, one group per `setTimeout(0)`, gave TBT 19 against 26.
+Doing the same with no script, `@keyframes { from, to { content-visibility: hidden } }` with staggered durations, also
+gave TBT 18 but produced layout shifts: CLS 0.19 at 412 px in 4 of 5 loads and in Lighthouse (`layout-shifts` names the
+group, previous rect at the section's top, current rect 0 × 0).
+
+**해결:** `@media (scripting: enabled) { .group { content-visibility: hidden } }` plus an inline script that, on
+`DOMContentLoaded` → `requestAnimationFrame`, sets `style.contentVisibility = 'auto'` on one group per task, with
+measured `contain-intrinsic-size: auto <px>` per group and breakpoint so anchors still land. 15 alternating pairs: TBT 17
+against 24, CLS 0. Put that inline script **at the end of the body**: placed at the top of the body it made the first paint
+show only the eyebrow line and pushed LCP (the headline) one frame later, +60 ms.
+
+## OPS-551 — Next 16 with `inlineCss`: a route group that imports the app-wide `globals.css` ships all of it inline on every page of the group; dropping it cut a page's HTML from 65 to 45 KB gzip and LCP by ~60 ms under throttling
+
+`측정 2026-10-20 · Next 16.3.2 Turbopack, experimental.inlineCss · Tailwind 4 globals.css · Lighthouse 13.5.0 DevTools throttling`
+
+**증상:** a self-styled company home in its own route group (`src/app/(company)/…/layout.tsx`) inlined 107 KB of CSS
+(24 KB gzip), of which 75 KB was the portal's `globals.css` (Tailwind, board styles, `--tw-*`) it never used. Under
+DevTools throttling (1.47 Mb/s) the first paint waits for the whole inline `<style>`, so LCP was 811 ms against the base
+page's 754 ms. CSS is per route, not per rendered branch: a `page.tsx` that renders two different designs ships both
+designs' CSS.
+
+**해결:** do not import `globals.css` in that layout; restate in the group's own CSS what its other pages actually took
+from it (here the Noto `@font-face` rules and per-language stacks, the zh/ja line-breaking reset, `box-sizing` including the
+container itself, and `:where()`-wrapped `img`/`p`/`a` resets so they do not outrank the page's classes). Check those pages
+with a pixel diff against the old build: the first try differed because `box-sizing` was not applied to the `min-height:
+100svh` container and a `.x p { margin: 0 }` reset overrode `.description { margin-bottom }`; after the fix the diff box was
+empty at 390 and 1440.
 
