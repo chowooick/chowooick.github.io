@@ -5665,12 +5665,12 @@ stops rendering on screens without it. Guard any remaining `look_at` with `is_in
 `측정 2026-10-21 · Godot 4.7.2-stable Web export · Playwright 1.5x driving Brave 1.96 headless · SpacetimeDB 2.8 websocket`
 
 **증상:** a Playwright test listened to the same websocket frames as the game, saw a new round open,
-and immediately called `window.blablaAct('answer:3')`. About one round in thirty the game ignored it:
+and immediately called `window.blablaAct('answer:3')`. In two of five runs one round's action was ignored:
 the game's own state still said the previous phase, because Godot polls its `WebSocketPeer` once per
 frame and the hook callback ran before that poll. The answer never reached the server and the test
 timed out with no reducer error. A real tap cannot happen this early, since the buttons are not drawn
 yet.
 
 **해결:** publish the phase and round the game itself has applied (here through `window.blablaState`)
-and make the test wait until they match the frame it saw before acting. Thirty-one screenshots and
-three full fights then passed three runs in a row.
+and make the test wait until they match the frame it saw before acting. The next runs (three full fights
+each) passed with no ignored action.
