@@ -2854,3 +2854,20 @@ Air (AGT-143). Fall back to headed Brave only when the proxy also fails or the p
 - ecode360 search results show the municipal code only as a snippet; the ordinance itself could not be opened by WebFetch.
 
 **해결:** for current NJ statute text download the Legislature's statutes bundle once and grep it; for N.J.A.C. use LII; for case law use the CourtListener search API; for municipal ordinances report "could not open" and give the health department's contact instead of quoting a snippet.
+
+## AGT-156 — US payments, sales-tax and revenue-accounting research: which primary sources open with curl (NJ Taxation PDFs, Deloitte DART for ASC text, bank Zelle terms) and which answer 403/404
+
+`측정 2026-10-21 · curl 8.x with a Chrome User-Agent and --compressed, macOS; pdftotext -layout`
+
+**증상:** an agent asked for exact quotes on sales tax, payment-provider terms and ASC 606 gets 403 from `fasb.org` ASU PDFs, 404 from many old `nj.gov/treasury/taxation/*.shtml` and Venmo `/legal/us-*` URLs, and is tempted to quote search snippets.
+
+**사실:**
+- NJ Division of Taxation PDFs open: `/treasury/taxation/pdf/pubs/sales/su4.pdf` (Sales Tax Guide S&U-4, rev. 07/22, has the taxable/exempt item table, NJ-REG timing and the 4-year record rule), `su1.pdf` (Restaurants, rev. 3/23), `anj9.pdf` (Coupons, rev. 12/17), `other_forms/sales/st3.pdf`, `pubs/tb/tb55.pdf`. 404 on 2026-10-21: `pubs/tb/tb71.pdf`, `su7.pdf`, `su_over.shtml`, `cbt/minimumtax.shtml`, `businesses/cbt/index.shtml`. `pdf/current/cbt/cbt100i.pdf` serves the **2019** CBT-100 instructions, so date-check what "current" returns.
+- N.J.A.C. 18:24 (sales tax rules) opens on LII as `https://www.law.cornell.edu/regulations/new-jersey/N-J-A-C-18-24-27-2` (AGT-155 pattern).
+- NJ unclaimed property: `https://www.unclaimedproperty.nj.gov/BusinessFAQs.shtml` and `https://www.nj.gov/treasury/unclaimed-property/pdf/HolderGuidelines.pdf` open. UEZ municipality list: `https://www.nj.gov/dca/uez/support/index.shtml` (the "UEZ Locations" menu item).
+- FASB: `fasb.org/page/document?pdf=ASU...` answers 403. Deloitte DART codification pages (`dart.deloitte.com/USDART/home/codification/revenue/asc606-10/roadmap-revenue-recognition/...`) return 200 to curl and quote the ASC paragraphs verbatim (e.g. 606-10-55-49, Example 47 55-318A–C). A guessed DART URL returns "Tree node not found" with 200, so take subpage links from the chapter page.
+- IRS: `https://www.irs.gov/instructions/i1099mec` and `/businesses/understanding-your-form-1099-k` open. eCFR title 26 works via the versioner API with `--compressed` (`title-26.xml?part=1&section=1.451-8`).
+- Banks: Chase's Zelle terms are a PDF at `static.chasecdn.com/content/dam/legal-agreements/library/en/chasenet_la/versions/chasenet_la.pdf`; chase.com Zelle FAQ and business Zelle pages 404. Bank of America's Zelle limits are inside `https://www.bankofamerica.com/online-banking/service-agreement.go` (§4); its old Zelle FAQ URLs 404. `zellepay.com/legal/user-service-agreement` answers 403; the domain moved to `zelle.com`.
+- Venmo: `/legal/us-fees/`, `/legal/us-purchase-protection/`, `/legal/us-acceptable-use/` answer 404; fees are at `https://venmo.com/resources/our-fees/`, Purchase Protection is inside `https://venmo.com/legal/us-user-agreement/`, and the acceptable-use policy it links is PayPal's (`paypal.com/us/legalhub/paypal/acceptableuse-full`). Stripe `/pricing`, `/legal/ssa`, `/legal/ssa-service-terms`, `/legal/restricted-businesses`, `/tax/pricing` and `docs.stripe.com` pages all open with curl; per-transaction Radar pricing loads client-side and did not appear.
+
+**해결:** go to these URLs first; for ASC text cite the paragraph number and quote it from DART, saying FASB itself was not opened; for anything that 404s, report it rather than quote a snippet.

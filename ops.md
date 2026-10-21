@@ -10335,3 +10335,19 @@ Relates to OPS-381 (a stale module after a skipped rebuild looks the same from t
 - The zip's member names are CP949 (macOS `unzip` fails with "Illegal byte sequence"; decode `cp437 → cp949` in Python). The shapefile's .dbf is UTF-8 (its .cpg says so), EPSG 5181. 1,650 상권: 골목상권 1,090, 전통시장 305, 발달상권 249, 관광특구 6, each tagged with one 행정동.
 
 **해결:** read `infSeq` from `<form name="frmFile">`, `seq` from the `downloadFile` call, and check the file is a zip before using it.
+
+## OPS-588 — Taking customer payments and paying suppliers by Zelle, Venmo or Stripe: the terms that bite a small US merchant (Chase "not intended for the purchase of goods from retailers", BoA new-recipient caps, Venmo 180-day holds, stored-value restrictions)
+
+`측정 2026-10-21 · Chase Zelle Service Agreement (last updated 10/16/2026) · BoA Online Banking Service Agreement (effective 2026-10-19) · Venmo User Agreement (effective 2026-08-24) · Stripe Restricted Businesses (2026-09-22)`
+
+**증상:** a startup plans to collect consumer orders by Zelle/Venmo/card and pay ~20 suppliers weekly by Zelle, and assumes the published daily limits are the only constraint.
+
+**사실:**
+- Chase Zelle terms: "The Service is not intended, and should not be used, for the purchase of goods from retailers, merchants, or the like". Business Banking send limits are per-transaction tiers set dynamically: $1,000 / $5,000 / $7,500 / $15,000 per day; "We do not currently limit the dollar amount you may receive". Chase's deposit agreement lets it debit funds back when the sending bank says a payment was "procured by fraud, scam or financial exploitation", "even if you have already withdrawn the funds".
+- Bank of America Zelle (consumer or small business accounts): no receiving limit; send limits $2,000/day (≤15 days enrolled), $4,000 (16–30), $8,000 (31–60), $15,000 (60+), each "/ 20 transactions"; monthly $100,000 / 120 transactions; recipients not enrolled in Zelle $2,000/day and newly added recipients $4,000/day for the first 5 days. "NEITHER WE NOR ZELLE OFFER PURCHASE PROTECTION FOR AUTHORIZED PAYMENTS."
+- Reg E covers only consumer accounts (12 CFR 1005.2(b)(1) "primarily for personal, family, or household purposes"); a business account has no Reg E error-resolution rights.
+- No Zelle API for reconciling incoming payments was found; J.P. Morgan's Zelle Disbursements API only sends.
+- Venmo business profile: 1.9% + $0.10 per payment received; risk-based holds "may remain in place for up to 180 days"; unverified profiles $2,499.99/week sending. Purchase Protection lets buyers dispute within 180 days; the seller pays the payment plus fees on a loss. Excluded from Purchase Protection: "stored value items such as gift cards and pre-paid cards". The PayPal AUP Venmo links needs pre-approval for "the sale of stored value cards".
+- Stripe: stored value is *restricted*, not prohibited: "Seller-maintained stored value or credits may be subject to limits." Payment facilitation is restricted too, including "receiving settlement proceeds for goods or services that you did not provide". Stripe Billing credits must not be used to "sell gift cards" or "offer stored value". Dispute fee $15, plus a $15 counter fee that is refunded only if you win. Stripe Tax: 0.5% per transaction where registered (no-code).
+
+**해결:** pay suppliers by ACH/bill pay instead of Zelle, or enroll the account and every recipient well before the first payout. Do not route consumer purchases through a Chase Zelle account. Put an order code in every Zelle memo and match by hand. Ask Stripe and PayPal/Venmo in writing before selling a prepaid balance through them.
