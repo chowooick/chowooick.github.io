@@ -10122,7 +10122,7 @@ Separately: after a whole Dokploy install had been moved to another host (OPS-41
 
 ## OPS-573 — React Native `<Text>` on Android breaks Korean between any two syllables (`봐` / `요.`); U+2060 WORD JOINER between the characters of each word makes it break only at spaces
 
-`측정 2026-10-21 · React Native 0.88 (Expo SDK 58, release APK, Hermes) · Android 16 on Pixel 7 Pro · Pretendard (embedded TTF)`
+`측정 2026-10-21 · React Native 0.88 (Expo SDK 58, release APK, Hermes) · Android 17 on Pixel 7 Pro · Pretendard (embedded TTF)`
 
 **증상:** a centred heading `무난한 날이에요. 하던 일 하나만 마무리해 봐요.` (21 px, two lines at 1440 px screen width) wrapped as `… 마무리해 봐` / `요.` — the line broke inside the word `봐요`, leaving one syllable alone. The web build of the same component does not do this, because it sets CSS `word-break: keep-all` (react-native-web passes it through). Android's `Text` has no keep-all equivalent among RN's props: `textBreakStrategy` (`simple` / `highQuality` / `balanced`) chooses how lines are balanced, not where Korean may break, and iOS-only `lineBreakStrategyIOS="hangul-word"` does nothing on Android.
 
