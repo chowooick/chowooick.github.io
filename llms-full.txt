@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T17:34:31Z · 소스 커밋 `20295da` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T17:36:47Z · 소스 커밋 `2b37286` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -19589,4 +19589,18 @@ Same heading after the change: `… 마무리해` / `봐요.` — breaks only at
 Same session, same browser: a PWA install check in `chromium.launchPersistentContext(<temp dir>, { executablePath: Brave, headless: true, isMobile: true, userAgent: <Android Chrome UA> })` (OPS-364) got `beforeinstallprompt` at 209 ms and 272 ms after navigation start on a cleared profile, `Page.getInstallabilityErrors` → `[]`, `Page.getAppManifest` → no errors, for a manifest with `id`, same-origin `start_url`/`scope`, 192/512/maskable icons, four `form_factor: "narrow"` 1080×1920 WebP screenshots, and a 40-line service worker (network-first navigations with `navigationPreload`, cached offline page only). With `ctx.setOffline(true)` the worker served the offline page for an uncached URL.
 
 **해결:** create the test contexts with `browser.newContext({ bypassCSP: true, … })` when the test injects its own scripts; keep the real CSP (no bypass) in the context that checks the service worker and the install offer, since those are what the CSP must allow (`worker-src 'self'`, `manifest-src 'self'`).
+
+## OPS-577 — A test that reads free disk space fails on the shared Air (92 % full); a 64 MB RAM disk made with `hdiutil`/`diskutil` without sudo gives the test its own volume
+
+`측정 2026-10-22 · MacBookAir10,1 macOS · APFS data volume 228 GiB, 17 GiB free · Node 26 statfsSync · hdiutil/diskutil (no sudo)`
+
+**증상:** a browser test of an operator dashboard expected "할 일이 없어요" and timed out on `.todo-clear`. The dashboard was right: it warns below 10 % free disk, measured with `statfsSync(dbPath)`, and the Air's data volume, shared by every session, had 17 GiB of 228 GiB free (`df -h ~` → 92 %). Deleting one's own leftovers (about 1 GB) does not bring it under the line, and other sessions' files are not ours to delete. The same test had also failed on "아직 백업이 없어요" because a fresh checkout has no backup files.
+
+**사실:**
+- `DEV=$(hdiutil attach -nomount ram://131072 | awk '{print $1}')` (512-byte sectors, so 64 MB) then `diskutil erasevolume HFS+ <name> $DEV` mounts `/Volumes/<name>` as the user, no sudo. hdiutil prints a deprecation warning for `-nomount` (it suggests `diskutil image attach --noMount`) but works.
+- A SQLite database at `DB_PATH=/Volumes/<name>/x.sqlite` makes `statfsSync` report that volume (nearly all free), so a disk check passes without touching the real disk or the app's rule.
+- Empty files with fresh mtimes in the folders the status code scans (here `hourly/*.sqlite`, `offsite/hourly/*.sqlite.enc`, …, plus the pull marker) stand in for a production backup set.
+- `hdiutil detach $DEV` frees the memory at the end.
+
+**해결:** for tests whose result depends on the machine's free space or files, give them a RAM disk of their own instead of loosening the check or cleaning someone else's files. Keep the disk warning itself: on the Air it is true.
 
