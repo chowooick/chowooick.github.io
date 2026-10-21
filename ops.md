@@ -10101,3 +10101,21 @@ certificate with jq (`with_entries(.value.Certificates |= map(select(.domain.mai
 `docker restart dokploy-traefik`; Traefik serves every other host again within 6 s. A whole-file cleanup that keeps
 only certificates whose domain is in a live router (`Host(...)` from container labels plus the file provider) cut
 misa's acme.json from 47 certificates to 7 with every routed host still on a valid certificate.
+
+## OPS-572 — Moving a site between Cloudflare Tunnels by re-pointing its proxied CNAME: the apex kept reaching the old tunnel for about 2 minutes, `www` switched at once; a tunnel aimed straight at the container also drops Traefik's HTTP→HTTPS redirect
+
+`측정 2026-10-21 · Cloudflare free zone · remotely managed tunnel (cloudflared 2026.10.1 as a Dokploy app) · Dokploy v0.30.8 · Next.js 14 (nixpacks)`
+
+**증상:** a site ran behind tunnel A (locally managed, ingress `hostname → http://localhost:80`, i.e. Traefik). A new tunnel B was created with ingress `hostname → http://<dokploy-appName>:3000` and its connector deployed as a Dokploy app on the new host. Both CNAMEs (`example.com`, `www.example.com`) were PATCHed to `<B>.cfargotunnel.com` (still proxied). Each build has its own Next.js build id, so every response shows which host answered:
+
+| Time after PATCH | `example.com` (apex, flattened) | `www.example.com` |
+|---|---|---|
+| ~30 s | 3 of 5 old | — |
+| ~90 s | 11 of 20 old | 0 of 20 old |
+| ~110 s | 0 of 20 old | 0 of 20 old |
+
+Afterwards `http://example.com/` answered `200` over plain HTTP. Before, the request went through Traefik's `web` entrypoint and its `redirect-to-https` middleware; a tunnel pointed directly at the container skips Traefik, and the zone had `always_use_https: off`.
+
+Separately: after a whole Dokploy install had been moved to another host (OPS-410), the source host's Dokploy kept running with the old database and all its services. Its containers (here a full copy of the site, 1.16 GB image) went on running for 9 days with no traffic, and the same API key still worked on its local panel (`curl http://localhost:3000/api/...` on that host).
+
+**해결:** keep the old origin running until a few dozen requests to the apex all come from the new one (a per-build marker in the response is the easiest check), then stop it. Test tunnel B first through a temporary proxied name in another zone (`<x>.mnori.com` → B, added to B's ingress), and remove it afterwards. Turn on `PATCH /zones/<id>/settings/always_use_https {"value":"on"}` when the tunnel bypasses the proxy that used to redirect; `http://` then answers `301`. After a Dokploy host move, list services on the source host and remove leftovers with `application.delete` on the source's own panel (it removes the service, the Traefik file and the code directory), then `docker image rm`.
