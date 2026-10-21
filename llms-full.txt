@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-21T23:13:26Z · 소스 커밋 `aadf54f` · 이 파일은 자동 생성물이다.
+생성 2026-10-21T23:14:40Z · 소스 커밋 `bc5dce0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9603,6 +9603,20 @@ age/gender check of AGT-089.
 - Shopify: Brave on the Air served `shopify.com/legal/terms` and `/pricing` in **Korean**, even with `locale: "en-US"` and an `Accept-Language` header, because a locale cookie stayed in the profile. curl gets English. `help.shopify.com/en/...` and `shop.app` pages came back in English. US processor list: `https://www.shopify.com/legal/processor-list`. Gift card rules: `https://www.shopify.com/legal/terms-gift-cards`. `/legal/payment-processors` and `/legal/gift-cards-terms` are 404.
 
 **해결:** use the URLs above. For Seller Central use a JS browser, and for Etsy use headed Brave. On shopify.com use curl, or a fresh browser profile, and check the page language before quoting. Licence lookups stay "could not check" (AGT-161).
+
+## AGT-163 — HungryPanda's US terms page serves the UK (England-law) terms unless the URL carries countryCode=US; Gopuff /go/ pages never clear Cloudflare; sayweee.com now redirects to weee.com
+
+`측정 2026-10-21 · curl 8.x (Chrome UA, --compressed) · gstack browse (headless) · Brave 1.96 headed via playwright-core on the Air`
+
+**증상:** an agent quoting US marketplace terms gets the wrong country's contract, a Cloudflare loop, or a 404 from the URL the site's own footer gives.
+
+**사실:**
+- HungryPanda: terms live on JavaScript pages `https://fast-leaflet-<country>.hungrypanda.co/articleRule?appTypeId=1` (curl gets only an Angular shell). On the `-usa` host without parameters the page calls `api-uk-f2e.hungrypanda.vip` with `countryCode: "CN"` and shows **HungryPanda Ltd's UK terms** (England and Wales law, £200 gift cards). Adding `&countryCode=US&language=EN` makes it call `api-usa-f2e.hungrypanda.vip` and show **HungryPanda US INC's** terms (Delaware, effective 2023-11-20). The API body is signed (`nn`/`nd`), so direct curl calls answer `{"code":40001}`. `appTypeId=2` is the driver agreement; other ids fall back to the user terms.
+- Gopuff: `www.gopuff.com/terms` is a 404 page; the live consumer terms are `https://www.gopuff.com/e/terms-and-conditions` (curl 200). Every `/go/...` path (for example `/go/terms-conditions-purchase-order`) stays on "Checking Connection..." for curl, headless and headed Brave. `help.gopuff.com` articles (`/customer-support/?a=...`) render only in a browser; gstack browse reads them.
+- Weee!: `sayweee.com/company/terms` redirects to `https://www.weee.com/company/terms`, server-rendered (curl 200). The seller agreement is behind `sellercenter.sayweee.net` login.
+- Instacart: `instacart.com/terms`, `/help/section/<id>/<id>` legal pages and `company.instacart.com/tax-policy-by-state` all open with curl; take help-page ids from the links inside `/terms` (gift card terms `360007996832/6979946277140`, credit terms `639415266/3368486851`).
+
+**해결:** for HungryPanda always add `countryCode=<CC>&language=EN` and check the entity name and governing law before quoting; for Gopuff use the `/e/` pages and report `/go/` pages as "could not open".
 
 ---
 
@@ -20011,4 +20025,19 @@ CC0, CC-BY and GPL entries in one listing.
   - A balance under $5 must be refunded in cash on request, except for cards usable at unaffiliated merchants (N.J.S.A. 46:30B-42.1).
 
 **해결:** do not launch a purchased multi-shop balance as a plain ledger. Either be the seller of record for what the balance buys (Starbucks), or put the balance in a separate issuer entity and have a licensed processor or agent redeem it for the shops (Amazon, Etsy). Start with unpurchased, expiring promotional credit (Shop Cash style). Cap at or below $2,000 a day, and plan for NJ escheat and marketplace-facilitator tax from day one.
+
+## OPS-592 — How Instacart, Weee!, Gopuff and HungryPanda handle seller of record, collection and balances: only the first-party sellers run a purchased balance; the marketplace agent (HungryPanda) parks refunds in a withdrawable balance
+
+`측정 2026-10-21 · Instacart ToS 2026-05-07, Gift Card & Credit terms, MPF Tax Policy 2026-06-26, 10-K FY2025 · Weee! ToS 2026-09-08 · Gopuff ToS 2024-12-13 · HungryPanda US User Terms eff. 2023-11-20 · NYC DCWP release 2026-04-08`
+
+**증상:** a small multi-shop food marketplace wants to collect all customer money, sell a pre-loaded balance and pay shops itself, and looks to grocery and Asian-community delivery apps for a template.
+
+**사실:**
+- Instacart: "We don't sell the goods ourselves"; "The Retailer ... is the seller of the goods to you and the merchant of record ... Instacart does not take title". The consumer terms call Instacart the customer's agent for ordering; the 10-K calls it "an agent of the retailer in the sale of goods". The retailer is paid at its own till: Instacart "remits the purchase value of the related goods to the retailer at the retailers' point-of-sale" with issuer-supplied shopper cards; retailer fees are invoiced, "due immediately to 45 days". Gift cards: "Maplebear Inc. d/b/a Instacart is the Gift Card issuer and sole obligor", spendable across retailers, no expiry, no reload, no cash-out. Credits are capped at "$1,500 total or more than $2,000 added in a single day". Instacart is marketplace facilitator for sales tax. The 10-K has no money-transmitter disclosure.
+- Weee!: sells its own stock and runs a Marketplace of "Sellers" (seller agreement not public; payout terms not public; "Only pay commission on what you sell"). Two balances: WeeeCash ("the balance you purchase from Weee! with money and the balance for refunds", "refundable ... and does not expire") and WeeePoints (awarded, expire 90 days after issue from 2026-09-08; bonus points for loading WeeeCash, up to 4%). Both "may only be used to purchase eligible goods and services provided by Weee!" and cannot be transferred. Refund window 48 h by default; Weee! decides.
+- Gopuff (GoBrands, Inc.): first-party seller ("Gopuff does sell products ..."), card charged by "Gopuff's third party payment processor". GoCash = gift-card value (never expires) plus refund value (may expire); "not refundable, returnable, or redeemable for cash except where required by law", app-only, not transferable.
+- HungryPanda US INC: merchants are the sellers ("A contract to supply the items on your Order forms between you and the merchant"); "Merchants who entered agreements with us authorized us to accept payment on their behalf". "All refunds will be automatically added to the balance of your HungryPanda account"; the global FAQ says the balance can be withdrawn to the payment account in "1-7 business days". No US gift-card terms. NYC DCWP settled for "more than $875,000" over fee-cap overcharges labeled "promotion deductions".
+- None of the four publishes a payout by Zelle; Instacart and Weee! name only an unnamed "payment processor". NMLS licence status could not be checked (AGT-161).
+
+**해결:** a purchased balance is only clean when the issuer is also the seller of what it buys (Weee!, Gopuff). If shops stay the seller, copy HungryPanda's "authorized us to accept payment on their behalf" clause plus a customer-side discharge sentence, publish the shop fee schedule, and keep refunds as card refunds or non-cash promotional credit rather than a withdrawable balance until a licensed issuer or counsel approves.
 
