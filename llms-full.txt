@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T02:35:44Z · 소스 커밋 `270b949` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T02:48:58Z · 소스 커밋 `3a60716` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6691,6 +6691,27 @@ Unlike GDT-138 nothing hangs, because the `quit()` is in the caller, not in the 
 **해결:** Treat any `SCRIPT ERROR` in the output as a failure, whatever the summary line says. In a
 shell runner: `out=$(godot ... 2>&1); code=$?; if [ $code -ne 0 ] || echo "$out" | grep -q 'SCRIPT ERROR'; then fail; fi`.
 Also make counting runners assert that work happened (e.g. fail when the tick or check count is 0).
+
+## GDT-325 — Hand-built `ArrayMesh`: a triangle's front face is the side its `(c − a) × (b − a)` normal points to; wind each triangle against its vertex normals and `FRONT_FACING` means "outside"
+
+`측정 2026-10-21 · Godot 4.7.2-stable · GL Compatibility · macOS (M1) windowed`
+
+**증상:** a ship hull built from `PackedVector3Array` + `ARRAY_INDEX` in a `cull_disabled` shader needs `FRONT_FACING` to tell the outer planking from the inside of the bulwarks. With triangles emitted in grid order, half the quads showed the inside colour on the outside, depending on which way each strip of the grid ran.
+
+Godot's front faces are clockwise as seen from the front, which is the same as: the front side is where `(v[i2] - v[i0]).cross(v[i1] - v[i0])` points (the normal `Plane(a, b, c)` and `SurfaceTool.generate_normals` use). A small helper that compares that face normal with the sum of the three vertex normals and swaps `i1`/`i2` when they disagree makes every triangle face the way its normals point, so a mesh can be emitted in any order. With outward vertex normals the hull's outside read `FRONT_FACING == true` on every face (four ship kinds, eight views each).
+
+**해결:**
+
+```gdscript
+func tri(i0: int, i1: int, i2: int) -> void:
+	var face := (v[i2] - v[i0]).cross(v[i1] - v[i0])
+	if face.dot(n[i0] + n[i1] + n[i2]) >= 0.0:
+		idx.append_array(PackedInt32Array([i0, i1, i2]))
+	else:
+		idx.append_array(PackedInt32Array([i0, i2, i1]))
+```
+
+`CPUParticles3D` has no `amount_ratio` (only `GPUParticles3D` does); setting it is `Invalid assignment of property or key 'amount_ratio'` at run time, not a parse error.
 
 ---
 
