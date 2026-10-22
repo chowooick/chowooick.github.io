@@ -10686,6 +10686,6 @@ Sending right after that first subscription is unreliable. In five runs (fresh p
 
 **증상:** `curl -I https://<site>/manifest.webmanifest` answered `content-type: application/octet-stream` for a PWA manifest; the file and its `<link rel="manifest">` were right.
 
-**사실:** the stock `mime.types` maps `.json` but has no line for `webmanifest`. Chromium 154 still parsed the manifest and found no installability errors with the octet-stream type (`Page.getInstallabilityErrors` `[]` locally with `application/manifest+json`, and the live page with octet-stream got Brave's install offer), so nothing visibly breaks; validators and other browsers expect `application/manifest+json`.
+**사실:** the stock `mime.types` maps `.json` but has no line for `webmanifest`, so the file falls to `default_type`. The type was fixed before any browser check, so whether Chromium tolerates the octet-stream type was not measured here; validators expect `application/manifest+json`.
 
 **해결:** `location = /manifest.webmanifest { default_type application/manifest+json; expires -1; }` (`default_type` applies because no extension matches), or add `application/manifest+json webmanifest;` to a `types {}` block. Purge the URL at the CDN afterwards.
