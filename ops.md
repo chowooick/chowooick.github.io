@@ -10776,3 +10776,22 @@ After this both devices drew the exact lime (checked in device screenshots). Loo
 **증상:** signing in to a site with "Google로 로그인" picked `chowooick@gmail.com` in the account chooser and then stopped at `accounts.google.com/v3/signin/challenge/pk` ("본인 확인 중... 패스키를 사용하여 로그인을 완료합니다") in all three: the Air's `~/kc-test/profile`, a copy of it, and an off-screen headed copy of the main Mac's gstack profile, which is how OPS-447 got through six days earlier. The site's own session cookie in those profiles had expired, so nothing signed-in could be reached.
 
 **해결:** a session cannot pass this alone. Do signed-in checks on a local server with a locally sealed session (OPS-619), verify public files in production by content with curl, and leave the signed-in production check as the owner's one step: open the passkey challenge in a headed window and ask the owner to approve it, then save the site session for the tests.
+
+## OPS-621 — jsQR misses QR codes drawn with round dots at some sizes; rounded squares (0.4 square stroked 0.6, round joins) read at every size
+
+`측정 2026-10-22 · jsqr 1.4.0 · qrcode 1.5.4 (version 4, error correction H, 11×11 modules cleared for a centre icon) · sharp rasterising the SVG · Brave 1.96 screenshots on the Air`
+
+**증상:** a styled QR code (data modules as round dots — a zero-length path with `stroke-linecap: round`, width 0.9–1.0 module — and rounded finder eyes) decoded in the local Playwright check but returned `null` from jsQR on the live page at 1x (124 px, ≈3.2 px per module) for the production URL. Nothing else differed except the URL, i.e. the module pattern.
+
+**사실:** a sweep of 3 URLs × 9 sizes (116–148 px, step 4) × 1x/2x = 54 renders per style:
+
+| Data modules | Decoded |
+|---|---|
+| plain squares | 54/54 |
+| round dots, 0.96 module | 47/54 (misses at 1x *and* 2x) |
+| squares, rounded eyes, centre icon | 54/54 |
+| rounded squares: `M x+.3 y+.3 h.4v.4h-.4z`, fill + `stroke-width: .6; stroke-linejoin: round` (1 module, 0.3 corners) | 54/54 |
+
+Rounded finder eyes and the cleared centre (≈11% of a v4 code at level H) cost nothing; the round dots are what fail. Passing in one check proves little — the failures depend on the exact pattern and pixel size.
+
+**해결:** draw data modules as rounded squares (the stroke trick keeps the path ≈20 bytes per module), keep rounded eyes and the icon if wanted, and guard it with a unit test that rasterises the SVG at many sizes and scales and decodes each with jsQR.
