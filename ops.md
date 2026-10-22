@@ -10452,3 +10452,53 @@ and recreated.
 every directory the host's server writes (`.stdb-data`, logs) to the rsync excludes. A script that starts the server
 when the port is free, mints the token once when the config is missing and then publishes makes the whole thing one
 command (`trade/scripts/dev-server.sh`).
+
+## OPS-595 — Real-time action over SpacetimeDB 2.8 without a server tick: rollback on an input log. Two clients with 90/160 ms injected lag ended on identical state checksums
+
+`측정 2026-10-21 · SpacetimeDB 2.8.0 standalone on the Air (M1) · Rust module · Godot 4.7.2 GDScript clients (v2.bsatn, headless) · 30 Hz integer simulation`
+
+**증상:** a 2–4 player real-time platformer needed instant response and authoritative shared state.
+A scheduled per-tick reducer grows the commit log without bound (OPS-316) and per-move public writes
+saturate a core (OPS-143); server-side physics also means every move waits a round trip.
+
+The design that worked:
+
+- The server never steps the game. Tables: `round` (stage, seed, `start_micros` of tick 0) and a
+  public `input` log, one row per **change** of a player's buttons: `(round_id, slot, tick, bits)`.
+  Clients subscribe `SELECT * FROM input WHERE round_id = N`.
+- Every client runs the same integer simulation (positions in 1/1000 tile, seeded LCG, no floats)
+  from tick 0. The tick to be at comes from the server clock (`ReducerResult` timestamp, lowest-RTT
+  sample of a few `ping` reducer calls).
+- Missing inputs are predicted ("still holding what they held"). A row for a tick already simulated
+  restores the snapshot saved before that tick and replays to now in the same frame. Snapshots are six
+  `PackedInt32Array.duplicate()` calls per tick, kept for 12 s.
+- `send_input` clamps the tick to `[server_tick - 45, server_tick + 20]` and keeps each slot strictly
+  increasing, so rollback depth is bounded. A client treats its **own** inputs as predictions until
+  their row comes back (FIFO), and replays if the server re-stamped one.
+- A leaving player gets a server-written row with a "bot" bit at `server_tick + 3`; the simulation
+  turns that runner into a deterministic bot from that tick on every client.
+
+Measured with two headless clients through the real server, random inputs every 9 ticks, 160 ms and
+90 ms of extra delay applied to every incoming row: 20 and 19 rollbacks, deepest 6 ticks (200 ms),
+and the snapshot checksums at ticks 900 and 1000 were identical on both clients. An idle server
+writes nothing: there is no scheduled reducer except a 60 s sweep that returns without writing when
+there is nothing to delete.
+
+**해결:** for small-room real-time games on SpacetimeDB, store inputs, not state, and keep the
+simulation deterministic and client-side. Test determinism with two real clients and injected lag
+before building anything on top. Reference: `~/work/trapout/godot/net/rollback.gd`,
+`server/src/lib.rs` (`send_input`, `stamp_input`), `godot/tests/net_test.gd`.
+
+## OPS-596 — Two game processes on one machine with the same saved SpacetimeDB token are one identity: the second "joins" the first's room as itself and the host never sees a second seat
+
+`측정 2026-10-21 · SpacetimeDB 2.8.0 · Godot 4.7.2 headless clients on one Mac`
+
+**증상:** a host process created a room and wrote the code to a file; a guest process read it and
+called `join_room`, which returned success. The host waited for a second seat that never came. The
+server log showed both websockets with the **same** identity: both processes read the token from the
+same `user://….cfg` key and connected as the same player, so `join_room` saw the caller already
+seated and returned `Ok` without inserting anything.
+
+**해결:** give every test client its own token key (e.g. `--seat=h` / `--seat=g`, appended to the
+storage key, as bearhunter's `Session` tag does) and check identities differ before asserting on
+seats. A reducer that returns `Ok` for "already there" hides this; log the caller identity in tests.

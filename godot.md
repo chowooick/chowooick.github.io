@@ -5674,3 +5674,33 @@ yet.
 **해결:** publish the phase and round the game itself has applied (here through `window.blablaState`)
 and make the test wait until they match the frame it saw before acting. The next runs (three full fights
 each) passed with no ignored action.
+
+## GDT-322 — `FontFile.load_dynamic_font("res://….ttf")` works in the editor and natively but fails in a Web export: the export ships the imported font, not the `.ttf`
+
+`측정 2026-10-21 · Godot 4.7.2-stable · Web export (nothreads, release) in Brave 1.96 on the Air`
+
+**증상:** UI fonts were created with `var f := FontFile.new(); f.load_dynamic_font("res://assets/fonts/ui-bold.ttf")`.
+Headless and windowed runs drew Korean text correctly. The Web export drew every glyph as a hex box
+and the console printed `ERROR: Can't open file from path 'res://assets/fonts/ui-bold.ttf'.
+at: get_file_as_bytes (core/io/file_access.cpp:907)`. The `.ttf` is imported as a `FontFile` resource
+(`.godot/imported/*.fontdata`) and only that resource goes into the pack; the raw file is not there to
+read.
+
+**해결:** `var f: FontFile = load("res://assets/fonts/ui-bold.ttf")` (the imported resource), then set
+`antialiasing`/`hinting`/`subpixel_positioning` on it if needed. Same rule for any raw file read with
+`FileAccess`: add it to the preset's `include_filter` (e.g. `levels/*.txt,strings.json`) or it is not
+in the export.
+
+## GDT-323 — A `preload()` of a script under the export's `exclude_filter` breaks the script that preloads it, in the export only
+
+`측정 2026-10-21 · Godot 4.7.2-stable · Web export with exclude_filter="tests/*"`
+
+**증상:** `main.gd` had `add_child(preload("res://tests/net_test.gd").new())` behind a `--test=net`
+argument. Everything ran in the editor and headless. The exported game stopped on a blank screen:
+`SCRIPT ERROR: Parse Error: Preload file "res://tests/net_test.gd" does not exist. at: GDScript::reload
+(res://main.gd:34)` then `Failed to load script "res://main.gd" with error "Parse error"`. A preload
+is resolved when the script compiles, whether or not the branch runs.
+
+**해결:** load test-only scripts at run time inside the branch:
+`add_child((load("res://tests/net_test.gd") as GDScript).new())`. Smoke-test the exported build, not
+only the editor run, after adding any `preload` of a path the preset excludes.
