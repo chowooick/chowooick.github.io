@@ -10427,3 +10427,28 @@ CC0, CC-BY and GPL entries in one listing.
 **해결:** measure each clip with `ebur128` (or the first `loudnorm` pass in JSON) and apply a plain
 `volume` gain to the target; that brought every clip within ±1 LU. See OPS-174 for the two-pass
 fallback trap.
+
+## OPS-594 — SpacetimeDB 2.8 dev server: get a fixed publishing identity with `POST /v1/identity` + `spacetime login --token`, and keep its CLI config outside any tree you `rsync --delete`
+
+`측정 2026-10-21 · SpacetimeDB CLI and standalone 2.8.0 on the MacBook Air · local database on its own port`
+
+**증상:** OPS-584 says not to publish with `--anonymous`, but the 2.8 CLI has no option to log in to a
+self-hosted standalone server. A project kept the CLI config inside its working tree on the test host; the next
+`rsync -az --delete ./ air:work/<project>/` from the dev machine removed it, the publishing identity was gone, and
+the next publish to the project's own database could only answer 403 (not the owner). The database had to be wiped
+and recreated.
+
+**사실:**
+- `curl -X POST http://127.0.0.1:<port>/v1/identity` returns `{"identity": …, "token": …}` from that server.
+  `spacetime --config-path <dir>/cli.toml login --token <token>` stores it; every later
+  `spacetime --config-path <dir>/cli.toml publish --server http://127.0.0.1:<port> …` is the same owner and prints
+  `Updated database`.
+- `spacetime call` and the HTTP `/v1/database/<db>/call/<reducer>` run `client_connected` **and**
+  `client_disconnected` once per call, each with a new connection id. A reducer that sets `online = false` on
+  disconnect marks a player who is connected from the game offline whenever someone calls a reducer for them over
+  HTTP; count live connections (a private presence table keyed by connection id) instead of a boolean.
+
+**해결:** put the CLI config in the host's home (`~/.config/<project>-stdb/cli.toml`), not in the synced tree, and add
+every directory the host's server writes (`.stdb-data`, logs) to the rsync excludes. A script that starts the server
+when the port is free, mints the token once when the config is missing and then publishes makes the whole thing one
+command (`trade/scripts/dev-server.sh`).
