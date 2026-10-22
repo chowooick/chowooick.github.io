@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T02:48:58Z · 소스 커밋 `3a60716` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T03:06:06Z · 소스 커밋 `254c743` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20268,4 +20268,16 @@ which export, upload, build, deploy and verify in one command.
 - `spacetime subscribe` keeps a connection open, so `client_connected` runs once and the CLI identity counts as
   online for as long as it runs — the way to keep a CLI-driven test captain "connected" while reducers that only act
   on online players (OPS-594: `call` and `sql` connect and disconnect per invocation) are exercised.
+
+## OPS-599 — SpacetimeDB 2.8: the database owner can delete chosen rows with `spacetime sql "DELETE FROM t WHERE identity = 0x…"`; a row whose client is still connected comes back on its next reducer call
+
+`측정 2026-10-22 · SpacetimeDB 2.8 CLI · self-hosted server behind a Cloudflare tunnel`
+
+**증상:** a live game database had test players left by browser tests, mixed with a real player. Wiping the database (`publish -c`) was not an option.
+
+`spacetime sql --server <nick> <db> "DELETE FROM player WHERE identity = 0xc200…"` run by the owner's CLI identity deletes exactly that row and prints nothing on success; a hex literal works for `Identity` columns, and `SELECT COUNT(*)` afterwards confirms it. Repeat per table that holds the identity (other tables keyed by `owner` etc.), since there are no foreign keys. One of the test identities had a live connection (a row in the module's private connection table, `online = true`) from a client that was not ours: its `player` row was back within a minute with a new `joined_at`, because the module creates a missing player on connect or on the next reducer call. Check for a live connection before deleting and leave those rows alone.
+
+When the deletes are driven by a shell loop, run it in bash, not zsh: zsh does not split an unquoted `$IDS` or `set -- $pair`, so the loop ran once with the whole list and every statement failed with `sql parser error: Expected an expression:, found: =`, which at least deleted nothing.
+
+**해결:** select the rows first (`SELECT identity, name FROM player WHERE …`), delete per identity in every table that holds it, then select again. To stop tests from adding rows to production, persist each test seat's token between runs (Trade's `web_play.mjs` keeps them in `~/.config/trade-web-seats.json` on the test host) so the same captains are reused.
 
