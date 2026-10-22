@@ -10646,7 +10646,9 @@ The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<
 
 **사실:** on a brand-new profile the first `subscribe()` resolved with an `https://fcm.googleapis.com/fcm/send/…` endpoint after 31.2 s and 27.2 s on a bare page (with and without dropping Playwright's default `--disable-background-networking`; the flag made no difference), and after about 80 s inside a busy WebGL game page. Once it resolved, a VAPID push sent from Node `web-push` was shown by the service worker 271 ms later (`registration.getNotifications()`).
 
-**해결:** wait up to two minutes for the first subscription in tests, and show progress in the UI while it runs ("켜는 중…" on the button) instead of leaving a disabled button that looks broken. Do subscribe → send → check notification in one browser session (OPS-330).
+Sending right after that first subscription is unreliable. In five runs (fresh profile each, VAPID push from `web-push` within a few minutes of `subscribe()`): twice FCM answered 201 and the notification showed (271 ms, 1,010 ms); once 201 and nothing showed within 90 s; twice FCM answered **404** for the brand-new endpoint. A sender that drops a subscription on any 404 (a common reading of the Web Push spec) would have deleted those two valid-looking registrations at once.
+
+**해결:** wait up to two minutes for the first subscription in tests, and show progress in the UI while it runs ("켜는 중…" on the button) instead of leaving a disabled button that looks broken. Do subscribe → send → check notification in one browser session (OPS-330), and let the test retry the send a few times a minute apart. In the sender, treat 410 as final but drop on 404 only when the subscription is older than about a day; retry a fresh one on the next pass with a small daily cap.
 
 ## OPS-609 — Playwright WebKit on the Air: `Executable doesn't exist … webkit-2248` for Playwright 1.58.2, while the cache holds webkit-2359/2370; NODE_PATH cannot swap the version
 
