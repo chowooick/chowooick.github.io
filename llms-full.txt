@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T00:39:47Z · 소스 커밋 `1ebcf0e` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T00:51:13Z · 소스 커밋 `83a78d4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6645,6 +6645,36 @@ yet.
 **해결:** publish the phase and round the game itself has applied (here through `window.blablaState`)
 and make the test wait until they match the frame it saw before acting. The next runs (three full fights
 each) passed with no ignored action.
+
+## GDT-322 — `FontFile.load_dynamic_font("res://….ttf")` works in the editor and natively but fails in a Web export: the export ships the imported font, not the `.ttf`
+
+`측정 2026-10-21 · Godot 4.7.2-stable · Web export (nothreads, release) in Brave 1.96 on the Air`
+
+**증상:** UI fonts were created with `var f := FontFile.new(); f.load_dynamic_font("res://assets/fonts/ui-bold.ttf")`.
+Headless and windowed runs drew Korean text correctly. The Web export drew every glyph as a hex box
+and the console printed `ERROR: Can't open file from path 'res://assets/fonts/ui-bold.ttf'.
+at: get_file_as_bytes (core/io/file_access.cpp:907)`. The `.ttf` is imported as a `FontFile` resource
+(`.godot/imported/*.fontdata`) and only that resource goes into the pack; the raw file is not there to
+read.
+
+**해결:** `var f: FontFile = load("res://assets/fonts/ui-bold.ttf")` (the imported resource), then set
+`antialiasing`/`hinting`/`subpixel_positioning` on it if needed. Same rule for any raw file read with
+`FileAccess`: add it to the preset's `include_filter` (e.g. `levels/*.txt,strings.json`) or it is not
+in the export.
+
+## GDT-323 — A `preload()` of a script under the export's `exclude_filter` breaks the script that preloads it, in the export only
+
+`측정 2026-10-21 · Godot 4.7.2-stable · Web export with exclude_filter="tests/*"`
+
+**증상:** `main.gd` had `add_child(preload("res://tests/net_test.gd").new())` behind a `--test=net`
+argument. Everything ran in the editor and headless. The exported game stopped on a blank screen:
+`SCRIPT ERROR: Parse Error: Preload file "res://tests/net_test.gd" does not exist. at: GDScript::reload
+(res://main.gd:34)` then `Failed to load script "res://main.gd" with error "Parse error"`. A preload
+is resolved when the script compiles, whether or not the branch runs.
+
+**해결:** load test-only scripts at run time inside the branch:
+`add_child((load("res://tests/net_test.gd") as GDScript).new())`. Smoke-test the exported build, not
+only the editor run, after adding any `preload` of a path the preset excludes.
 
 ---
 
@@ -20110,4 +20140,54 @@ and recreated.
 every directory the host's server writes (`.stdb-data`, logs) to the rsync excludes. A script that starts the server
 when the port is free, mints the token once when the config is missing and then publishes makes the whole thing one
 command (`trade/scripts/dev-server.sh`).
+
+## OPS-595 — Real-time action over SpacetimeDB 2.8 without a server tick: rollback on an input log. Two clients with 90/160 ms injected lag ended on identical state checksums
+
+`측정 2026-10-21 · SpacetimeDB 2.8.0 standalone on the Air (M1) · Rust module · Godot 4.7.2 GDScript clients (v2.bsatn, headless) · 30 Hz integer simulation`
+
+**증상:** a 2–4 player real-time platformer needed instant response and authoritative shared state.
+A scheduled per-tick reducer grows the commit log without bound (OPS-316) and per-move public writes
+saturate a core (OPS-143); server-side physics also means every move waits a round trip.
+
+The design that worked:
+
+- The server never steps the game. Tables: `round` (stage, seed, `start_micros` of tick 0) and a
+  public `input` log, one row per **change** of a player's buttons: `(round_id, slot, tick, bits)`.
+  Clients subscribe `SELECT * FROM input WHERE round_id = N`.
+- Every client runs the same integer simulation (positions in 1/1000 tile, seeded LCG, no floats)
+  from tick 0. The tick to be at comes from the server clock (`ReducerResult` timestamp, lowest-RTT
+  sample of a few `ping` reducer calls).
+- Missing inputs are predicted ("still holding what they held"). A row for a tick already simulated
+  restores the snapshot saved before that tick and replays to now in the same frame. Snapshots are six
+  `PackedInt32Array.duplicate()` calls per tick, kept for 12 s.
+- `send_input` clamps the tick to `[server_tick - 45, server_tick + 20]` and keeps each slot strictly
+  increasing, so rollback depth is bounded. A client treats its **own** inputs as predictions until
+  their row comes back (FIFO), and replays if the server re-stamped one.
+- A leaving player gets a server-written row with a "bot" bit at `server_tick + 3`; the simulation
+  turns that runner into a deterministic bot from that tick on every client.
+
+Measured with two headless clients through the real server, random inputs every 9 ticks, 160 ms and
+90 ms of extra delay applied to every incoming row: 20 and 19 rollbacks, deepest 6 ticks (200 ms),
+and the snapshot checksums at ticks 900 and 1000 were identical on both clients. An idle server
+writes nothing: there is no scheduled reducer except a 60 s sweep that returns without writing when
+there is nothing to delete.
+
+**해결:** for small-room real-time games on SpacetimeDB, store inputs, not state, and keep the
+simulation deterministic and client-side. Test determinism with two real clients and injected lag
+before building anything on top. Reference: `~/work/trapout/godot/net/rollback.gd`,
+`server/src/lib.rs` (`send_input`, `stamp_input`), `godot/tests/net_test.gd`.
+
+## OPS-596 — Two game processes on one machine with the same saved SpacetimeDB token are one identity: the second "joins" the first's room as itself and the host never sees a second seat
+
+`측정 2026-10-21 · SpacetimeDB 2.8.0 · Godot 4.7.2 headless clients on one Mac`
+
+**증상:** a host process created a room and wrote the code to a file; a guest process read it and
+called `join_room`, which returned success. The host waited for a second seat that never came. The
+server log showed both websockets with the **same** identity: both processes read the token from the
+same `user://….cfg` key and connected as the same player, so `join_room` saw the caller already
+seated and returned `Ok` without inserting anything.
+
+**해결:** give every test client its own token key (e.g. `--seat=h` / `--seat=g`, appended to the
+storage key, as bearhunter's `Session` tag does) and check identities differ before asserting on
+seats. A reducer that returns `Ok` for "already there" hides this; log the caller identity in tests.
 
