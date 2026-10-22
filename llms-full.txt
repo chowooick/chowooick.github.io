@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T05:56:37Z · 소스 커밋 `f49bcac` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T13:38:41Z · 소스 커밋 `64f4eca` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20360,4 +20360,17 @@ The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<
 - 같은 화면을 `DotGothic16`(Google Fonts, 픽셀풍, 한글 폴백은 Gothic A1)으로 바꾸자 모든 숫자가 바로 읽혔다.
 
 **해결:** 점수·금액·날짜처럼 읽혀야 하는 숫자에는 Pixelify Sans를 쓰지 않는다. 픽셀풍이 필요하면 DotGothic16을 쓰고, 픽셀 폰트를 넣은 화면은 2·5·8이 섞인 값으로 캡처해 눈으로 확인한다.
+
+## OPS-603 — Japan MOFA's overseas-resident statistics (海外在留邦人数調査統計): mofa.go.jp answers 403 to fetch tools, the same tables download from e-Stat
+
+`측정 2026-10-22 · WebFetch / WebSearch from a Claude Code session · MOFA 2025 edition (as of 2025-10-01, published 2025-12-25)`
+
+**증상:** a market study of Japanese residents in New York needed the MOFA tables. `https://www.mofa.go.jp/mofaj/toko/tokei/hojin/` and the consulate site (`ny.us.emb-japan.go.jp`) returned 403 to the fetch tool, so only search snippets came back.
+
+**사실:**
+- e-Stat mirrors each edition as a file: `https://www.e-stat.go.jp/stat-search/file-download?statInfId=<id>&fileKind=2`. The 2025 edition is `statInfId=000040394912`; the 2020 edition (city trend 2016–2020) is `000032117338`; 2018 is `000031965464`; 2016 is `000031585594`. These downloaded without a block.
+- Since about 2019 the yearly summary no longer prints a per-consulate table (jurisdiction total, long-term vs permanent, 日系企業拠点数). The newest per-consulate figure found was the 2018 edition; later years give only country and city-area totals (for example ニューヨーク都市圏 38,251 in 2025).
+- The city-area series has a break: New York fell from 47,563 (2018) to 40,496 (2019) with no stated reason, so treat 2019 as a likely method or boundary change before drawing a trend across it.
+
+**해결:** take country and city figures from the e-Stat file of the edition you need, cite the edition year, and mark any per-consulate number after 2018 as unverified rather than reading it from a news summary.
 
