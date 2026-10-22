@@ -10742,3 +10742,13 @@ After this both devices drew the exact lime (checked in device screenshots). Loo
 - Chrome on Android does not cope with Playwright's browser-wide `connectOverCDP` when the phone has many frozen background tabs: the second connection hangs. Attaching to the one page's `webSocketDebuggerUrl` from `/json` works; a tab opened in the background loaded the service worker's offline page until it was activated (`/json/activate/<id>`).
 
 **해결:** give every shortcut a `short_name` that is the whole label you want people to see, and do not promise "long-press and go" — on Pixel it is long-press, then 바로가기. Treat a `short_name` change as a prompt the user must accept on next launch, not a silent rename; installed copies keep the old label until they do.
+
+## OPS-617 — Offline test of a PWA in Playwright: `context.setOffline(true)` still answers a page from the HTTP cache through the service worker, and `navigator.onLine` stays `true` on a page the worker served from its cache
+
+`측정 2026-10-22 · Brave 156.1.98.60 headless on the Air · playwright-core 1.64.1 · launchPersistentContext · network-first service worker for navigations`
+
+**증상:** a site's service worker answers navigations network first and falls back to its own cache (`kn-pages`) when the fetch fails; the page shows a "오프라인이에요" note when `!navigator.onLine`. In a test, after reading `/nj`, `context.setOffline(true)` and `page.goto('/nj')` showed the page **without** the note. Two things were true at once:
+- The page had `Cache-Control: public, max-age=120`. The worker's `fetch(request)` was answered by the browser's HTTP cache, so the worker never reached its fallback and served it as a network response.
+- After clearing that cache the worker did serve its kept copy, but `navigator.onLine` on that page was still `true` (`{ online: true }` read with `page.evaluate`), so a check on `navigator.onLine` alone never shows an offline note there.
+
+**해결:** let the worker mark what it serves from its cache instead of trusting `navigator.onLine`: rewrite the kept HTML on the way out (`new Response((await r.text()).replace('<body', '<body data-kept'), { status: r.status, headers: r.headers })`) and show the note when `!navigator.onLine || document.body.hasAttribute('data-kept')`. In the test, clear the HTTP cache before going offline: `await (await context.newCDPSession(page)).send('Network.clearBrowserCache'); await context.setOffline(true);`. With both, the kept page showed the note and an unread page got the offline page. On a real phone a page still inside its `max-age` also comes from the HTTP cache while offline, without the note; that is fine, it is fresh. (Installability in a non-persistent context: OPS-364.)
