@@ -10627,3 +10627,43 @@ The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<
 **사실:** each origin is its own app (its own `id` resolves against its own origin), so one file has to answer differently per host. `app/manifest.ts` may read the request: `export default async function manifest() { const host = (await headers()).get("host"); return companyHosts.has(host) ? company() : games(); }`. The build then lists `ƒ /manifest.webmanifest` (dynamic) instead of a static file, and with `next start` on one port `http://localhost:<port>` and `http://127.0.0.1:<port>` received the two different manifests, each with zero installability errors. For local tests, make the company origin an env value (`NEXT_PUBLIC_COMPANY_URL=http://localhost:<port>`, portal at `127.0.0.1`) so both apps can be checked from one server.
 
 **해결:** whenever one deployment serves several hostnames, open each host's page and read `Page.getAppManifest` before shipping; if a host is not meant to be an app, its manifest still decides what Chrome's menu installs. Serve the manifest per host from `app/manifest.ts` with `headers()`, and purge `/manifest.webmanifest` per hostname at the CDN after the change.
+
+## OPS-607 — SpacetimeDB SQL over HTTP names a Rust field `p256dh` as column `p_256_dh`; a reader of `row.p256dh` gets `undefined`
+
+`측정 2026-10-22 · SpacetimeDB 2.8.0 standalone (Air) · POST /v1/database/<db>/sql with the owner's token · Node 26 fetch`
+
+**증상:** a Web Push sender read a private table `push_sub { identity, endpoint, p256dh, auth, hour, made_at }` through `POST /v1/database/<db>/sql` and mapped each row by `schema.elements[i].name.some`. Every send failed quietly (`keys.p256dh` was `undefined`, so `web-push` threw before any request), and the test's push service received nothing.
+
+**사실:** the SQL result names that column `p_256_dh` (the schema element is `{"name":{"some":"p_256_dh"}}`): the server splits letters and digits into words when it makes the SQL name. `endpoint`, `auth`, `hour` and `made_at` came back unchanged. Reducer arguments over the websocket are positional, so the client side never notices. A private table read without the owner's token answered HTTP 400.
+
+**해결:** read columns by the name the SQL schema reports (or check `schema.elements` once in a test), or give such fields names without digits next to letters (`p256` → `key_p`, etc.). Assert on the decoded payload in an end-to-end test rather than on "sent N".
+
+## OPS-608 — Brave (Playwright, fresh profile) takes about 30 s to resolve its first `pushManager.subscribe()`: it is registering with FCM, not hanging
+
+`측정 2026-10-22 · Brave 1.96 (Chromium 154) headed via playwright 1.58.2 launchPersistentContext · macOS (MacBook Air M1) · brave.gcm.channel_status=true (OPS-330)`
+
+**증상:** a reminder flow called `Notification.requestPermission()` (granted by `grantPermissions`) then `reg.pushManager.subscribe(...)`; a test that waited 32 s saw no subscription, no error and no toast, and failed as "subscription never saved".
+
+**사실:** on a brand-new profile the first `subscribe()` resolved with an `https://fcm.googleapis.com/fcm/send/…` endpoint after 31.2 s and 27.2 s on a bare page (with and without dropping Playwright's default `--disable-background-networking`; the flag made no difference), and after about 80 s inside a busy WebGL game page. Once it resolved, a VAPID push sent from Node `web-push` was shown by the service worker 271 ms later (`registration.getNotifications()`).
+
+**해결:** wait up to two minutes for the first subscription in tests, and show progress in the UI while it runs ("켜는 중…" on the button) instead of leaving a disabled button that looks broken. Do subscribe → send → check notification in one browser session (OPS-330).
+
+## OPS-609 — Playwright WebKit on the Air: `Executable doesn't exist … webkit-2248` for Playwright 1.58.2, while the cache holds webkit-2359/2370; NODE_PATH cannot swap the version
+
+`측정 2026-10-22 · MacBook Air (shared test host) · ~/Library/Caches/ms-playwright has webkit-2359, webkit-2370 · playwright 1.58.2 and 1.64.1`
+
+**증상:** a WebKit test using the project's `tests/node_modules/playwright` (1.58.2) failed at `webkit.launch()` with `Executable doesn't exist at …/ms-playwright/webkit-2248/pw_run.sh`. Running it with `NODE_PATH=<other>/node_modules` did not help: `require('playwright')` resolves the `node_modules` next to the script first, and NODE_PATH is only the last fallback.
+
+**사실:** webkit-2370 is the build of Playwright 1.64.1 (`playwright-core/browsers.json`), already installed on the Air by other projects. Installing `playwright@1.64.1` into a separate folder of your own takes about a second and downloads no browser.
+
+**해결:** keep a small runner folder (`npm install playwright@1.64.1`) and load it explicitly from the WebKit test: `require(process.env.PLAYWRIGHT || 'playwright')` with `PLAYWRIGHT=$PWD/webkit-runner/node_modules/playwright`. Do not borrow another project's `node_modules`; it may be deleted mid-run. Match the version to a cached build with `grep -A2 '"webkit"' node_modules/playwright-core/browsers.json`.
+
+## OPS-610 — Playwright mobile emulation (Chromium): `window.screen` does not follow the viewport; a landscape 844×390 context reported a screen height of 800
+
+`측정 2026-10-22 · playwright 1.58.2 · Brave 1.96 headless · newContext({viewport:{width:844,height:390}, isMobile:true, hasTouch:true})`
+
+**증상:** a page compared the browser's visible height with the whole screen (`innerHeight` against `Math.min(screen.width, screen.height)`) to show how much larger the game gets as an installed app. In the test it claimed "390px → 800px, +105 %".
+
+**사실:** without a `screen` option the context keeps a default screen size that has nothing to do with the emulated phone, so any code that reads `screen.*` gets numbers no phone has. Real phones report their own size (Android Chrome swaps width and height with the orientation; iOS Safari keeps the portrait numbers).
+
+**해결:** pass `screen` equal to the viewport (`newContext({viewport:size, screen:size, …})`) in phone emulation, and have the page ignore implausible ratios (here: anything above +60 % shows no percentage) so a wrong `screen` never turns into a wrong claim on screen.
