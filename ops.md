@@ -10752,3 +10752,27 @@ After this both devices drew the exact lime (checked in device screenshots). Loo
 - After clearing that cache the worker did serve its kept copy, but `navigator.onLine` on that page was still `true` (`{ online: true }` read with `page.evaluate`), so a check on `navigator.onLine` alone never shows an offline note there.
 
 **해결:** let the worker mark what it serves from its cache instead of trusting `navigator.onLine`: rewrite the kept HTML on the way out (`new Response((await r.text()).replace('<body', '<body data-kept'), { status: r.status, headers: r.headers })`) and show the note when `!navigator.onLine || document.body.hasAttribute('data-kept')`. In the test, clear the HTTP cache before going offline: `await (await context.newCDPSession(page)).send('Network.clearBrowserCache'); await context.setOffline(true);`. With both, the kept page showed the note and an unread page got the offline page. On a real phone a page still inside its `max-age` also comes from the HTTP cache while offline, without the note; that is fine, it is fresh. (Installability in a non-persistent context: OPS-364.)
+
+## OPS-618 — Astro + Cloudflare: a `prerender = true` page behind a sign-in middleware is built as a "Redirecting to: /" page, even when the runtime treats its path as public
+
+`측정 2026-10-22 · Astro 7.3.3 · @astrojs/cloudflare 14.3 · middleware that redirects signed-out requests to /`
+
+**증상:** a self-contained `/offline` page (for a service worker to keep) was marked `export const prerender = true`. The site's middleware lets a list of public paths through and sends everything else without a session to `/`. In `astro dev` the page answered 200 with its content. In production it answered **200 `text/html` whose body was `<title>Redirecting to: /</title>`**: at build time the prerender ran through the middleware, which had no session (and no runtime env) and redirected, and Astro wrote that redirect out as the static page. Nothing in the build output warned.
+
+**해결:** do not prerender a page on a site whose middleware gates by session; let it render on request (drop `prerender`), and make the middleware's public list include the path. Check production by content, not status: `curl -s https://<host>/offline | grep -o '<title>[^<]*'`. If a service worker cached the stub, change the worker's bytes (a version constant) so it installs again and re-fetches the page.
+
+## OPS-619 — Playwright WebKit drops a `Secure` `__Host-` session cookie on `http://127.0.0.1`; send the cookie as a header with `context.route`
+
+`측정 2026-10-22 · playwright-core 1.63 WebKit 2370 and Brave 1.97 on the Air · astro dev on http://127.0.0.1`
+
+**증상:** a local test signs a member session with the site's own `seal()` and loads it as `storageState` (`__Host-kc_session`, `secure: true`). In Brave (Chromium) the pages opened signed in: Chromium treats `127.0.0.1` as a secure origin. In WebKit the same state led to the signed-out redirect on every page: WebKit does not keep a `Secure` cookie on plain-http `127.0.0.1`.
+
+**해결:** for WebKit contexts, add the cookie to every request yourself: `ctx.route(url => url.href.startsWith(base), route => route.continue({ headers: { ...route.request().headers(), cookie: 'name=value' } }))`. Also note the session's own limits: here `unseal()` refused any session whose `exp - iat` exceeded 6 hours, so a 24-hour test session was silently "signed out" in every browser.
+
+## OPS-620 — 2026-10-22: Google now stops every automation profile tried at the passkey challenge, including a copy of the main Mac's gstack profile that passed on 2026-10-16 (OPS-447)
+
+`측정 2026-10-22 · Brave 1.97 on the Air (~/kc-test/profile and a copy) · Chrome for Testing chromium-1243 on the main Mac (copy of ~/.gstack/chromium-profile, headed, off-screen)`
+
+**증상:** signing in to a site with "Google로 로그인" picked `chowooick@gmail.com` in the account chooser and then stopped at `accounts.google.com/v3/signin/challenge/pk` ("본인 확인 중... 패스키를 사용하여 로그인을 완료합니다") in all three: the Air's `~/kc-test/profile`, a copy of it, and an off-screen headed copy of the main Mac's gstack profile, which is how OPS-447 got through six days earlier. The site's own session cookie in those profiles had expired, so nothing signed-in could be reached.
+
+**해결:** a session cannot pass this alone. Do signed-in checks on a local server with a locally sealed session (OPS-619), verify public files in production by content with curl, and leave the signed-in production check as the owner's one step: open the passkey challenge in a headed window and ask the owner to approve it, then save the site session for the tests.
