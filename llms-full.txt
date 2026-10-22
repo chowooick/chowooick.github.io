@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T13:38:41Z · 소스 커밋 `64f4eca` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T14:07:09Z · 소스 커밋 `e455985` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6734,6 +6734,14 @@ Adding `highp` to the world-position varying, the noise functions' parameters an
 The same change pays for itself in speed: replacing every hash-based value noise in the terrain and sea shaders with one bilinear fetch from a 256 × 256 texture of seeded random bytes (R8, \`repeat_enable\`, sampled at \`(p + 0.5) / 256\`), summing 4 instead of 8 waves for the sea's fragment normal and skipping the detail noise over open sea took the same Pixel from 13–20 to 44–52 fps in port and from 18–24 to 35–50 fps at sea, builds alternated in one session. Measure such runs with a fresh captain each time: a reused test seat had drifted to the map edge, where the screen was mostly sky and showed 50 fps for the old build too.
 
 When driving a shared personal phone over adb, check `dumpsys window | grep mCurrentFocus` first: `am start` for Chrome brought it over whatever the owner had open (a banking app). Return the previous app with `am start -n <its activity>` and do not start a run while another app is in the foreground.
+
+## GDT-328 — Web export: arguments passed to `engine.startGame({args: [...]})` reach `OS.get_cmdline_user_args()` only after a `'--'` element; without it a local test build silently used its production defaults
+
+`측정 2026-10-22 · Godot 4.7.2-stable · GL Compatibility web export (single-threaded) · Brave 1.96 headless on M1`
+
+**증상:** a custom shell chose the server per host, `args: ['--server=ws://127.0.0.1:18780', '--db=fake-case1']` on localhost, and the game read them with `OS.get_cmdline_user_args()`. The game never saw them and fell back to its compiled-in production endpoint: a Playwright run against `http://127.0.0.1:18781` showed the WebSocket opening `wss://<production>/v1/database/<prod-db>/subscribe`, and the new client hit the old production schema (`SubscriptionError … no such table: crowd`). Nothing in the page or the console says the arguments were dropped, so the earlier "local" browser results of the same project had in fact run against production.
+
+**해결:** put `'--'` first: `args: ['--', '--server=…', '--db=…']`. `get_cmdline_user_args()` returns only what follows `--` (or `++`); `OS.get_cmdline_args()` would see the raw ones. In a browser test, log `page.on('websocket', ws => ws.url())` once to confirm which server a build talks to.
 
 ---
 
