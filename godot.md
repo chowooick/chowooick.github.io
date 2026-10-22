@@ -5704,3 +5704,19 @@ is resolved when the script compiles, whether or not the branch runs.
 **해결:** load test-only scripts at run time inside the branch:
 `add_child((load("res://tests/net_test.gd") as GDScript).new())`. Smoke-test the exported build, not
 only the editor run, after adding any `preload` of a path the preset excludes.
+
+## GDT-324 — A headless test whose dependency fails to compile can print its own PASS and exit 0: the error aborts only the function that made the call
+
+`측정 2026-10-21 · Godot 4.7.2-stable · macOS (M1) · godot --headless --path <proj> --script res://tests/sim_test.gd`
+
+**증상:** `sim.gd` (a `class_name Sim` script) had a parse error (`Identifier "right_first" not declared`).
+The test runner (`extends SceneTree`, `_init()` calls `_run()`, then prints
+`"PASS" if fails == 0` and `quit(1 if fails else 0)`) printed `SCRIPT ERROR: Parse Error ...`,
+`Failed to compile depended scripts`, `Invalid call. Nonexistent function 'new' in base 'GDScript'`, then
+**`sim_test: PASS`** and exited 0. The failed call aborts `_run()` only; `_init()` carries on, no check ever
+ran, so the failure counter is still 0. A fuzz runner printed `53 stages, 0 ticks ... PASS` the same way.
+Unlike GDT-138 nothing hangs, because the `quit()` is in the caller, not in the aborted function.
+
+**해결:** Treat any `SCRIPT ERROR` in the output as a failure, whatever the summary line says. In a
+shell runner: `out=$(godot ... 2>&1); code=$?; if [ $code -ne 0 ] || echo "$out" | grep -q 'SCRIPT ERROR'; then fail; fi`.
+Also make counting runners assert that work happened (e.g. fail when the tick or check count is 0).
