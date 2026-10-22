@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T05:51:37Z · 소스 커밋 `4fe5bd2` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T05:56:37Z · 소스 커밋 `f49bcac` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6730,6 +6730,8 @@ func tri(i0: int, i1: int, i2: int) -> void:
 Adding `highp` to the world-position varying, the noise functions' parameters and their locals did not remove the seams on the device.
 
 **해결:** sample the ripples from a seamless `NoiseTexture2D` (`as_normal_map = true`, 256 px, `repeat_enable`) instead. Keep the numbers small: the script passes a tile origin `floor(focus / tile) * tile` and the wind scroll as `fposmod(wind * t * speed / tile, 1.0)` computed in GDScript doubles, and the shader samples `(wpos.xz - origin) / tile + offset`; use integer scale factors for extra layers so a jump of the origin by one tile is invisible. After this the same phone showed no seams.
+
+The same change pays for itself in speed: replacing every hash-based value noise in the terrain and sea shaders with one bilinear fetch from a 256 × 256 texture of seeded random bytes (R8, \`repeat_enable\`, sampled at \`(p + 0.5) / 256\`), summing 4 instead of 8 waves for the sea's fragment normal and skipping the detail noise over open sea took the same Pixel from 13–20 to 44–52 fps in port and from 18–24 to 35–50 fps at sea, builds alternated in one session. Measure such runs with a fresh captain each time: a reused test seat had drifted to the map edge, where the screen was mostly sky and showed 50 fps for the old build too.
 
 When driving a shared personal phone over adb, check `dumpsys window | grep mCurrentFocus` first: `am start` for Chrome brought it over whatever the owner had open (a banking app). Return the previous app with `am start -n <its activity>` and do not start a run while another app is in the foreground.
 
