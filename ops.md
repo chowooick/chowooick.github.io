@@ -10729,3 +10729,16 @@ Other measured facts from the same run:
 `#status-progress::-webkit-progress-value{background:#c5fa71}`
 `#status-progress::-moz-progress-bar{background:#c5fa71}`.
 After this both devices drew the exact lime (checked in device screenshots). Look at a loading screen on a real phone at least once; `accent-color` results differ per engine.
+
+## OPS-616 — Real Pixel, installed PWA: the launcher shows a shortcut's `short_name` behind a "바로가기" row, and a changed `short_name` waits for the user in a "이름 업데이트 검토" dialog on the app's next launch
+
+`측정 2026-10-22 · Pixel 7 Pro, Android 17, Pixel Launcher · Chrome 155.0.8059.84 · WebAPKs of mnori.com and play.mnori.com · adb + Chrome remote debugging`
+
+**증상:** a company site's manifest had three `shortcuts` with `name` "서비스 10개", "MNORI GAMES", "문의하기" and `short_name` "서비스", "게임", "문의", and the install sheet showed the `name`s. After a real install, a long press on the icon showed the app menu (삭제, 앱 정보, 앱 일시중지, 대화창) and one collapsed row "바로가기"; only a tap on it opened the shortcuts, labelled with the `short_name`s and their own icons. Separately, the games app on the same phone was installed with `short_name` "MNORI"; after the manifest changed to "MNORI GAMES", launching the WebAPK showed Chrome's "이름 업데이트 검토" dialog (old icon and name → new, buttons 앱 제거 / 확인) before the page.
+
+**사실:**
+- Install timing on this phone from the page's button: Chrome's install sheet → 설치 → WebAPK package present after 4 s, the app (`SameTaskWebApkActivity`) in front after 8 s, with the hand-off of OPS-284.
+- After 확인 in the name dialog, the WebAPK's package (`lastUpdateTime`, `versionCode`) had not changed 4.5 minutes later, and the home-screen label still read the old name. The rename is not instant.
+- Chrome on Android does not cope with Playwright's browser-wide `connectOverCDP` when the phone has many frozen background tabs: the second connection hangs. Attaching to the one page's `webSocketDebuggerUrl` from `/json` works; a tab opened in the background loaded the service worker's offline page until it was activated (`/json/activate/<id>`).
+
+**해결:** give every shortcut a `short_name` that is the whole label you want people to see, and do not promise "long-press and go" — on Pixel it is long-press, then 바로가기. Treat a `short_name` change as a prompt the user must accept on next launch, not a silent rename; installed copies keep the old label until they do.
