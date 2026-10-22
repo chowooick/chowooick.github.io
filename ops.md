@@ -10443,8 +10443,9 @@ and recreated.
   `spacetime --config-path <dir>/cli.toml login --token <token>` stores it; every later
   `spacetime --config-path <dir>/cli.toml publish --server http://127.0.0.1:<port> …` is the same owner and prints
   `Updated database`.
-- `spacetime call` and the HTTP `/v1/database/<db>/call/<reducer>` run `client_connected` **and**
-  `client_disconnected` once per call, each with a new connection id. A reducer that sets `online = false` on
+- `spacetime call`, the HTTP `/v1/database/<db>/call/<reducer>` and `spacetime sql` run `client_connected` **and**
+  `client_disconnected` once per invocation, each with a new connection id (one `SELECT` on a fresh production
+  database created a player row for the CLI identity). A reducer that sets `online = false` on
   disconnect marks a player who is connected from the game offline whenever someone calls a reducer for them over
   HTTP; count live connections (a private presence table keyed by connection id) instead of a boolean.
 
@@ -10502,3 +10503,26 @@ seated and returned `Ok` without inserting anything.
 **해결:** give every test client its own token key (e.g. `--seat=h` / `--seat=g`, appended to the
 storage key, as bearhunter's `Session` tag does) and check identities differ before asserting on
 seats. A reducer that returns `Ok` for "already there" hides this; log the caller identity in tests.
+
+## OPS-595 — A new *.mnori.com game on nj1: proxy `/stdb/` straight to the shared SpacetimeDB container, give the Dokploy domain `https: false`, and point the CNAME at the nj1 tunnel
+
+`측정 2026-10-22 · Dokploy on nj1 (raw compose) · Cloudflare tunnel · SpacetimeDB 2.8 shared host spacetimedb.mnori.com · trade.mnori.com`
+
+**증상:** a new game needed its own subdomain, a same-origin `/stdb/` websocket proxy and a database on the shared
+SpacetimeDB host. Three choices were not obvious from the existing apps' docs.
+
+**사실:**
+- `spacetimedb.mnori.com` is the container `compose-copy-back-end-card-qcuwql-spacetimedb-1:3000` on nj1's
+  `dokploy-network`. A game's nginx on the same network can `proxy_pass` `/stdb/` to that name directly instead of
+  going back out through Cloudflare; the websocket upgrade (`/v1/database/<db>/subscribe` → 101) works.
+- nj1's app routers all use Traefik's `web` entrypoint only: TLS ends at Cloudflare and the nj1 tunnel sends
+  `*.mnori.com` to Traefik `:80`. A domain created with `"https": false, "certificateType": "none"` served on the
+  first try. (Whether `https: true` with letsencrypt fails there was not tried.)
+- Until a host has its own record, the zone's wildcard A record (unproxied) answers for it; add a proxied CNAME to
+  the nj1 tunnel's `<id>.cfargotunnel.com` (the same target button and cobramission use).
+- An `alpine:3.22` nginx with `nginx-mod-http-brotli` runs as `USER nginx` with `read_only`, `tmpfs /tmp` and
+  `cap_drop: [ALL]` when the config is rendered into `/tmp` and started as `nginx -e stderr -c /tmp/nginx.conf`;
+  without `-e stderr` it tries to open the default error log path at startup and fails.
+
+**해결:** copy `trade/deploy/` (Dockerfile, nginx.conf.template, compose.yml, dokploy.py) and `trade/scripts/deploy.sh`,
+which export, upload, build, deploy and verify in one command.
