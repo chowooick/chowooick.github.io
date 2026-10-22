@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T04:41:46Z · 소스 커밋 `15e899b` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T04:53:51Z · 소스 커밋 `dc2c2cd` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20323,4 +20323,16 @@ When the deletes are driven by a shell loop, run it in bash, not zsh: zsh does n
 The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<id>/sql` for every playable game's `match_result` and related tables on a 3-minute background sync. Each anonymous SQL request is a new identity that runs `client_connected` and `client_disconnected` (OPS-594), so a module that inserts a player row on connect keeps one per query. The queries fail harmlessly for a game without those tables, but the connect hook has already run.
 
 **해결:** in the game module, delete a player on its last disconnect while it is still in its starting state (default name, starting values, no inventory), and sweep such rows with no live connection from an existing scheduled reducer; a returning visitor gets the same captain back because the default name derives from the identity. After publishing that, Trade's table went from 75 rows to the 2 real ones within 30 s and stayed there across the next poll. Alternatively set `STDB_DATABASES` on the portal, but that removes the game from match recording too.
+
+## OPS-601 — 폰 Chrome을 CDP로 붙여(`connectOverCDP`) `fullPage` 스크린샷을 찍으면 첫 화면이 화면 높이마다 반복된다. 화면 확인은 스크롤 + `adb exec-out screencap`으로 하고, 찍기 전에 전면 탭이 내 탭인지 본다
+
+`측정 2026-10-22 · Pixel 7 Pro (Android 17) · Chrome 155.0.8059.84 · playwright-core connectOverCDP (adb forward tcp:9333 localabstract:chrome_devtools_remote, ssh -R로 Air에 연결)`
+
+**증상:** `page.screenshot({fullPage:true})`가 1439×31,682(DPR 3.5) PNG를 오류 없이 만들었는데, 내용은 첫 화면(헤더·히어로)이 화면 높이마다 되풀이된 것이었다. OPS-453의 16,384px 한계보다 훨씬 위에서부터 반복된다. 레이아웃이 반복되는 버그처럼 보여 시간을 쓰게 된다.
+
+- 실제 화면은 `scrollTo` 후 `adb exec-out screencap -p`로 찍어야 맞다. 화면 좌표 = CSS 좌표 × `devicePixelRatio` + 상태줄·주소창 높이(이 기기 1440×3120에서 339px). 이렇게 `adb shell input tap`으로 진짜 터치도 보낼 수 있다.
+- **공유 폰 주의:** 다른 세션이 같은 폰의 Chrome에서 자기 탭을 앞으로 띄우면, 내 스크립트가 내 탭을 스크롤해도 `screencap`에는 남의 화면(게임)이 찍힌다. 남의 탭을 건드리지 않도록 페이지는 URL로 찾고(`pages().find(url 포함)`), 못 찾으면 `pages()[0]` 같은 대체 없이 멈춘다. 찍기 전에 `adb shell dumpsys activity activities | grep topResumedActivity`와 CDP의 `document.visibilityState === 'visible'`로 내 탭이 전면인지 확인한다.
+- 운영 통계를 더럽히지 않으려면 QA 서버를 `adb reverse tcp:<port> tcp:<port>` + `ssh -L`로 폰에 열어 `http://127.0.0.1:<port>`로 시험한다. 끝나면 `adb forward --remove`, `adb reverse --remove`로 내 포워드만 지운다.
+
+**해결:** 폰에서는 넘침 같은 수치는 CDP로 재고(`scrollWidth - innerWidth`), 모양은 전면 탭을 확인한 뒤 `screencap`으로 본다. `fullPage`는 폰 CDP에서 쓰지 않는다.
 
