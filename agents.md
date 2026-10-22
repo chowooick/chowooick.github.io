@@ -3012,3 +3012,15 @@ Twelve parallel `codex exec` reviews at xhigh finished in about 25 minutes witho
 - 단어 중간 줄바꿈 방지: 시간 범위 `10:00–19:00`은 U+2060(WORD JOINER)을 대시 양옆에, "일 13:00"은 NBSP, 따옴표 라벨+조사(`‘비교’를`)는 `’` 뒤 U+2060, 모델 코드(`CP-AKN011GB`)는 `white-space:nowrap` span. 웹폰트 서브셋에 U+2060·U+00A0 글리프가 없어도 화면에 문제는 없었다(기본 무시 문자·공백).
 
 **해결:** 글자 크기 단계는 "글자 배율 + 좁은 화면 배치" 한 쌍으로 만든다. 검사는 같은 페이지의 기본 단계와 비교해 **그 단계에서 새로 생긴 것만** 뽑는다: 글자끼리·글자와 컨트롤 겹침, 알약·버튼·카드 밖으로 나간 글자, overflow 잘림, 버튼 라벨 두 줄, 마지막 줄 1–2글자 제목, 가로 넘침. 겹침 판정에서 줄바꿈된 인라인 링크는 `getBoundingClientRect()`(두 줄을 감싼 큰 상자) 대신 `getClientRects()`로 줄마다 본다 — 아니면 옆 링크와 가짜 겹침이 잡힌다. 버튼 라벨 두 줄 판정은 글자 조각들의 top 비교가 아니라 "세로로 전혀 겹치지 않는 조각이 있는가"로 한다(화살표 아이콘처럼 글자 크기가 다른 조각 때문에 오탐이 난다). 16페이지 × 9폭 × 3단계 = 432회 보기에서 0건까지 줄였고, 그 뒤 스크린샷으로 취향 문제를 눈으로 봤다.
+
+## AGT-168 — Codex device-code sign-in: the switch is only on chatgpt.com/security-settings (not in the mobile app), and "Google로 계속하기" signs in whichever Google account the browser holds
+
+`측정 2026-10-22 · codex-cli 0.162.0 (aarch64-unknown-linux-musl) · ChatGPT web, Korean UI · personal pro and go accounts`
+
+**증상:** `codex login --device-auth` on a headless Linux server printed a code; entering it stopped at the consent page with "ChatGPT 보안 설정에서 Codex, Excel, PowerPoint 및 Word의 기기 코드 로그인을 활성화한 다음 "codex login --device-auth"를 다시 실행하세요". The owner looked for 설정 → 보안 in the ChatGPT mobile app and found no such menu.
+
+- The switch lives on the web page `https://chatgpt.com/security-settings` (title "보안 및 로그인"), at the bottom under "앱 보안": "Codex, Excel, PowerPoint 및 Word의 기기 코드 로그인 활성화". Open that address in a phone browser; the app's settings do not show it.
+- On `auth.openai.com`, "Google 계정으로 계속하기" went straight to the consent page as the Google account the browser profile was signed in to, with no account chooser. A test profile signed in to one Google account therefore lands on that account's ChatGPT (here a `go` plan), not on the account Codex is meant to use (`pro`, a different Google address). Read the address printed on the consent page before approving.
+- After the switch was on, the same running `codex login --device-auth` (code still inside its 15 minutes) finished with "Successfully logged in"; the new `$CODEX_HOME/auth.json` named the intended account and plan. `codex exec --skip-git-repo-check -s read-only` then ran on the server in 18 s.
+
+**해결:** for a server-only login (AGT-132), turn the switch on at `chatgpt.com/security-settings` once per account, start `codex login --device-auth` with the server's own `CODEX_HOME`, and enter the code from a browser that is signed in to the intended ChatGPT account. Check the id_token's `email` and `chatgpt_plan_type` claims in auth.json afterwards, and `chmod 600` it.
