@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T23:20:54Z · 소스 커밋 `52c7a31` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T23:33:13Z · 소스 커밋 `5eeb7d8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9802,6 +9802,14 @@ Twelve parallel `codex exec` reviews at xhigh finished in about 25 minutes witho
 - Before a long phone run, read `adb forward --list` and `/json/list`: a foreign forward or GUID-id tabs mean another session is driving Chrome now.
 - `ListAgents` shows the busy sessions; the one named after the site in front is the likely owner. `SendMessage` to it saying what you need (how long, which forward port you use, that you will not `kill-server` — AGT-044) with `notify_when_idle: true`. Here the other session answered within about 5 minutes ("Pixel 이제 쓰셔도 됩니다") and asked for a one-line message when done; send it.
 - In the test itself, wait while your tab is hidden instead of re-activating it (re-activating breaks the other run), and fail with the foreground activity in the message after a time limit. Clean up at the end: uninstall what you installed, close your tab, `KEYCODE_HOME`, remove only your own forward.
+
+## AGT-171 — A worktree's `node_modules` symlink got committed (`.gitignore` had `node_modules/`), and a fast-forward of the shared tree deleted that tree's real `node_modules`
+
+`측정 2026-10-22 · git 2.50 · macOS · Astro project shared by parallel sessions, work done in a separate worktree (AGT-084)`
+
+**증상:** to build and deploy from a worktree, a session linked the shared tree's packages into it: `ln -s ../<repo>/node_modules node_modules`. The repository's `.gitignore` said `node_modules/`. A pattern ending in `/` matches **directories only**, so the symlink (a file to git) showed as untracked and the next `git add -A` committed it (`create mode 120000 node_modules`). `git merge --ff-only <branch>` in the shared tree then printed `Updating files: 100% (3/3), done.` and replaced that tree's real `node_modules` **directory** with the symlink: git treats ignored files as expendable and removes them without a word when a tracked path needs the place. The link pointed at itself, so `npx astro` in that tree began downloading astro and `npm run deploy` exited 194 with no message.
+
+**해결:** in a repository that may be worked from worktrees, ignore `node_modules` without the slash (it then matches the link too), and check `git status --short` for a `node_modules` line before `git add -A`. To undo: `git rm --cached node_modules`, commit, fast-forward the shared tree again, then `npm ci` there (and run any postinstall that npm's allowScripts skipped, e.g. `node install.js` in `esbuild` and `workerd`). Tell the owner: any session using that tree lost its packages for the minutes in between.
 
 ---
 
@@ -20561,4 +20569,28 @@ After this both devices drew the exact lime (checked in device screenshots). Loo
 - After clearing that cache the worker did serve its kept copy, but `navigator.onLine` on that page was still `true` (`{ online: true }` read with `page.evaluate`), so a check on `navigator.onLine` alone never shows an offline note there.
 
 **해결:** let the worker mark what it serves from its cache instead of trusting `navigator.onLine`: rewrite the kept HTML on the way out (`new Response((await r.text()).replace('<body', '<body data-kept'), { status: r.status, headers: r.headers })`) and show the note when `!navigator.onLine || document.body.hasAttribute('data-kept')`. In the test, clear the HTTP cache before going offline: `await (await context.newCDPSession(page)).send('Network.clearBrowserCache'); await context.setOffline(true);`. With both, the kept page showed the note and an unread page got the offline page. On a real phone a page still inside its `max-age` also comes from the HTTP cache while offline, without the note; that is fine, it is fresh. (Installability in a non-persistent context: OPS-364.)
+
+## OPS-618 — Astro + Cloudflare: a `prerender = true` page behind a sign-in middleware is built as a "Redirecting to: /" page, even when the runtime treats its path as public
+
+`측정 2026-10-22 · Astro 7.3.3 · @astrojs/cloudflare 14.3 · middleware that redirects signed-out requests to /`
+
+**증상:** a self-contained `/offline` page (for a service worker to keep) was marked `export const prerender = true`. The site's middleware lets a list of public paths through and sends everything else without a session to `/`. In `astro dev` the page answered 200 with its content. In production it answered **200 `text/html` whose body was `<title>Redirecting to: /</title>`**: at build time the prerender ran through the middleware, which had no session (and no runtime env) and redirected, and Astro wrote that redirect out as the static page. Nothing in the build output warned.
+
+**해결:** do not prerender a page on a site whose middleware gates by session; let it render on request (drop `prerender`), and make the middleware's public list include the path. Check production by content, not status: `curl -s https://<host>/offline | grep -o '<title>[^<]*'`. If a service worker cached the stub, change the worker's bytes (a version constant) so it installs again and re-fetches the page.
+
+## OPS-619 — Playwright WebKit drops a `Secure` `__Host-` session cookie on `http://127.0.0.1`; send the cookie as a header with `context.route`
+
+`측정 2026-10-22 · playwright-core 1.63 WebKit 2370 and Brave 1.97 on the Air · astro dev on http://127.0.0.1`
+
+**증상:** a local test signs a member session with the site's own `seal()` and loads it as `storageState` (`__Host-kc_session`, `secure: true`). In Brave (Chromium) the pages opened signed in: Chromium treats `127.0.0.1` as a secure origin. In WebKit the same state led to the signed-out redirect on every page: WebKit does not keep a `Secure` cookie on plain-http `127.0.0.1`.
+
+**해결:** for WebKit contexts, add the cookie to every request yourself: `ctx.route(url => url.href.startsWith(base), route => route.continue({ headers: { ...route.request().headers(), cookie: 'name=value' } }))`. Also note the session's own limits: here `unseal()` refused any session whose `exp - iat` exceeded 6 hours, so a 24-hour test session was silently "signed out" in every browser.
+
+## OPS-620 — 2026-10-22: Google now stops every automation profile tried at the passkey challenge, including a copy of the main Mac's gstack profile that passed on 2026-10-16 (OPS-447)
+
+`측정 2026-10-22 · Brave 1.97 on the Air (~/kc-test/profile and a copy) · Chrome for Testing chromium-1243 on the main Mac (copy of ~/.gstack/chromium-profile, headed, off-screen)`
+
+**증상:** signing in to a site with "Google로 로그인" picked `chowooick@gmail.com` in the account chooser and then stopped at `accounts.google.com/v3/signin/challenge/pk` ("본인 확인 중... 패스키를 사용하여 로그인을 완료합니다") in all three: the Air's `~/kc-test/profile`, a copy of it, and an off-screen headed copy of the main Mac's gstack profile, which is how OPS-447 got through six days earlier. The site's own session cookie in those profiles had expired, so nothing signed-in could be reached.
+
+**해결:** a session cannot pass this alone. Do signed-in checks on a local server with a locally sealed session (OPS-619), verify public files in production by content with curl, and leave the signed-in production check as the owner's one step: open the passkey challenge in a headed window and ask the owner to approve it, then save the site session for the tests.
 
