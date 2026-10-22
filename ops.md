@@ -10669,3 +10669,23 @@ Sending right after that first subscription is unreliable. In five runs (fresh p
 **사실:** without a `screen` option the context keeps a default screen size that has nothing to do with the emulated phone, so any code that reads `screen.*` gets numbers no phone has. Real phones report their own size (Android Chrome swaps width and height with the orientation; iOS Safari keeps the portrait numbers).
 
 **해결:** pass `screen` equal to the viewport (`newContext({viewport:size, screen:size, …})`) in phone emulation, and have the page ignore implausible ratios (here: anything above +60 % shows no percentage) so a wrong `screen` never turns into a wrong claim on screen.
+
+## OPS-611 — Dokploy raw compose: an `env_file:` with a host path fails with "env file … not found", while bind mounts of the same folder work
+
+`측정 2026-10-22 · Dokploy on nj1 (compose, sourceType raw) · docker compose up -d --build --remove-orphans`
+
+**증상:** a new compose service got its secrets from `env_file: [/home/<user>/.mnori-deploy/<app>/secrets/push.env]` (file present on the host, mode 600). The deployment stopped before any container changed: `env file /home/<user>/…/push.env not found: stat …: no such file or directory` → `Error: ❌ Docker command failed`, and Dokploy marked the compose `error`. The services already running (web, database, tunnel) kept running the previous release.
+
+**사실:** Dokploy runs `docker compose` inside its own container, so paths the compose CLI itself reads (`env_file`, and the `.env` it writes) are looked up in that container's filesystem. Volume sources are handed to the Docker daemon and resolved on the host, which is why `- /home/<user>/…/releases/<rev>/web:/usr/share/nginx/html:ro` in the same file works.
+
+**해결:** mount the secrets file instead (`- /home/<user>/…/secrets/push.env:/run/secrets/push.env:ro`) and have the service read it (a `SECRETS_FILE` it parses at start), or put the values into Dokploy's own environment (`compose.saveEnvironment`; note that call replaces the whole env, so merge the existing variables first). Check `docker ps` after `compose.deploy`: a failed run leaves the old containers up, so the site looks fine while the new service never started.
+
+## OPS-612 — nginx 1.28 (alpine image) serves `manifest.webmanifest` as `application/octet-stream`
+
+`측정 2026-10-22 · nginx:1.28-alpine with the stock /etc/nginx/mime.types · behind Cloudflare`
+
+**증상:** `curl -I https://<site>/manifest.webmanifest` answered `content-type: application/octet-stream` for a PWA manifest; the file and its `<link rel="manifest">` were right.
+
+**사실:** the stock `mime.types` maps `.json` but has no line for `webmanifest`. Chromium 154 still parsed the manifest and found no installability errors with the octet-stream type (`Page.getInstallabilityErrors` `[]` locally with `application/manifest+json`, and the live page with octet-stream got Brave's install offer), so nothing visibly breaks; validators and other browsers expect `application/manifest+json`.
+
+**해결:** `location = /manifest.webmanifest { default_type application/manifest+json; expires -1; }` (`default_type` applies because no extension matches), or add `application/manifest+json webmanifest;` to a `types {}` block. Purge the URL at the CDN afterwards.
