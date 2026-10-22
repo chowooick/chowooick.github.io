@@ -10689,3 +10689,17 @@ Sending right after that first subscription is unreliable. In five runs (fresh p
 **사실:** the stock `mime.types` maps `.json` but has no line for `webmanifest`, so the file falls to `default_type`. The type was fixed before any browser check, so whether Chromium tolerates the octet-stream type was not measured here; validators expect `application/manifest+json`.
 
 **해결:** `location = /manifest.webmanifest { default_type application/manifest+json; expires -1; }` (`default_type` applies because no extension matches), or add `application/manifest+json webmanifest;` to a `types {}` block. Purge the URL at the CDN afterwards.
+
+## OPS-613 — iOS 27 home-screen web app: its own localStorage but Safari's cookies; `start_url` comes from the manifest linked at page load, a manifest link swapped in later is ignored
+
+`측정 2026-10-22 · Xcode 27 iOS 27.0 simulator (iPhone 18 Pro, Korean UI) · Safari 27 "홈 화면에 추가" (웹 앱으로 열기 on) · XCUITest-driven, page served over an ssh -L tunnel to 127.0.0.1`
+
+**증상:** a site wanted its iPhone home-screen app to start with what the visitor had in Safari (progress kept in `localStorage`). Probe page logging to its server:
+- the home-screen app saw `localStorage` empty (`ls=null`, Safari had `probe=safari`), but `document.cookie` and request cookies held Safari's cookie (`probe=safari`). Storage is split, the cookie jar is shared;
+- swapping `<link rel="manifest">` to `/m.webmanifest?carry=X` 0.8 s after load: Safari never fetched the new URL (one manifest request, at load) and the add sheet and the app used the first manifest's `start_url`;
+- a manifest link written by an inline `<head>` script from `location.search` (`/?carry=X` → `/m.webmanifest?carry=X`, `start_url: "/?carry=X"`) was fetched at load and the app opened `/?carry=X`;
+- the share sheet's preview uses `<title>` and showed a compass for an SVG `apple-touch-icon`; the add sheet and the home-screen icon used the manifest/touch icon and the name from `short_name`;
+- with the default status bar style the app's status bar stayed white over a dark page (theme-color not applied); `apple-mobile-web-app-status-bar-style: black-translucent` set at add time draws the page under it (then pad with `env(safe-area-inset-top)`).
+- XCUITest: Safari's page menu cell `ShareButton` (label 공유); in the share sheet the action row's `더 보기 (⌄)` is not in the tree and the apps row has another `더 보기` that opens the app list — tap the action one by coordinate (402×874 pt screen: 332, 780). The add sheet's `추가` is at 355, 100. A second icon with the same name lands on the next home page: swipe left before tapping it.
+
+**해결:** to hand state from Safari to the home-screen app without a sign-in, leave it on the server under a short-lived one-time code and put the code in a cookie when the install guide opens; the app's first launch reads the cookie and takes the state (no reload or manifest tricks needed). Put a PNG `apple-touch-icon` (180 px, full-bleed) and `apple-mobile-web-app-title` in the page before anyone adds it — both are fixed at add time (OPS-483).
