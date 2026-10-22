@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T03:06:06Z · 소스 커밋 `254c743` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T04:02:24Z · 소스 커밋 `525077a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6712,6 +6712,14 @@ func tri(i0: int, i1: int, i2: int) -> void:
 ```
 
 `CPUParticles3D` has no `amount_ratio` (only `GPUParticles3D` does); setting it is `Invalid assignment of property or key 'amount_ratio'` at run time, not a parse error.
+
+## GDT-326 — Baking a town of small meshes into one `ArrayMesh` from GDScript costs 5–110 ms per town on an M1; spread it over frames with `await get_tree().process_frame`
+
+`측정 2026-10-22 · Godot 4.7.2-stable · GL Compatibility · MacBook Air M1, windowed`
+
+**증상:** a port town of 20–220 procedural houses, trees and landmarks drew in 41 calls as one `MultiMeshInstance3D` per wall colour; giving each culture three house shapes made it one MultiMesh per colour × shape and the Lisbon view rose to 79 draw calls (`Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME`). Baking every building into a single `ArrayMesh` in town space (per vertex: `basis * v + origin`, normals through `basis.inverse().transposed()`, and the facts the shader used to take from `MODEL_MATRIX` — wall height and a per-building seed — moved into `UV2`) brought it to 23 with the same pixels and primitives within 0.1%. But the bake is a per-vertex GDScript loop: 4.5 ms for Funchal, 26 ms for Lisbon, 61 ms for Amsterdam and 111 ms for London (stepped gables and chimneys are many small boxes), measured natively; the web build runs GDScript several times slower, so streaming a town in one frame would hitch.
+
+**해결:** make the builder a coroutine: check `Time.get_ticks_usec()` after each building and `await get_tree().process_frame` when the slice passes 4 ms, then commit the mesh at the end. The caller keeps calling `build()` without `await`; it returns at the first yield. The longest frame spent in town streaming fell to 8.6 ms (lot layout plus the first slice). Draw calls are a better gate than fps on a shared test host: the same build measured 13.7–38.2 desktop fps within one hour as other sessions' load moved between 10 and 110.
 
 ---
 
