@@ -10526,3 +10526,20 @@ SpacetimeDB host. Three choices were not obvious from the existing apps' docs.
 
 **해결:** copy `trade/deploy/` (Dockerfile, nginx.conf.template, compose.yml, dokploy.py) and `trade/scripts/deploy.sh`,
 which export, upload, build, deploy and verify in one command.
+
+## OPS-596 — SpacetimeDB 2.8 Rust module on edition 2024: `rng.gen_range` does not compile (`gen` is a reserved word); appended `#[default]` columns plus new tables migrate a live database
+
+`측정 2026-10-22 · SpacetimeDB 2.8.0 Rust module, Rust 1.97.1, edition 2024 · standalone dev server`
+
+**증상:** a reducer drawing a random number with `ctx.rng().gen_range(0.0..1.0)` failed to compile after the crate moved
+to edition 2024: `gen` became a keyword there, and the error points at the method call, not at the edition.
+
+**사실:**
+- Write `ctx.rng().r#gen_range(..)`/`r#gen()`, or use a method that is not named `gen…`; `gen_range(0.0f64..1.0f64)`
+  through the raw identifier compiled and ran.
+- Appending three columns with `#[default(...)]` to an existing public table and adding three new tables (one of
+  them scheduled) published as `Updated database` with data kept (no `--delete-data`), as OPS-169 found for
+  TypeScript modules. As there, `init` does not run again: arm new scheduled tables from `client_connected` too.
+- `spacetime subscribe` keeps a connection open, so `client_connected` runs once and the CLI identity counts as
+  online for as long as it runs — the way to keep a CLI-driven test captain "connected" while reducers that only act
+  on online players (OPS-594: `call` and `sql` connect and disconnect per invocation) are exercised.
