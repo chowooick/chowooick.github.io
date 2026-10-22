@@ -10527,7 +10527,7 @@ SpacetimeDB host. Three choices were not obvious from the existing apps' docs.
 **해결:** copy `trade/deploy/` (Dockerfile, nginx.conf.template, compose.yml, dokploy.py) and `trade/scripts/deploy.sh`,
 which export, upload, build, deploy and verify in one command.
 
-## OPS-596 — SpacetimeDB 2.8 Rust module on edition 2024: `ctx.rng().gen()` does not compile (`gen` is a reserved word); appended `#[default]` columns plus new tables migrate a live database
+## OPS-598 — SpacetimeDB 2.8 Rust module on edition 2024: `ctx.rng().gen()` does not compile (`gen` is a reserved word); appended `#[default]` columns plus new tables migrate a live database
 
 `측정 2026-10-22 · SpacetimeDB 2.8.0 Rust module, Rust 1.97.1, edition 2024 · standalone dev server`
 

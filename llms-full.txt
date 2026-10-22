@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T01:28:08Z · 소스 커밋 `6cac184` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T01:33:55Z · 소스 커밋 `cb8a247` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20214,4 +20214,21 @@ SpacetimeDB host. Three choices were not obvious from the existing apps' docs.
 
 **해결:** copy `trade/deploy/` (Dockerfile, nginx.conf.template, compose.yml, dokploy.py) and `trade/scripts/deploy.sh`,
 which export, upload, build, deploy and verify in one command.
+
+## OPS-598 — SpacetimeDB 2.8 Rust module on edition 2024: `ctx.rng().gen()` does not compile (`gen` is a reserved word); appended `#[default]` columns plus new tables migrate a live database
+
+`측정 2026-10-22 · SpacetimeDB 2.8.0 Rust module, Rust 1.97.1, edition 2024 · standalone dev server`
+
+**증상:** a reducer drawing a random number with `ctx.rng().gen::<f64>()` does not compile in an edition 2024 crate:
+`gen` became a keyword there, and the error points at the method call, not at the edition.
+
+**사실:**
+- Write `ctx.rng().r#gen::<f64>()`, or use `gen_range(0.0f64..1.0f64)` (only the bare name `gen` is reserved);
+  the latter compiled and ran in the module.
+- Appending three columns with `#[default(...)]` to an existing public table and adding three new tables (one of
+  them scheduled) published as `Updated database` with data kept (no `--delete-data`), as OPS-169 found for
+  TypeScript modules. As there, `init` does not run again: arm new scheduled tables from `client_connected` too.
+- `spacetime subscribe` keeps a connection open, so `client_connected` runs once and the CLI identity counts as
+  online for as long as it runs — the way to keep a CLI-driven test captain "connected" while reducers that only act
+  on online players (OPS-594: `call` and `sql` connect and disconnect per invocation) are exercised.
 
