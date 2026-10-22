@@ -10601,3 +10601,11 @@ The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<
 - The city-area series has a break: New York fell from 47,563 (2018) to 40,496 (2019) with no stated reason, so treat 2019 as a likely method or boundary change before drawing a trend across it.
 
 **해결:** take country and city figures from the e-Stat file of the edition you need, cite the edition year, and mark any per-consulate number after 2018 as unverified rather than reading it from a news summary.
+
+## OPS-604 — ffmpeg `alimiter` without `latency=1` shifts the audio by its lookahead: 131 zero samples in front, the same cut from the end, file length unchanged; a sample-exact game loop then starts silent and ends truncated
+
+`측정 2026-10-22 · ffmpeg 9.0.2 (Homebrew, macOS 27) · alimiter attack=3 · 44.1 kHz float WAV`
+
+**증상:** music loops mastered with `alimiter=limit=0.7:attack=3:release=60:level=false` kept their exact sample count, but a loop-seam check (step at the wrap vs the 99th percentile of neighbouring steps, GDT-282) failed at 2–3.6x on 4 of 13 loops. Decoding showed the files begin with ~130 samples of zeros and the last ~130 samples of the mix are gone. A constant 0.5 signal through the filter: output `[0, 0, 0, …]` for 131 samples, then 0.5; length identical to the input. `alimiter` buffers `attack` ms of lookahead and, by default, emits that buffer as silence first and drops the final buffer at EOF.
+
+**해결:** `alimiter=…:latency=1` ("compensate delay", available since ffmpeg 6): the same test then returns 0.5 from sample 0 and the end is intact. Any limiter whose lookahead is not compensated shifts the whole file; check the first samples of the output, not only its length. (With the fix, all 13 loops passed the seam check at 0.1–0.7x.)
