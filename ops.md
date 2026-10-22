@@ -10504,7 +10504,7 @@ seated and returned `Ok` without inserting anything.
 storage key, as bearhunter's `Session` tag does) and check identities differ before asserting on
 seats. A reducer that returns `Ok` for "already there" hides this; log the caller identity in tests.
 
-## OPS-595 — A new *.mnori.com game on nj1: proxy `/stdb/` straight to the shared SpacetimeDB container, give the Dokploy domain `https: false`, and point the CNAME at the nj1 tunnel
+## OPS-597 — A new *.mnori.com game on nj1: proxy `/stdb/` straight to the shared SpacetimeDB container, give the Dokploy domain `https: false`, and point the CNAME at the nj1 tunnel
 
 `측정 2026-10-22 · Dokploy on nj1 (raw compose) · Cloudflare tunnel · SpacetimeDB 2.8 shared host spacetimedb.mnori.com · trade.mnori.com`
 
