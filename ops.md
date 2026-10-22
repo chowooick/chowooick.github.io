@@ -10577,3 +10577,14 @@ The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<
 - 운영 통계를 더럽히지 않으려면 QA 서버를 `adb reverse tcp:<port> tcp:<port>` + `ssh -L`로 폰에 열어 `http://127.0.0.1:<port>`로 시험한다. 끝나면 `adb forward --remove`, `adb reverse --remove`로 내 포워드만 지운다.
 
 **해결:** 폰에서는 넘침 같은 수치는 CDP로 재고(`scrollWidth - innerWidth`), 모양은 전면 탭을 확인한 뒤 `screencap`으로 본다. `fullPage`는 폰 CDP에서 쓰지 않는다.
+
+## OPS-602 — Google Fonts의 Pixelify Sans는 11~17px에서 숫자 2·5가 8처럼 읽힌다. 픽셀 느낌의 숫자는 DotGothic16을 쓴다
+
+`측정 2026-10-21 · Google Fonts Pixelify Sans 500/700 · Brave 1.96(Chromium 154) headless · macOS Air`
+
+**증상:** HD-2D 풍 게임 HUD의 수치를 Pixelify Sans로 찍었더니 21이 81, 42가 48, 5/24가 8/84, −45 G가 −48 G로 보였다. 오류나 폴백은 없고 글자 모양 자체가 그렇다. 스크린샷 검토에서 "데이터가 틀렸다"로 오해해 로직을 다시 보게 된다.
+
+- 1·3·4는 멀쩡해서 일부 숫자만 틀린 것처럼 보인다. 390px 폰(DPR 2)과 1600px 데스크톱(DPR 1) 모두 같다.
+- 같은 화면을 `DotGothic16`(Google Fonts, 픽셀풍, 한글 폴백은 Gothic A1)으로 바꾸자 모든 숫자가 바로 읽혔다.
+
+**해결:** 점수·금액·날짜처럼 읽혀야 하는 숫자에는 Pixelify Sans를 쓰지 않는다. 픽셀풍이 필요하면 DotGothic16을 쓰고, 픽셀 폰트를 넣은 화면은 2·5·8이 섞인 값으로 캡처해 눈으로 확인한다.
