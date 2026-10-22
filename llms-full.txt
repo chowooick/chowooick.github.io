@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T17:02:11Z · 소스 커밋 `d41a859` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T17:54:45Z · 소스 커밋 `f5614c9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6742,6 +6742,16 @@ When driving a shared personal phone over adb, check `dumpsys window | grep mCur
 **증상:** a custom shell chose the server per host, `args: ['--server=ws://127.0.0.1:18780', '--db=fake-case1']` on localhost, and the game read them with `OS.get_cmdline_user_args()`. The game never saw them and fell back to its compiled-in production endpoint: a Playwright run against `http://127.0.0.1:18781` showed the WebSocket opening `wss://<production>/v1/database/<prod-db>/subscribe`, and the new client hit the old production schema (`SubscriptionError … no such table: crowd`). Nothing in the page or the console says the arguments were dropped, so the earlier "local" browser results of the same project had in fact run against production.
 
 **해결:** put `'--'` first: `args: ['--', '--server=…', '--db=…']`. `get_cmdline_user_args()` returns only what follows `--` (or `++`); `OS.get_cmdline_args()` would see the raw ones. In a browser test, log `page.on('websocket', ws => ws.url())` once to confirm which server a build talks to.
+
+## GDT-329 — Web export from a local server: the 54 MB engine downloads and the loading screen is gone in under 250 ms, so loading-screen UI needs a throttled line to be tested
+
+`측정 2026-10-22 · Godot 4.7.2 Web export (index.wasm 39.5 MB + index.pck 14.8 MB) · python http.server on 127.0.0.1 · Brave 1.96 headless and Playwright WebKit (1.64.1) · MacBook Air M1`
+
+**증상:** a test waited for the shell's `#status` overlay to show a download counter (read from `#status-progress.value/max` every 250 ms). The first sample, 250 ms after `domcontentloaded`, already found `#status` removed and the game booted; the counter never appeared, and the test failed though the page was fine.
+
+**사실:** Godot's shell sets `statusProgress.value`/`max` in bytes from `onProgress(current, total)` (total from `GODOT_CONFIG.fileSizes`, 54,282,506 bytes here) and removes `#status` when the engine starts. From localhost the whole load is shorter than one frame of a polling test. With Chrome DevTools throttling (`Network.emulateNetworkConditions`, 6 MB/s, 40 ms latency) the same page showed `1.1 / 54.3 MB` and kept the overlay up long enough to screenshot. WebKit has no CDP; there `page.route(/index\.wasm$/, () => {})` (never answered) holds the loading screen indefinitely, which is enough for UI that does not need the game.
+
+**해결:** throttle with a CDP session in Chromium (`ctx.newCDPSession(page)` → `Network.enable` → `Network.emulateNetworkConditions`) or hold `index.wasm` with `page.route` in WebKit before testing anything that lives on the loading screen. When the page keeps the engine in Cache Storage (GDT-255), a second load is again instant: check where the files came from (a flag set by the fetch wrapper, or 0 requests for `index.pck`/`index.wasm` in `page.on('request')`) instead of the overlay.
 
 ---
 
@@ -20407,4 +20417,44 @@ The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<
 **사실:** each origin is its own app (its own `id` resolves against its own origin), so one file has to answer differently per host. `app/manifest.ts` may read the request: `export default async function manifest() { const host = (await headers()).get("host"); return companyHosts.has(host) ? company() : games(); }`. The build then lists `ƒ /manifest.webmanifest` (dynamic) instead of a static file, and with `next start` on one port `http://localhost:<port>` and `http://127.0.0.1:<port>` received the two different manifests, each with zero installability errors. For local tests, make the company origin an env value (`NEXT_PUBLIC_COMPANY_URL=http://localhost:<port>`, portal at `127.0.0.1`) so both apps can be checked from one server.
 
 **해결:** whenever one deployment serves several hostnames, open each host's page and read `Page.getAppManifest` before shipping; if a host is not meant to be an app, its manifest still decides what Chrome's menu installs. Serve the manifest per host from `app/manifest.ts` with `headers()`, and purge `/manifest.webmanifest` per hostname at the CDN after the change.
+
+## OPS-607 — SpacetimeDB SQL over HTTP names a Rust field `p256dh` as column `p_256_dh`; a reader of `row.p256dh` gets `undefined`
+
+`측정 2026-10-22 · SpacetimeDB 2.8.0 standalone (Air) · POST /v1/database/<db>/sql with the owner's token · Node 26 fetch`
+
+**증상:** a Web Push sender read a private table `push_sub { identity, endpoint, p256dh, auth, hour, made_at }` through `POST /v1/database/<db>/sql` and mapped each row by `schema.elements[i].name.some`. Every send failed quietly (`keys.p256dh` was `undefined`, so `web-push` threw before any request), and the test's push service received nothing.
+
+**사실:** the SQL result names that column `p_256_dh` (the schema element is `{"name":{"some":"p_256_dh"}}`): the server splits letters and digits into words when it makes the SQL name. `endpoint`, `auth`, `hour` and `made_at` came back unchanged. Reducer arguments over the websocket are positional, so the client side never notices. A private table read without the owner's token answered HTTP 400.
+
+**해결:** read columns by the name the SQL schema reports (or check `schema.elements` once in a test), or give such fields names without digits next to letters (`p256` → `key_p`, etc.). Assert on the decoded payload in an end-to-end test rather than on "sent N".
+
+## OPS-608 — Brave (Playwright, fresh profile) takes about 30 s to resolve its first `pushManager.subscribe()`: it is registering with FCM, not hanging
+
+`측정 2026-10-22 · Brave 1.96 (Chromium 154) headed via playwright 1.58.2 launchPersistentContext · macOS (MacBook Air M1) · brave.gcm.channel_status=true (OPS-330)`
+
+**증상:** a reminder flow called `Notification.requestPermission()` (granted by `grantPermissions`) then `reg.pushManager.subscribe(...)`; a test that waited 32 s saw no subscription, no error and no toast, and failed as "subscription never saved".
+
+**사실:** on a brand-new profile the first `subscribe()` resolved with an `https://fcm.googleapis.com/fcm/send/…` endpoint after 31.2 s and 27.2 s on a bare page (with and without dropping Playwright's default `--disable-background-networking`; the flag made no difference), and after about 80 s inside a busy WebGL game page. Once it resolved, a VAPID push sent from Node `web-push` was shown by the service worker 271 ms later (`registration.getNotifications()`).
+
+**해결:** wait up to two minutes for the first subscription in tests, and show progress in the UI while it runs ("켜는 중…" on the button) instead of leaving a disabled button that looks broken. Do subscribe → send → check notification in one browser session (OPS-330).
+
+## OPS-609 — Playwright WebKit on the Air: `Executable doesn't exist … webkit-2248` for Playwright 1.58.2, while the cache holds webkit-2359/2370; NODE_PATH cannot swap the version
+
+`측정 2026-10-22 · MacBook Air (shared test host) · ~/Library/Caches/ms-playwright has webkit-2359, webkit-2370 · playwright 1.58.2 and 1.64.1`
+
+**증상:** a WebKit test using the project's `tests/node_modules/playwright` (1.58.2) failed at `webkit.launch()` with `Executable doesn't exist at …/ms-playwright/webkit-2248/pw_run.sh`. Running it with `NODE_PATH=<other>/node_modules` did not help: `require('playwright')` resolves the `node_modules` next to the script first, and NODE_PATH is only the last fallback.
+
+**사실:** webkit-2370 is the build of Playwright 1.64.1 (`playwright-core/browsers.json`), already installed on the Air by other projects. Installing `playwright@1.64.1` into a separate folder of your own takes about a second and downloads no browser.
+
+**해결:** keep a small runner folder (`npm install playwright@1.64.1`) and load it explicitly from the WebKit test: `require(process.env.PLAYWRIGHT || 'playwright')` with `PLAYWRIGHT=$PWD/webkit-runner/node_modules/playwright`. Do not borrow another project's `node_modules`; it may be deleted mid-run. Match the version to a cached build with `grep -A2 '"webkit"' node_modules/playwright-core/browsers.json`.
+
+## OPS-610 — Playwright mobile emulation (Chromium): `window.screen` does not follow the viewport; a landscape 844×390 context reported a screen height of 800
+
+`측정 2026-10-22 · playwright 1.58.2 · Brave 1.96 headless · newContext({viewport:{width:844,height:390}, isMobile:true, hasTouch:true})`
+
+**증상:** a page compared the browser's visible height with the whole screen (`innerHeight` against `Math.min(screen.width, screen.height)`) to show how much larger the game gets as an installed app. In the test it claimed "390px → 800px, +105 %".
+
+**사실:** without a `screen` option the context keeps a default screen size that has nothing to do with the emulated phone, so any code that reads `screen.*` gets numbers no phone has. Real phones report their own size (Android Chrome swaps width and height with the orientation; iOS Safari keeps the portrait numbers).
+
+**해결:** pass `screen` equal to the viewport (`newContext({viewport:size, screen:size, …})`) in phone emulation, and have the page ignore implausible ratios (here: anything above +60 % shows no percentage) so a wrong `screen` never turns into a wrong claim on screen.
 
