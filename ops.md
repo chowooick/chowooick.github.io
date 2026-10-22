@@ -10555,3 +10555,13 @@ which export, upload, build, deploy and verify in one command.
 When the deletes are driven by a shell loop, run it in bash, not zsh: zsh does not split an unquoted `$IDS` or `set -- $pair`, so the loop ran once with the whole list and every statement failed with `sql parser error: Expected an expression:, found: =`, which at least deleted nothing.
 
 **해결:** select the rows first (`SELECT identity, name FROM player WHERE …`), delete per identity in every table that holds it, then select again. To stop tests from adding rows to production, persist each test seat's token between runs (Trade's `web_play.mjs` keeps them in `~/.config/trade-web-seats.json` on the test host) so the same captains are reused.
+
+## OPS-600 — A SpacetimeDB game listed in the MNORI portal gets 4 SQL connections every 3 minutes; a module that creates a player in `client_connected` grows by 4 rows per poll
+
+`측정 2026-10-22 · SpacetimeDB 2.8 · mnori portal match recorder (src/lib/stdb.ts, RECORDED_GAMES) · Trade module`
+
+**증상:** within 40 minutes of adding a game to `src/lib/games.ts` with a non-`coming-soon` status, its production `player` table gained 52 unnamed captains, four at a time with `joined_at` on whole minutes 3 minutes apart (03:42:00, 03:45:00, …).
+
+The portal derives `RECORDED_GAMES` from the catalogue and polls `/v1/database/<id>/sql` for every playable game's `match_result` and related tables on a 3-minute background sync. Each anonymous SQL request is a new identity that runs `client_connected` and `client_disconnected` (OPS-594), so a module that inserts a player row on connect keeps one per query. The queries fail harmlessly for a game without those tables, but the connect hook has already run.
+
+**해결:** in the game module, delete a player on its last disconnect while it is still in its starting state (default name, starting values, no inventory), and sweep such rows with no live connection from an existing scheduled reducer; a returning visitor gets the same captain back because the default name derives from the identity. After publishing that, Trade's table went from 75 rows to the 2 real ones within 30 s and stayed there across the next poll. Alternatively set `STDB_DATABASES` on the portal, but that removes the game from match recording too.
