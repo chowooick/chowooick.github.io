@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-22T22:59:31Z · 소스 커밋 `50101e3` · 이 파일은 자동 생성물이다.
+생성 2026-10-22T23:06:58Z · 소스 커밋 `16b7b16` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20501,4 +20501,30 @@ Sending right after that first subscription is unreliable. In five runs (fresh p
 - XCUITest: Safari's page menu cell `ShareButton` (label 공유); in the share sheet the action row's `더 보기 (⌄)` is not in the tree and the apps row has another `더 보기` that opens the app list — tap the action one by coordinate (402×874 pt screen: 332, 780). The add sheet's `추가` is at 355, 100. A second icon with the same name lands on the next home page: swipe left before tapping it.
 
 **해결:** to hand state from Safari to the home-screen app without a sign-in, leave it on the server under a short-lived one-time code and put the code in a cookie when the install guide opens; the app's first launch reads the cookie and takes the state (no reload or manifest tricks needed). Put a PNG `apple-touch-icon` (180 px, full-bleed) and `apple-mobile-web-app-title` in the page before anyone adds it — both are fixed at add time (OPS-483).
+
+## OPS-614 — Real iPad Safari 26.6 (iPadOS 26.7.1): the toolbar's Share button sits 120 pt from the right edge, so an on-page arrow pointing at it is placed from the right, not at a share of the width
+
+`측정 2026-10-22 · iPad mini 5 (iPad11,1) · iPadOS 26.7.1 · Safari 26.6.2, landscape 1024×768 pt · safaridriver (OPS-351) + devicectl screenshots (OPS-325)`
+
+**증상:** an install guide drew an arrow at `left: 84%` of the viewport under the toolbar's Share button (taken from a simulator layout). On the real iPad in landscape the arrow landed at x 860 pt and pointed between Share's left edge and the page; the Share icon's centre in the device screenshot (2048 px wide) was at x 1807 px = **904 pt**, 120 pt from the right edge. In the iPadOS 27 portrait simulator (OPS-508) Share was at 624 of 744 pt, also 120 pt from the right: the right-hand toolbar group (공유 · + · 탭) is a fixed-width cluster anchored to the edge. OPS-508's follow-up gives 882 pt for this iPad in landscape; this run measured 904 with a single Safari window and no sidebar open.
+
+Other measured facts from the same run:
+- UA: `Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) … Version/26.6.2 Mobile/15E148 Safari/604.1` — the OS part is frozen at 18_7 here too; `Version/` gives 26.
+- `innerHeight` 682 against `screen` 768×1024: a page in Safari loses 86 pt (11 %) to the toolbars in landscape.
+- A safaridriver session's Safari shows the address pill in orange (automation) but the toolbar geometry is the normal one.
+
+**해결:** place such an arrow with `left: calc(100% - 120px)` (or `right: 120px` minus half its width) for iPad Safari, and check it against a real-device screenshot: `xcrun devicectl device capture screenshot` shows Safari's own toolbar, which a WebKit browser test never draws.
+
+## OPS-615 — `accent-color` on `<progress>`: a light lime (`#c5fa71`) draws as dark green in Android Chrome 155 and iPad Safari 26.6; style the bar's pseudo-elements instead
+
+`측정 2026-10-22 · Pixel 7 Pro, Android 17, Chrome 155.0.8059.84 · iPad mini 5, iPadOS 26.7.1, Safari 26.6.2 · Godot 4.7 web export's #status-progress`
+
+**증상:** a loading screen set `#status-progress { accent-color: #c5fa71 }` (a light lime on a near-black page). On both real devices the filled part of the bar was a dark green (about `#3c7d1e`), not the lime, so the bar looked like a different product's. Screenshots taken in desktop browsers had not flagged it.
+
+**해결:** draw the bar yourself:
+`#status-progress{-webkit-appearance:none;appearance:none;background:#2b3142;border:0;border-radius:3px;overflow:hidden}`
+`#status-progress::-webkit-progress-bar{background:#2b3142}`
+`#status-progress::-webkit-progress-value{background:#c5fa71}`
+`#status-progress::-moz-progress-bar{background:#c5fa71}`.
+After this both devices drew the exact lime (checked in device screenshots). Look at a loading screen on a real phone at least once; `accent-color` results differ per engine.
 
