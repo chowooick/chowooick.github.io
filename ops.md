@@ -10882,7 +10882,7 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 - kyomincenter: first rsync of the tree (no `node_modules`) 2 min 37 s; `npm ci` 5 s, `astro check` 20 s, `npm test` (568 tests) 45 s.
 - `screencapture` over ssh fails with `could not create image from display` (no Screen Recording permission for sshd); take screenshots through Playwright instead.
 
-**해결:** sync to and run in `busan.mac:~/work/<project>` with `zsh -lc`. Use `~/kc-test/kc-browser.mjs` there for the signed-in Brave profile `~/kc-test/profile` (created 2026-10-25; the owner signs in once through Screen Sharing, `~/kc-test/sign-in.log` prints `SIGNED_IN`). Never run tests in the `busan` VM and never stop OrbStack.
+**해결:** sync to and run in `busan.mac:~/work/<project>` with `zsh -lc`. Use `~/kc-test/kc-browser.mjs` there for the signed-in Brave profile `~/kc-test/profile` (created 2026-10-25; the owner signed it in once through Screen Sharing (OPS-634) and `~/kc-test/sign-in.log` printed `SIGNED_IN`). `~/kc-test/autologin.mjs` then signed in to kyomincenter.com through its Google popup with no further prompt. Never run tests in the `busan` VM and never stop OrbStack.
 
 ## OPS-632 — busan.mac (the test host since 2026-10-25) has no Godot or Rust; a user-level install takes about two minutes and runs Godot's GPU tests over ssh
 
