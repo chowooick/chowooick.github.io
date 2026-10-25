@@ -11015,3 +11015,11 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 **증상:** `npm run deploy` over ssh printed the account table and exited. The log had `✘ [ERROR] More than one account available but unable to select one in non-interactive mode.` The same project deployed from the developer Mac without a prompt, because that checkout had `node_modules/.cache/wrangler/wrangler-account.json` from an earlier interactive pick. A fresh checkout on another host has no such cache.
 
 **해결:** pass `CLOUDFLARE_ACCOUNT_ID=<id>` to the deploy, or copy the developer checkout's `node_modules/.cache/wrangler/wrangler-account.json` (account id and name only, no secret) to the host's checkout. Both deployed at once. Add `account_id` to the wrangler config to make it permanent.
+
+## OPS-644 — nj2 has no cron and no sudo for `chowooick`, but `loginctl enable-linger chowooick` works without a password, so a systemd user timer runs hourly jobs there across logout and reboot
+
+`측정 2026-10-25 · nj2 (Ubuntu, x86_64, user chowooick, no docker group) · systemd user instance`
+
+**증상:** moving an hourly pull job (dongnesosik's off-site backup copy) from the Air to nj2: `command -v crontab` printed nothing and `/var/spool/cron` did not exist; `loginctl show-user chowooick -p Linger` was `Linger=no`, so a user timer would stop at logout.
+
+**해결:** `loginctl enable-linger chowooick` succeeded with no prompt (polkit allows it for your own user); `Linger=yes` after. Then install a `~/.config/systemd/user/<name>.service` (`Type=oneshot`, `StandardOutput=append:<log>`) and `<name>.timer` (`OnCalendar=*-*-* *:25:00`, `Persistent=true`), `systemctl --user daemon-reload && systemctl --user enable --now <name>.timer`, and check `systemctl --user list-timers`. Measured: the first run copied and matched all 53 files busan lists. Disk there was 851 GB free. Make any ssh key such a job needs on nj2 itself (`ssh-keygen` there) and pin it with `restrict,command=…` on the far side, so the private key is never copied between machines.
