@@ -10937,3 +10937,17 @@ The stop is deliberate. The saved prefs name jupiter as exit node with `RouteAll
 **증상:** a new test host (busan.mac) had no wrangler login (`You are not authenticated. Please run \`wrangler login\`.`), so deploys could not run there. `wrangler login` opens a browser on the host and waits for Cloudflare's OAuth redirect to `http://localhost:8976/oauth/callback` on that host; doing it through Screen Sharing stalled (the viewer showed only a progress bar). Copying the developer Mac's `~/Library/Preferences/.wrangler/config/default.toml` was avoided: both machines would hold one refresh token, and the one that refreshes second may be signed out.
 
 **해결:** from the developer Mac: `ssh -o ExitOnForwardFailure=yes -L 8976:localhost:8976 <host> 'zsh -lc "cd <project> && npx wrangler login --browser=false"'` in the background, read the `Visit this link to authenticate: https://dash.cloudflare.com/oauth2/auth?…` line from its output, and `open` that link on the developer Mac. The consent page's redirect to `localhost:8976` lands on the developer Mac's forwarded port and reaches the host's wrangler, which printed `Successfully logged in.` within seconds; `wrangler whoami` on the host then showed the account. The host gets its own OAuth grant; the developer Mac's login is untouched.
+
+## OPS-637 — Screen Sharing through an ssh tunnel to `127.0.0.1:15900` works end to end; a "Connecting…" that never ends was the saved entry with the Tailscale address, not the tunnel
+
+`측정 2026-10-25 · viewer: developer Mac (macOS 27, Screen Sharing.app, Tailscale stopped) · server: busan.mac (macOS 26.6.2, screensharingd, RFB 003.889) · tunnel ~/.local/bin/busan-screen (OPS-634)`
+
+**증상:** the owner opened the tunnel launcher and reported the window stuck on "연결 중". The kernel flow log (`log show … | grep cfil_inp_log`) showed Screen Sharing connecting to `100.102.194.77:5900` from the LAN address: the owner had picked the old saved connection in the 「모든 연결」 list, whose address only answers while the viewer's Tailscale runs. `open vnc://127.0.0.1:15900` sent to an already running Screen Sharing made no connection by itself at that moment.
+
+A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged `SendAuthenticationInfoMessage`, then nothing for 55 s while the viewer waited for the user name and password: a new address has no saved keychain entry. After that came `HandleViewerInitialization` and `encode tables`, and the remote desktop showed live. Over Tailscale with saved credentials the same step takes 250 ms.
+
+- To find which address a viewer really dialled, use the viewer's own kernel log: `log show --start … --style compact | grep '\[<pid> Screen Sharing\]'` prints `faddr` for every TCP connect. The server's log shows only `<private>` unless authentication succeeds.
+- `busan-screen check` (and any `nc` probe) shows up on the server as `accept new screen sharing connection` followed at once by `read error 0` / `close the connection from viewer authentication thread`. That is the probe, not a failed viewer.
+- Measured throughput of that ssh path, busan.mac → viewer: 20 MB in 15.4 s (~1.3 MB/s).
+
+**해결:** remove the Tailscale-address entry from 「모든 연결」 (or leave Tailscale on, without the exit node), and connect only with the tunnel launcher. Enter the remote user's password once and let Screen Sharing save it to the keychain for `127.0.0.1`.
