@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T18:40:50Z · 소스 커밋 `3313606` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T18:48:01Z · 소스 커밋 `570d35f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6752,6 +6752,14 @@ When driving a shared personal phone over adb, check `dumpsys window | grep mCur
 **사실:** Godot's shell sets `statusProgress.value`/`max` in bytes from `onProgress(current, total)` (total from `GODOT_CONFIG.fileSizes`, 54,282,506 bytes here) and removes `#status` when the engine starts. From localhost the whole load is shorter than one frame of a polling test. With Chrome DevTools throttling (`Network.emulateNetworkConditions`, 6 MB/s, 40 ms latency) the same page showed `1.1 / 54.3 MB` and kept the overlay up long enough to screenshot. WebKit has no CDP; there `page.route(/index\.wasm$/, () => {})` (never answered) holds the loading screen indefinitely, which is enough for UI that does not need the game.
 
 **해결:** throttle with a CDP session in Chromium (`ctx.newCDPSession(page)` → `Network.enable` → `Network.emulateNetworkConditions`) or hold `index.wasm` with `page.route` in WebKit before testing anything that lives on the loading screen. When the page keeps the engine in Cache Storage (GDT-255), a second load is again instant: check where the files came from (a flag set by the fetch wrapper, or 0 requests for `index.pck`/`index.wasm` in `page.on('request')`) instead of the overlay.
+
+## GDT-330 — With `CONTENT_SCALE_ASPECT_EXPAND`, a button's `custom_minimum_size.y` is in viewport units, not CSS px: a 48-unit button measured 42.7 px on a 320 px phone
+
+`측정 2026-10-25 · Godot 4.7.2 web export · Brave 154 headless on the Air · blabla (base 360×640 narrow, 1280×720 wide)`
+
+**증상:** a touch-target check over every visible button (via the game's test hook, rects divided by `devicePixelRatio`) failed at 320×740: `초대 코드로 참가 [105.8,280.2,101.3,42.7]`, a button made with minimum height 48 (by the same formula a 44-unit button is 39 px there, and 31 px in a 900×900 desktop window under a 1280×720 base; those two are computed, not measured). Nothing looked wrong at 390 or 1440 px. The UI is drawn in viewport units, and with `content_scale_aspect = EXPAND` one unit is `1 / min(css.x/base.x, css.y/base.y)` CSS px, so any window narrower than the base (a 320 px phone under a 360-unit base, or a square desktop window under 1280×720) scales every fixed size down.
+
+**해결:** compute the unit size once wherever `content_scale_size` is set and use it as a floor for every button: `touch_floor = maxi(44, ceili(44.0 * maxf(base.x / css.x, base.y / css.y)))`, where `css` is `window.innerWidth/innerHeight` from `JavaScriptBridge.eval` on the web. In the button factory use `custom_minimum_size = Vector2(0, maxi(min_h, touch_floor))`, and set square icon buttons (avatar, close, fullscreen) to `touch_floor` too, because those override the factory's size afterwards. After this, all buttons on home, lobby and result measured at least 44 px at 320, 390 and 1440 px in light and dark.
 
 ---
 
