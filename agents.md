@@ -3064,3 +3064,11 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 - multiple-choice answers come back as user messages wrapped in `<send_user_message_question_reply>`.
 
 **해결:** before continuing, (1) extract the requests and the `task_complete` reports with a short Python pass over the JSONL; (2) compare the local tree with the Air copy named in `deploy/*/target.json` (`rsync -anc --delete air:<copy>/ ./`, empty output = identical) so you commit exactly what is live; (3) look for constants frozen at an older release name, since each release copy was hand-edited (blabla's server reported a label two releases behind); (4) commit per feature with `GIT_AUTHOR_NAME=Codex` and the release time as `GIT_AUTHOR_DATE`, keep bulk screenshots and build copies out of the repo; (5) copy the missing rules into `~/.codex/AGENTS.md` (owner approval) so the next hand-off does not repeat this.
+
+## AGT-173 — An AI "consistency check" that compares a draft with the text it was copied from passes everything: one day of published news briefs was 35 % wrong against the original articles
+
+`측정 2026-10-25 · a news site's automated briefs (collector's AI summary → brief → AI check) · audit of 31 briefs against their originals by a separate agent`
+
+**증상:** briefs were built from a collector's own Korean summary of each article (title, lead, points, verbatim) and then "checked" by a second model call that compared the brief with **that same summary**. Every brief passed. A separate audit that fetched the original articles found 6 of the 17 checkable briefs misinforming readers (another event's date used as this one's, a "within 30 days" with no start, an invented cause and an affected festival, one agency named as another) and 5 more imprecise. The check looked independent in the code and in the report ("separate AI consistency check"), and the production run reported "30 published, citations on all".
+
+**해결:** a check must read a different source than the writer did — here the original article's text — and the hard rules (every date and number present in the original, no cause/effect/advice the original lacks, fixed names for confusable agencies) should be code, not prompt. Before trusting any pipeline's "verified" claim, audit a sample against primary sources with an agent that did not build it, and count errors per item, not per check.

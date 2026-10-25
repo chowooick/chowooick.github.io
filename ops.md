@@ -10894,3 +10894,15 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 - Godot: `mkdir -p ~/godot && cd ~/godot && curl -fsSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_macos.universal.zip && unzip -q godot.zip && rm godot.zip && mkdir -p ~/.local/bin && ln -sf ~/godot/Godot.app/Contents/MacOS/Godot ~/.local/bin/godot` (~/.local/bin is already on the login shell's PATH).
 - Rust: `curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal`, then use `~/.cargo/bin/cargo` or add it to PATH in the job script.
 - Measured: a full landgrab run there (import, cargo test 32, 13 headless Godot suites, the GPU suite with a window, two screenshot captures) all passed from a detached script started over ssh; non-headless Godot opens its window in the logged-in session without extra setup.
+
+## OPS-633 — Reading news articles server-side to fact-check summaries: TEGNA TV sites answer 403 to everyone, nj1015.com drops a named bot, Korea Daily keeps its body outside `<article>` in `<br>` lines
+
+`측정 2026-10-25 · plain fetch() from Node 26 on busan.mac (KR residential) and on the Air (US) · 31 article URLs of one day's briefs`
+
+**증상:** a fact check that compares a short summary with the original article read nothing for half the articles:
+- **TEGNA stations** (9news.com, khou.com, kvue.com, 11alive.com — the main TV sources for Colorado, Houston, Austin and Atlanta) answered **403** (Akamai) to a browser user agent and to a named bot alike, from both machines. 14 of 31 articles.
+- **nj1015.com** closed the connection (no status) to `User-Agent: Mozilla/5.0 (compatible; <name>/1.0; +https://…)` and answered 200 to a desktop Chrome string.
+- **koreadaily.com** returned 200 with the story's text **outside** its `<article>` element (which held only the date), written as text separated by `<br> &nbsp; <br>` with almost no `<p>`; JSON-LD has only a truncated `description`. An extractor that takes `<article>` paragraphs got 38 characters.
+- Same URL, different HTML per user agent (gothamist.com): an extractor's output, and so a gate's decision, can change with the UA.
+
+**해결:** send a desktop browser user agent; take the paragraphs of the largest `<article>`, and when they are under a few hundred characters take that element's whole text, then the page's. Treat a short text or a page that names "Access Denied / Just a moment / captcha" as unreadable. Plan for TEGNA sources to be unreadable server-side: anything that requires the original will not publish them.
