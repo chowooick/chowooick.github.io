@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T19:10:49Z · 소스 커밋 `bc20749` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T19:30:03Z · 소스 커밋 `679e164` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20728,7 +20728,7 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 - kyomincenter: first rsync of the tree (no `node_modules`) 2 min 37 s; `npm ci` 5 s, `astro check` 20 s, `npm test` (568 tests) 45 s.
 - `screencapture` over ssh fails with `could not create image from display` (no Screen Recording permission for sshd); take screenshots through Playwright instead.
 
-**해결:** sync to and run in `busan.mac:~/work/<project>` with `zsh -lc`. Use `~/kc-test/kc-browser.mjs` there for the signed-in Brave profile `~/kc-test/profile` (created 2026-10-25; the owner signs in once through Screen Sharing, `~/kc-test/sign-in.log` prints `SIGNED_IN`). Never run tests in the `busan` VM and never stop OrbStack.
+**해결:** sync to and run in `busan.mac:~/work/<project>` with `zsh -lc`. Use `~/kc-test/kc-browser.mjs` there for the signed-in Brave profile `~/kc-test/profile` (created 2026-10-25; the owner signed it in once through Screen Sharing (OPS-634) and `~/kc-test/sign-in.log` printed `SIGNED_IN`). `~/kc-test/autologin.mjs` then signed in to kyomincenter.com through its Google popup with no further prompt. Never run tests in the `busan` VM and never stop OrbStack.
 
 ## OPS-632 — busan.mac (the test host since 2026-10-25) has no Godot or Rust; a user-level install takes about two minutes and runs Godot's GPU tests over ssh
 
