@@ -10951,3 +10951,11 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 - Measured throughput of that ssh path, busan.mac → viewer: 20 MB in 15.4 s (~1.3 MB/s).
 
 **해결:** remove the Tailscale-address entry from 「모든 연결」 (or leave Tailscale on, without the exit node), and connect only with the tunnel launcher. Enter the remote user's password once and let Screen Sharing save it to the keychain for `127.0.0.1`.
+
+## OPS-638 — A Cloudflare tunnel ingress rule `path: ^/v1/.*` to the SpacetimeDB container bypasses every nginx rule for /v1; nginx guards only take effect after that rule is removed
+
+`측정 2026-10-25 · cloudflared 2026.10.1 remote-managed tunnel · nginx 1.28 · SpacetimeDB 2.8 · blabla on nj1`
+
+**증상:** after deploying an nginx that answers `location /v1/ { return 403; }` and refuses the database owner token, a probe from the server to the public hostname still got **200** for `POST /v1/database/blabla/sql` with the owner token, and **405** (not 403) for `POST /v1/database/blabla`. `nginx -t` passed and the container had the new config. The tunnel's remote configuration (`GET /accounts/{acc}/cfd_tunnel/{id}/configurations`) had two rules for the host: `{"path":"^/v1/.*","service":"http://<db-alias>:3000"}` first, then the site to nginx. Cloudflare matched /v1 to the database directly, so nginx never saw those requests. A database-container network alias like `<app>-spacetime-xxxx` is the hint that such a rule exists.
+
+**해결:** `PUT` the configuration back without the path rule (keep a copy of the old JSON for rollback); the change applied within about 20 s, and the same probe then returned 403 for the owner token in every form (Bearer, lowercase bearer, Basic, `/v1/identity/websocket-token`, `?token=`, percent-encoded) and for publish/delete/other /v1 paths, while `GET /v1/database/<db>/identity`, the game's websocket (`/subscribe` with and without `?token=`) and the admin SQL path kept working. Publish and owner SQL then run inside the database container (`docker exec <db> spacetime --config-path <tmp> publish --server http://127.0.0.1:3000 ...`, token written to a 0600 temp file and removed). Check every SpacetimeDB app behind a tunnel for the same rule before relying on nginx for /v1.

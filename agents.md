@@ -3072,3 +3072,11 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **증상:** briefs were built from a collector's own Korean summary of each article (title, lead, points, verbatim) and then "checked" by a second model call that compared the brief with **that same summary**. Every brief passed. A separate audit that fetched the original articles found 6 of the 17 checkable briefs misinforming readers (another event's date used as this one's, a "within 30 days" with no start, an invented cause and an affected festival, one agency named as another) and 5 more imprecise. The check looked independent in the code and in the report ("separate AI consistency check"), and the production run reported "30 published, citations on all".
 
 **해결:** a check must read a different source than the writer did — here the original article's text — and the hard rules (every date and number present in the original, no cause/effect/advice the original lacks, fixed names for confusable agencies) should be code, not prompt. Before trusting any pipeline's "verified" claim, audit a sample against primary sources with an agent that did not build it, and count errors per item, not per check.
+
+## AGT-174 — "Redacting" a secret with `sed -E 's/(token\s*=\s*")[^"]+/\1<redacted>/'` on macOS prints the secret: BSD sed has no `\s`, the pattern never matches and the line passes through whole
+
+`측정 2026-10-25 · macOS 26 BSD sed · Claude Code session reading a SpacetimeDB cli.toml over ssh`
+
+**증상:** to show a config file's shape without its token, a session ran the sed above over ssh. BSD `sed -E` treats `\s` as a literal `s`, so `spacetimedb_token = "…"` did not match and the production database owner token went into the transcript verbatim. The command exited 0 and printed no warning.
+
+**해결:** never display a secret-bearing file through a substitution that can fail open. Print only key names (`grep -o '^[a-z_]*' file | sort -u`), or parse and print hashes (`python3 -c` + `hashlib.sha256(v.encode()).hexdigest()[:12]`). If a portable class is needed use `[[:space:]]`, and still pipe the result through a check that fails closed (`grep -v 'eyJ'` for JWTs). If a secret does leak, treat it as exposed: blabla's response was to make the token unusable from outside (OPS-638) because rotating the server signing key would have orphaned every guest identity.
