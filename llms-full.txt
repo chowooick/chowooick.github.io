@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T19:30:03Z · 소스 커밋 `679e164` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T19:40:49Z · 소스 커밋 `6dd06df` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20762,4 +20762,17 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 The stop is deliberate. The saved prefs name jupiter as exit node with `RouteAll=true`, so `tailscale up` would send all of the Mac's traffic through Busan (OPS-347-style side effects, ~175 ms to everything).
 
 **해결:** do not give anyone a `100.x` address before checking the viewer's own `tailscale status`. Reach Screen Sharing through the ssh path that already works: `ssh -f -N -o ExitOnForwardFailure=yes -L 127.0.0.1:15900:127.0.0.1:5900 busan.mac`, then `open vnc://127.0.0.1:15900` and sign in as the remote Mac's user. Use a port other than 5900 locally: Screen Sharing refuses `localhost:5900` as "your own screen". Check the tunnel without opening a window: `nc -w 5 127.0.0.1 15900 </dev/null | head -c 12` prints `RFB 003.889`. On the developer Mac this is wrapped as `~/.local/bin/busan-screen` (`check`, `stop`).
+
+## OPS-635 — busan.mac for SpacetimeDB + Godot web tests and nj1 deploy checks: spacetime 2.8.0, the one web template, cloudflared from Homebrew, and the Mac's key through `ssh -A`
+
+`측정 2026-10-25 · busan.mac (macOS 26.6.2, user jupiter) · spacetime 2.8.0 · Godot 4.7.2 · cloudflared 2026.10.3 · blabla`
+
+**증상:** a SpacetimeDB + Godot web project's tests and deploy helpers, written for the Air, could not start on busan.mac: no `spacetime`, no web export template, no `cloudflared` for the nj1 Access ssh hop, and the repo's ssh config named `/Users/chowooick/.local/bin/cloudflared`. In `ssh busan.mac 'zsh -lc "echo $PATH"'` the directory `~/.local/bin` was **not** on PATH (it appears only with `zsh -lic`), so job scripts must prepend it themselves.
+
+**해결:**
+- SpacetimeDB: `curl -sSf https://install.spacetimedb.com -o /tmp/i.sh && sh /tmp/i.sh --yes`, then `~/.local/bin/spacetime version install 2.8.0 --use` to match a 2.8.0 production server (the installer brings the newest, 2.13).
+- Godot web export: the editor is already in `~/godot` (OPS-632). Templates ship only as a 1.28 GB `.tpz` (GDT-172); copy the one file a non-threaded web export needs, `web_nothreads_release.zip` (10,245,903 bytes) plus `version.txt`, into `~/Library/Application Support/Godot/export_templates/4.7.2.stable/` with `tar | ssh busan.mac tar -x` (scp fails on the space in the path). Check: an export packaged the same 82 web assets as on the Air.
+- Rust wasm: `~/.cargo/bin/rustup target add wasm32-unknown-unknown`.
+- nj1 over Cloudflare Access ssh: `brew install cloudflared`. With `ssh -A busan.mac`, `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" chowooick@nj1-ssh.mnori.com` logs in with the forwarded key; no browser login was asked for. In shared ssh configs write the ProxyCommand as `sh -c 'PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH" exec cloudflared access ssh --hostname %h'` so it works on both hosts.
+- Before writing into a shared `~/.local/bin`, run `ls -la` on the name: another session's `godot` there was a symlink into `~/godot/Godot.app`, and a `printf > ~/.local/bin/godot` wrapper overwrote the real binary through it (restored from the same official zip; `codesign --verify --deep` passed again).
 
