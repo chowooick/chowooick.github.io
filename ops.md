@@ -11023,3 +11023,37 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 **증상:** moving an hourly pull job (dongnesosik's off-site backup copy) from the Air to nj2: `command -v crontab` printed nothing and `/var/spool/cron` did not exist; `loginctl show-user chowooick -p Linger` was `Linger=no`, so a user timer would stop at logout.
 
 **해결:** `loginctl enable-linger chowooick` succeeded with no prompt (polkit allows it for your own user); `Linger=yes` after. Then install a `~/.config/systemd/user/<name>.service` (`Type=oneshot`, `StandardOutput=append:<log>`) and `<name>.timer` (`OnCalendar=*-*-* *:25:00`, `Persistent=true`), `systemctl --user daemon-reload && systemctl --user enable --now <name>.timer`, and check `systemctl --user list-timers`. Measured: the first run copied and matched all 53 files busan lists. Disk there was 851 GB free. Make any ssh key such a job needs on nj2 itself (`ssh-keygen` there) and pin it with `restrict,command=…` on the far side, so the private key is never copied between machines.
+
+## OPS-645 — A `fetch()` whose response body is never read keeps Playwright's `networkidle` from ever firing; the request never "finishes"
+
+`측정 2026-10-25 · Brave 1.98 (Chromium) headless · playwright-core 1.64 · Astro 7 node adapter`
+
+**증상:** after a page started to POST once at load (`fetch('/api/x',{method:'POST',body})`, the promise used but the response never read), every `page.goto(url,{waitUntil:'networkidle'})` on that page timed out at 30 s, in suites that had passed for days. `page.on('response')` fired at once with 200; `requestfinished` never fired for that request, so Playwright counted it as in flight forever. `keepalive: true` was the first suspect and was not the cause: without it the same thing happened.
+
+**해결:** always consume the body (`.then(r=>r.text())` or `r.json()`, or `r.body?.cancel()`). The request then finishes and `networkidle` comes as before. To find such a request: log `request`, `response` and `requestfinished` for the page; the culprit has a response and no finish.
+
+## OPS-646 — Put a URL into a QR code in upper case: the alphanumeric mode fits a 47-character link in version 4 (33 modules) instead of version 6 (41) at level H
+
+`측정 2026-10-25 · qrcode-generator 1.4.4 · jsqr 1.4.0 · Apple Vision (VNDetectBarcodesRequest) on macOS 26.6 · Brave 1.98`
+
+**증상:** a short link `https://cuckoo-qr.chowooick.workers.dev/q/ab12c` (47 characters) in byte mode needed version 6 at level H (byte capacity: v4-H 34, v5-H 44, v6-H 58), 41×41 modules, too dense for an 84 px stamp on a desktop page.
+
+QR alphanumeric mode holds `0-9 A-Z space $ % * + - . / :` at 5.5 bits a character, so the same link upper-cased (`HTTPS://CUCKOO-QR.CHOWOOICK.WORKERS.DEV/Q/AB12C`) fits version 4 (alphanumeric v4-H holds 50), 33×33. A 35-character `https://pa.cuckoorental.com/q/ab12c` goes to version 3 (29×29). Scheme and host are case-insensitive; the path is not, so the server must accept the token in either case and lower-case it.
+
+**해결:** `q.addData(url.toUpperCase(),'Alphanumeric')` when the upper-cased URL matches `^[0-9A-Z $%*+\-./:]*$`, and match the token with `/i`. Checked: jsQR and Apple Vision (OPS-365) read every visible code, including a version-4 code drawn as rounded squares (OPS-621) at 84 CSS px and one rotated 6°; both return the upper-case text, and a browser opens it.
+
+## OPS-647 — A popover opened from inside a modal `<dialog>` but living outside it is inert: it shows on top, yet nothing in it can be clicked
+
+`측정 2026-10-25 · Brave 1.98 (Chromium) · Popover API (popover="manual") · showModal()`
+
+**증상:** a QR panel (`popover="manual"`, appended to `<body>`) opened by a phone link inside an open modal order dialog was drawn above the dialog (top layer, opened later), but `document.elementFromPoint` at its centre returned the dialog's backdrop, and its close button could not be clicked or focused. `showModal()` makes everything outside the dialog inert, top layer or not.
+
+**해결:** before `showPopover()`, move the popover into the dialog that holds its opener (`(opener.closest('dialog')||document.body).appendChild(panel)`; hide it first if it is open, since moving an open popover closes it). Inside the dialog it is not inert and still opens above it. The dialog's own type rules then apply to the popover's headings and paragraphs (`.order-dialog h2{…}`), so give the popover's text rules a selector at least as specific (`.panel .title`).
+
+## OPS-648 — The shared nj2 Dokploy key (`~/.config/dokploy/nj2.key`) can run out of calls for the day; the next call of any session is `401 Unauthorized`
+
+`측정 2026-10-25 · Dokploy on nj2 · key file dated 2026-10-24 22:04 (local)`
+
+**증상:** `application.dropDeployment` for one service returned `true` at 20:47:18Z; the same call for a second service nine seconds later, and every call after (`project.all` included), returned `401 {"message":"Unauthorized"}`. The key is shared by the docs of at least seven projects (battris, cuckoo, darklord, dungeonpop, fake, papa, threekingdom). This matches OPS-424 (a key created through `user.createApiKey` gets better-auth's default limit of 10 calls a day and then answers 401, not 429). The account `chowooick` on nj2 has no docker access, so the `apikey` row cannot be fixed from there.
+
+**해결:** spend no calls on probing: make the real call the probe and retry it on a long interval (CUCKOO: `deploy-cuckoo2-when-key-works.sh`, every 30 minutes for 25 hours). Put sessions that deploy two services from one release first in line for the day's calls, or remove the limit for good from `dokploy-postgres` (`update apikey set rate_limit_enabled=false, request_count=0 where …`, OPS-424); that needs someone with docker on nj2.
