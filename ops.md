@@ -10869,3 +10869,17 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 **증상:** tests must run on the Air, but the test phone is plugged into the main Mac. `adb devices` on the Air lists nothing. OPS-601 forwards only Chrome's DevTools port. A first try of the relay failed with `adb: failed to check server version: protocol fault (couldn't read status): Connection reset by peer` and the ssh session printed `connect_to 127.0.0.1 port 5037: failed`: the main Mac's adb server was not running (an earlier `adb forward --remove` session had ended and the server had exited).
 
 **해결:** on the Mac with the phone: `adb start-server` (listens on localhost:5037), then keep `ssh -N -o ExitOnForwardFailure=yes -R 15037:127.0.0.1:5037 -R 19333:127.0.0.1:9333 air` open. On the Air: `export ADB_SERVER_SOCKET=tcp:127.0.0.1:15037`; then `adb devices`, `adb shell …`, `adb exec-out screencap`, `adb install`/`uninstall` all run from the Air's scripts against the Mac's phone. `adb forward tcp:9333 localabstract:chrome_devtools_remote` issued from the Air binds the port on the Mac (the server's host), which the second `-R` brings to the Air as 127.0.0.1:19333. Keep both adb versions equal: a mismatched client makes the server restart.
+
+## OPS-629 — busan.mac (Mac mini M4 Pro in Busan) is the test host while the Air is lent out: `ssh busan.mac`, never the `busan` VM
+
+`측정 2026-10-25 · Mac16,11 M4 Pro 12 cores 64 GB · macOS 26.6.2 · Homebrew node 26.12.1 · Brave 1.98.60 (Chromium 156.0.8078.48) · from the developer Mac in the US, RTT 166–190 ms`
+
+**증상:** the Air is used by someone else from 2026-10-25 and the owner suspended it as a test host. `ssh busan` reaches the OrbStack Ubuntu VM (`7.2.9-orbstack`, 9.8 GB, 7.6 GB used) that runs production services, not a place for tests. The Tailscale address of the Mac (`100.102.194.77`, node `jupiter`) timed out on ports 22 and 2221 from the developer Mac, whose own Tailscale CLI said `stopped`.
+
+**사실:**
+- `ssh busan.mac` = `jupiter@121.174.3.182:2221` (`busan.mxox.com`), admin user, sudo asks a password. Console session logged in, Screen Sharing listening on 5900.
+- `brew install node` and `brew install --cask brave-browser` work without sudo. Playwright drives `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser` over ssh both headed and headless, WebGL 2 in both.
+- kyomincenter: first rsync of the tree (no `node_modules`) 2 min 37 s; `npm ci` 5 s, `astro check` 20 s, `npm test` (568 tests) 45 s.
+- `screencapture` over ssh fails with `could not create image from display` (no Screen Recording permission for sshd); take screenshots through Playwright instead.
+
+**해결:** sync to and run in `busan.mac:~/work/<project>` with `zsh -lc`. Use `~/kc-test/kc-browser.mjs` there for the signed-in Brave profile `~/kc-test/profile` (created 2026-10-25; the owner signs in once through Screen Sharing, `~/kc-test/sign-in.log` prints `SIGNED_IN`). Never run tests in the `busan` VM and never stop OrbStack.
