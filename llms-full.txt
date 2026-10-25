@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T18:35:33Z · 소스 커밋 `0d3e04f` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T18:40:50Z · 소스 커밋 `3313606` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20683,4 +20683,20 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 **증상:** `~/kc-test/kc-browser.mjs`, `~/kc-test/profile`, `profile-kcnews`, `profile-regional` and `autologin.mjs` do not exist; `~/.Trash` is empty. `~/work` holds only folders from 2026-10-24 onward, and the Air rebooted at 2026-10-24 05:52. A copy of Brave's default profile opens `myaccount.google.com` as the signed-out about page, and a site's "Google로 로그인" popup stops at the empty email field (`accounts.google.com/v3/signin/identifier`).
 
 **해결:** signed-in production checks on the Air cannot run until someone signs `chowooick@gmail.com` in to a Brave profile there again. A session cannot type the password or answer the passkey (OPS-447), so this needs the owner once. Then keep the profile outside `~/work` cleanups. Until then, report the blocked step with this ID instead of moving the check to another machine.
+
+## OPS-629 — PocketBase `auth-with-oauth2` answering 403 "The request doesn't satisfy the collection requirements to authenticate." after Google already passed: the auth collection's `authRule` failed (here a private header key the caller sent was not the one in the rule)
+
+`측정 2026-10-25 · PocketBase 0.40.4 (db.kyomincenter.com) · Cloudflare Worker calling auth-with-oauth2 server-side with PKCE · kc_members authRule = @request.headers.x_kyomin_private = "<key>"`
+
+**증상:** a site's own Google sign-in (popup → PocketBase `/api/oauth2-redirect` → realtime `@oauth2` event → the server exchanges the code with `POST /api/collections/<auth>/auth-with-oauth2`) showed only "Google 계정을 확인하지 못했습니다". The popup reached `/_/#/auth/oauth2-redirect-success`, so Google and the redirect were fine. The exchange answered **403** with `{"message":"The request doesn't satisfy the collection requirements to authenticate."}`. That message is the `authRule`, checked after the OAuth exchange succeeds; the rule had only a header-key clause, and the Worker's secret held a different value than the live rule (the key had been rotated, or the secret was set from an old copy). `auth-methods` worked with the same wrong header, since it needs no rule, so the "prepare" step gave no hint. Local tests with a synthetic PocketBase fixture passed because the fixture checked its own key.
+
+**해결:** log the exchange's status and PocketBase `message` (never the code or tokens) so this shows in `wrangler tail` at once. Read the live rule's key on the database host and pipe it into the secret without printing it: `ssh <db> "sudo sqlite3 -readonly …/data.db \"SELECT json_extract(options,'\$.authRule') FROM _collections WHERE name='<auth>'\" | grep -oE '[0-9a-f]{64}' | head -1 | tr -d '\n'" | npx wrangler secret put <NAME> --name <worker>` (`options` holds the rules in 0.40; there is no `authRule` column). A test fixture must not invent the auth answer's rules; check the secret against the live rule after every key rotation.
+
+## OPS-630 — Driving a phone plugged into another Mac from the Air: point the Air's `adb` at that Mac's adb server through `ssh -R` (`ADB_SERVER_SOCKET`), so test scripts stay on the Air
+
+`측정 2026-10-25 · adb 1.0.41 (platform-tools 37.0.1) on both Macs · Pixel 7 Pro on the main Mac's USB · OpenSSH reverse forward to the Air`
+
+**증상:** tests must run on the Air, but the test phone is plugged into the main Mac. `adb devices` on the Air lists nothing. OPS-601 forwards only Chrome's DevTools port. A first try of the relay failed with `adb: failed to check server version: protocol fault (couldn't read status): Connection reset by peer` and the ssh session printed `connect_to 127.0.0.1 port 5037: failed`: the main Mac's adb server was not running (an earlier `adb forward --remove` session had ended and the server had exited).
+
+**해결:** on the Mac with the phone: `adb start-server` (listens on localhost:5037), then keep `ssh -N -o ExitOnForwardFailure=yes -R 15037:127.0.0.1:5037 -R 19333:127.0.0.1:9333 air` open. On the Air: `export ADB_SERVER_SOCKET=tcp:127.0.0.1:15037`; then `adb devices`, `adb shell …`, `adb exec-out screencap`, `adb install`/`uninstall` all run from the Air's scripts against the Mac's phone. `adb forward tcp:9333 localabstract:chrome_devtools_remote` issued from the Air binds the port on the Mac (the server's host), which the second `-R` brings to the Air as 127.0.0.1:19333. Keep both adb versions equal: a mismatched client makes the server restart.
 
