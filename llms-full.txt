@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T19:09:18Z · 소스 커밋 `cbc31cd` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T19:10:49Z · 소스 커밋 `bc20749` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20752,4 +20752,14 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 - Same URL, different HTML per user agent (gothamist.com): an extractor's output, and so a gate's decision, can change with the UA.
 
 **해결:** send a desktop browser user agent; take the paragraphs of the largest `<article>`, and when they are under a few hundred characters take that element's whole text, then the page's. Treat a short text or a page that names "Access Denied / Just a moment / captcha" as unreadable. Plan for TEGNA sources to be unreadable server-side: anything that requires the original will not publish them.
+
+## OPS-634 — Screen Sharing to a Mac on the tailnet fails when the viewer's Tailscale is stopped; tunnel 5900 over the ssh path that works instead
+
+`측정 2026-10-25 · developer Mac m1max64 (Tailscale macsys, WantRunning=false, ExitNodeID = jupiter) · busan.mac (jupiter, macOS 26.6.2, Tailscale idle, ShieldsUp=false, application firewall off, screensharingd listening on *:5900)`
+
+**증상:** the owner opened `vnc://100.102.194.77` (busan.mac's Tailscale address) and got a connection failure. From the developer Mac, ssh to the same address timed out on ports 22 and 2221. Nothing was wrong on busan.mac. Its `tailscale status` listed every other device offline: `m1max64` (the developer Mac), the iPad and the phone. On the developer Mac, the app's CLI says `Tailscale is stopped.` and there is no `100.x` address. `scutil --nc list` still shows the VPN configuration as `(Connected)`, which misleads.
+
+The stop is deliberate. The saved prefs name jupiter as exit node with `RouteAll=true`, so `tailscale up` would send all of the Mac's traffic through Busan (OPS-347-style side effects, ~175 ms to everything).
+
+**해결:** do not give anyone a `100.x` address before checking the viewer's own `tailscale status`. Reach Screen Sharing through the ssh path that already works: `ssh -f -N -o ExitOnForwardFailure=yes -L 127.0.0.1:15900:127.0.0.1:5900 busan.mac`, then `open vnc://127.0.0.1:15900` and sign in as the remote Mac's user. Use a port other than 5900 locally: Screen Sharing refuses `localhost:5900` as "your own screen". Check the tunnel without opening a window: `nc -w 5 127.0.0.1 15900 </dev/null | head -c 12` prints `RFB 003.889`. On the developer Mac this is wrapped as `~/.local/bin/busan-screen` (`check`, `stop`).
 
