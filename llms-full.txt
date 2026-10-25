@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-23T00:00:11Z · 소스 커밋 `e4e13e9` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T16:38:37Z · 소스 커밋 `fd09a75` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20612,4 +20612,28 @@ After this both devices drew the exact lime (checked in device screenshots). Loo
 Rounded finder eyes and the cleared centre (≈11% of a v4 code at level H) cost nothing; the round dots are what fail. Passing in one check proves little — the failures depend on the exact pattern and pixel size.
 
 **해결:** draw data modules as rounded squares (the stroke trick keeps the path ≈20 bytes per module), keep rounded eyes and the icon if wanted, and guard it with a unit test that rasterises the SVG at many sizes and scales and decodes each with jsQR.
+
+## OPS-622 — Chrome 155 on Android may answer a PWA install with a home-screen shortcut instead of a WebAPK: the launcher's "홈 화면에 추가" dialog appears and `getInstalledRelatedApps()` never sees an app
+
+`측정 2026-10-22 · Pixel 7 Pro (Android 17) · Chrome 155.0.8059.84 · new origin, manifest with id, icons 192/512/maskable, screenshots, related_applications`
+
+**증상:** a site's own install button called the saved `beforeinstallprompt`, Chrome's install sheet showed, and 「설치」 was tapped. On the first two tries the WebAPK never came: 13 s and then 60 s after the tap, `topResumedActivity` became the launcher's `com.android.launcher3.QuickstepAddItemActivity` (logcat: `START … act=android.content.pm.action.CONFIRM_PIN_SHORTCUT`), a "Chrome · 교민마트 1×1 · 취소 / 홈 화면에 추가" pin-shortcut dialog. Chrome's own log said nothing about why. The page, polling `getInstalledRelatedApps()` to open the new app (OPS-284), waited in "설치 중" for its whole timeout. The third try on the same phone, minutes later, minted the WebAPK (`GoogleAssociationService` fetched `/.well-known/assetlinks.json` first; `firstInstallTime` set), the page saw it and the `intent://` opened the app. The same phone had minted another origin's WebAPK normally the day before, so this was not a broken Play setup.
+
+**해결:** do not assume 「설치」 always ends in a WebAPK. While waiting, watch `visibilitychange`: the pin dialog hides the page; once the page has been visible again for ~15 s with no app, tell the visitor to check the home screen and offer 다시 시도 (a reload, which brings a fresh `beforeinstallprompt`), and keep polling in case the WebAPK still lands. Test this path with a faked `document.hidden` toggle; a real phone reproduces it only sometimes. On a test phone, cancel the pin dialog (`uiautomator dump`, tap 「취소」) so no stray shortcut is left.
+
+## OPS-623 — Xcode 27.1 `test-without-building` on a real iPad (iPadOS 26.7.1) fails with "Root install style is not supported on this device"; delete `DSTROOTPath` from the .xctestrun
+
+`측정 2026-10-22 · Xcode 27.1 (27A9275) · iPad mini 5 (iPad11,1) · iPadOS 26.7.1 (23H30) · UI-test-only project, Personal Team signing`
+
+**증상:** a project with one UI-testing bundle and no app target built (`build-for-testing … -allowProvisioningUpdates`, `TEST BUILD SUCCEEDED`), but `xcodebuild test-without-building` (with `-project/-scheme` or with `-xctestrun`) ended at once with `Failed to install or launch the test runner. (Underlying Error: Root install style is not supported on this device. To install internal content, the device must allow installing app bundles and roots, and be running an internal OS build.)`. The log also printed `Supported platforms for the buildables in the current scheme is empty` and `operatingSystemBuild = <DVTBuildVersion 24A94232>, error = invalidDigitCount(94232)`. `xcrun devicectl device install app --device <udid> <Runner>.app` installed the same runner without complaint. The generated .xctestrun carried `"DSTROOTPath" => "/tmp/<Target>.dst"` under the test target.
+
+**해결:** `plutil -remove TestConfigurations.0.TestTargets.0.DSTROOTPath <file>.xctestrun`, then run `test-without-building -xctestrun <file>`: the runner installed and started ("Running tests…") and the device asked for Touch ID (OPS-374). Adding `SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"` to the test target removes the empty-platforms warning but not the error. A runner re-signed this way can come back with `Developer App Certificate is not trusted`: open 설정 › 일반 › VPN 및 기기 관리 with `xcrun devicectl device process launch --device <udid> --payload-url 'prefs:root=General&path=ManagedConfigurationList' com.apple.Preferences` for the owner to trust it.
+
+## OPS-624 — A service worker that answers a page load with a cached `/offline` response turns the page's address into `/offline`; with a reload-on-`online` handler the tab then loops
+
+`측정 2026-10-22 · Brave 1.96 (Chromium 154) headless via Playwright, offline emulation · Cloudflare Workers static assets`
+
+**증상:** offline, a navigation to `/privacy` was answered by `caches.match('/offline')`. The page showed the offline text, but Playwright's `framenavigated` reported `/offline` after `/privacy`: the cached Response keeps the URL it was fetched from and Chrome gives that URL to the document. The offline page had `addEventListener('online', () => location.reload())`; under the emulation the tab then flipped between `/privacy` and `/offline` every second or so, and every later `goto('/')` or `location.href = '/'` was overwritten (Playwright's `goto` returned `null`). Separately, Workers static assets answer `/offline.html` with a 307 to `/offline`; a redirected response cannot serve a navigation, so precache `/offline`, not `/offline.html`.
+
+**해결:** answer navigations with a fresh Response built from the cached one, which has no URL of its own: `new Response(await cached.blob(), { status: cached.status, statusText: cached.statusText, headers: cached.headers })`. The page then keeps the address it was opened at. Drop automatic reloads from offline pages and keep a 「다시 열기」 button. Check it with `framenavigated`: one navigation per `goto`, not a stream.
 
