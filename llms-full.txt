@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T19:05:18Z · 소스 커밋 `648c835` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T19:09:18Z · 소스 커밋 `cbc31cd` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9831,6 +9831,14 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 - multiple-choice answers come back as user messages wrapped in `<send_user_message_question_reply>`.
 
 **해결:** before continuing, (1) extract the requests and the `task_complete` reports with a short Python pass over the JSONL; (2) compare the local tree with the Air copy named in `deploy/*/target.json` (`rsync -anc --delete air:<copy>/ ./`, empty output = identical) so you commit exactly what is live; (3) look for constants frozen at an older release name, since each release copy was hand-edited (blabla's server reported a label two releases behind); (4) commit per feature with `GIT_AUTHOR_NAME=Codex` and the release time as `GIT_AUTHOR_DATE`, keep bulk screenshots and build copies out of the repo; (5) copy the missing rules into `~/.codex/AGENTS.md` (owner approval) so the next hand-off does not repeat this.
+
+## AGT-173 — An AI "consistency check" that compares a draft with the text it was copied from passes everything: one day of published news briefs was 35 % wrong against the original articles
+
+`측정 2026-10-25 · a news site's automated briefs (collector's AI summary → brief → AI check) · audit of 31 briefs against their originals by a separate agent`
+
+**증상:** briefs were built from a collector's own Korean summary of each article (title, lead, points, verbatim) and then "checked" by a second model call that compared the brief with **that same summary**. Every brief passed. A separate audit that fetched the original articles found 6 of the 17 checkable briefs misinforming readers (another event's date used as this one's, a "within 30 days" with no start, an invented cause and an affected festival, one agency named as another) and 5 more imprecise. The check looked independent in the code and in the report ("separate AI consistency check"), and the production run reported "30 published, citations on all".
+
+**해결:** a check must read a different source than the writer did — here the original article's text — and the hard rules (every date and number present in the original, no cause/effect/advice the original lacks, fixed names for confusable agencies) should be code, not prompt. Before trusting any pipeline's "verified" claim, audit a sample against primary sources with an agent that did not build it, and count errors per item, not per check.
 
 ---
 
@@ -20732,4 +20740,16 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 - Godot: `mkdir -p ~/godot && cd ~/godot && curl -fsSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_macos.universal.zip && unzip -q godot.zip && rm godot.zip && mkdir -p ~/.local/bin && ln -sf ~/godot/Godot.app/Contents/MacOS/Godot ~/.local/bin/godot` (~/.local/bin is already on the login shell's PATH).
 - Rust: `curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal`, then use `~/.cargo/bin/cargo` or add it to PATH in the job script.
 - Measured: a full landgrab run there (import, cargo test 32, 13 headless Godot suites, the GPU suite with a window, two screenshot captures) all passed from a detached script started over ssh; non-headless Godot opens its window in the logged-in session without extra setup.
+
+## OPS-633 — Reading news articles server-side to fact-check summaries: TEGNA TV sites answer 403 to everyone, nj1015.com drops a named bot, Korea Daily keeps its body outside `<article>` in `<br>` lines
+
+`측정 2026-10-25 · plain fetch() from Node 26 on busan.mac (KR residential) and on the Air (US) · 31 article URLs of one day's briefs`
+
+**증상:** a fact check that compares a short summary with the original article read nothing for half the articles:
+- **TEGNA stations** (9news.com, khou.com, kvue.com, 11alive.com — the main TV sources for Colorado, Houston, Austin and Atlanta) answered **403** (Akamai) to a browser user agent and to a named bot alike, from both machines. 14 of 31 articles.
+- **nj1015.com** closed the connection (no status) to `User-Agent: Mozilla/5.0 (compatible; <name>/1.0; +https://…)` and answered 200 to a desktop Chrome string.
+- **koreadaily.com** returned 200 with the story's text **outside** its `<article>` element (which held only the date), written as text separated by `<br> &nbsp; <br>` with almost no `<p>`; JSON-LD has only a truncated `description`. An extractor that takes `<article>` paragraphs got 38 characters.
+- Same URL, different HTML per user agent (gothamist.com): an extractor's output, and so a gate's decision, can change with the UA.
+
+**해결:** send a desktop browser user agent; take the paragraphs of the largest `<article>`, and when they are under a few hundred characters take that element's whole text, then the page's. Treat a short text or a page that names "Access Denied / Just a moment / captcha" as unreadable. Plan for TEGNA sources to be unreadable server-side: anything that requires the original will not publish them.
 
