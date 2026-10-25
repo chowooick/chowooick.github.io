@@ -10827,3 +10827,29 @@ Rounded finder eyes and the cleared centre (≈11% of a v4 code at level H) cost
 **증상:** a diagnostic page served over a quick tunnel (HTTPS), added to the home screen through Safari's page menu → 공유 → 더 보기 → 홈 화면에 추가 → 추가, reported inside the web app: `standalone=true`, `PushManager=true`, `Notification=true`, `permission=default`, service worker ready. `Notification.requestPermission()` showed the real "'<name>'에서 알림을 보내고자 합니다" alert and returned `granted` after 허용. Then `reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })` neither resolved nor rejected for more than a minute. A site whose app first calls `getSubscription()` before asking (to skip people already subscribed) therefore never shows its question at all. The simulator's log (`xcrun simctl spawn <udid> log show --last 2m --predicate 'process == "webpushd" OR subsystem CONTAINS "webpush"'`) showed `com.apple.webkit.webpushd` exiting at every spawn with `OS_REASON_CODESIGNING | Launch Constraint Violation` and launchd throttling the respawn. In plain Safari (not added) `PushManager` and `Notification` are absent, as on a real iPhone.
 
 **해결:** this simulator cannot check web push subscription or delivery; use a real iPhone or iPad (OPS-483). It still checks the add-to-home-screen steps, the web app's start URL and standalone layout. In the app's code, do not let a hung `getSubscription()` hide the whole prompt: race it against a timeout. The iOS 27 page menu also lists 「알림 받기」 for an ordinary website; what it does was not checked.
+
+## OPS-626 — Wrapping a user-supplied PocketBase `filter` in parentheses does not isolate it: `x") || ("y` closes them and ORs past the server's condition
+
+`측정 2026-10-25 · PocketBase filter syntax (fexpr) behind a Cloudflare Worker proxy · node:test against a mocked upstream`
+
+**증상:** a proxy hid moderated records by rewriting the member's query to `filter=((id != "a" && id != "b") || owner = "me") && (<member filter>)`. A member filter of `id!="x") || (id!="y"` turns that into `(…) && (id!="x") || (id!="y")`, and `&&` binds tighter than `||`, so every hidden record comes back. The id list also lengthens the URL with every hidden record.
+
+PocketBase has no bound parameters for a filter that arrives as raw text from the client, so parentheses alone do not separate trusted and untrusted parts.
+
+**해결:** do not splice the client's filter into a server-side condition. Either drop the hidden rows from the JSON answer (filter `items` by id and owner, lower `totalItems` by the number dropped, and append `id,owner` to a `fields=` the client sent so the rows can be identified), or put the rule in the collection's own API rule where PocketBase enforces it. If you must combine filters, reject a client filter whose parentheses go negative or do not balance outside quoted strings.
+
+## OPS-627 — An exact-path blocklist in a Worker wrapper misses `/path/`, other letter case and `%2D`; Astro still routes them, so a cron-only endpoint reaches signed-in users
+
+`측정 2026-10-25 · Astro 5 on Cloudflare Workers (trailingSlash default 'ignore') · production curl, anonymous POST`
+
+**증상:** a wrapper answered 404 for internal cron paths with `if (path === CRON_PATH) return 404`, and the same paths were listed as public so the cron's own request skipped the session check. Anonymous `POST /api/regions/operations-run` got 404, but `POST /api/regions/operations-run/` got 401 `LOGIN_REQUIRED`: it skipped the block, met the session check, and with a member's session it would have gone on to the route, which had no auth of its own.
+
+**해결:** compare in the form the router matches. Decode percent-escapes, collapse repeated slashes, strip the trailing slash and lowercase the path, then block it (`/api/regions/operations-run/`, `/api/Regions/Operations-Run`, `/api/regions/operations%2Drun` all answer 404 after the change). Better still, give the internal request a secret header and check it in the route.
+
+## OPS-628 — The Air's `~/kc-test` folder (signed-in Brave profiles and helper scripts) is gone as of 2026-10-25, and no Brave profile there is signed in to Google
+
+`측정 2026-10-25 · MacBook Air (air.local) · Brave 1.98.60 · Playwright launchPersistentContext on a copy of the default Brave profile`
+
+**증상:** `~/kc-test/kc-browser.mjs`, `~/kc-test/profile`, `profile-kcnews`, `profile-regional` and `autologin.mjs` do not exist; `~/.Trash` is empty. `~/work` holds only folders from 2026-10-24 onward, and the Air rebooted at 2026-10-24 05:52. A copy of Brave's default profile opens `myaccount.google.com` as the signed-out about page, and a site's "Google로 로그인" popup stops at the empty email field (`accounts.google.com/v3/signin/identifier`).
+
+**해결:** signed-in production checks on the Air cannot run until someone signs `chowooick@gmail.com` in to a Brave profile there again. A session cannot type the password or answer the passkey (OPS-447), so this needs the owner once. Then keep the profile outside `~/work` cleanups. Until then, report the blocked step with this ID instead of moving the check to another machine.
