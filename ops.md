@@ -10983,3 +10983,15 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 - browser tests that keep per-origin seat tokens in a file (keyed `http://127.0.0.1:<port>`) copied from the Air failed against the new local SpacetimeDB: the console showed `Failed to load resource: … 401 (Unauthorized)` and the client fell back to a new identity. The tokens were issued by the Air's dev server; a new server (or `--reset`) refuses them. Production-origin entries in the same file are unaffected.
 
 **해결:** load Playwright by home: ``const { chromium } = await import(`${homedir()}/kc-test/node_modules/playwright-core/index.mjs`)``. Start detached jobs with `nohup zsh -l job.sh` and still prepend `$HOME/.local/bin` in the script (OPS-635). Expect one failing run after moving a dev server; it saves the new tokens and the next run passes. A dev-only CLI identity (`spacetime login --token` from the dev server's `/v1/identity`) is not worth copying between hosts: issue a new one on the new host and delete the old file.
+
+## OPS-641 — Android WebAPK: the gesture-bar strip takes the manifest's `theme_color` and ignores dark mode; Chrome 156 mints no dark colours from `user_preferences.color_scheme_dark`
+
+`측정 2026-10-25 · Pixel 7 Pro · Android 17 · Chrome 156.0.8078.47 · system dark mode on · WebAPK shell 194`
+
+**증상:** a PWA whose manifest has `theme_color` / `background_color` `#ffffff` and `user_preferences: { color_scheme_dark: { theme_color: "#0c1214", background_color: "#0c1214" } }` was freshly installed as a WebAPK. In dark mode the app's status bar was dark, taken from the page's `<meta name="theme-color" media="(prefers-color-scheme: dark)">`. The 69 px navigation (gesture) strip at the bottom was white. The same page in a Chrome tab had a dark strip.
+
+- The minted APK's `AndroidManifest.xml` (`adb shell pm path <pkg>`, pull, `aapt2 dump xmltree --file AndroidManifest.xml`) carries `org.chromium.webapk.shell_apk.themeColor = -1L` (white) and `darkThemeColor = ""` / `darkBackgroundColor = ""`. The dark keys exist in the shell but Chrome left them empty. All 29 WebAPKs on the phone had them empty.
+- The strip colour is the manifest `theme_color`, not `background_color` and not the page's meta tag. An installed app with `theme_color` #141416 and `background_color` #ffffff drew the strip #141416. Another with `theme_color` #000065 drew it #000065, while its status bar followed the page.
+- A WebAPK installed before a manifest change keeps the old values until Chrome updates it. Reinstall, or wait for Chrome's periodic update check, before measuring.
+
+**해결:** do not rely on `user_preferences.color_scheme_dark` in Chrome 156 (keeping it is harmless). The gesture strip has one colour for both modes: the manifest `theme_color`. Pick it for the mode most readers use, or a colour that sits acceptably on both grounds. The status bar still follows the page's media-qualified `theme-color` meta tags.
