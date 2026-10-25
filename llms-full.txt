@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T20:28:41Z · 소스 커밋 `1450fe5` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T20:43:48Z · 소스 커밋 `7e76408` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20861,4 +20861,12 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 - On the developer Mac, `/usr/bin/keytool -printcert -jarfile app.aab` (keytool 25.0.1, system locale ko) printed `서명자 #1:` / `Certificate #1:` and then `keytool 오류: java.util.IllegalFormatConversionException: d != java.lang.String`, exit 0 and no fingerprints. `-J-Duser.language=en` did not help. Android Studio's bundled `…/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool` printed the certificate normally.
 
 **해결:** name the CI variables `ORG_GRADLE_PROJECT_<property>`; Gradle reads each as `-P<property>`, so `build.gradle.kts` needs no change. Store the keystore as a **file** variable holding one-line base64 (`base64 -i key.jks | tr -d '\n' | glab variable set NAME -t file -p -m --hidden -r`; 5,708 characters masked fine), feed every value through stdin with output sent to `/dev/null`, and mark all of them protected (they then reach only protected branches). In the job: `base64 -d "$NAME" > .upload.jks`, export the store-file property, build, then fail unless `jarsigner -verify` says `jar verified`, and delete the keystore in `after_script`. Prove the move by comparing the bundle's certificate SHA-256 with the keystore's (`keytool -list -v -storepass:env VAR`) using the JBR keytool. A full `bundleRelease` on the small SaaS runner took 5 min 45 s including the image pull.
+
+## OPS-643 — wrangler on a second host logged in to several Cloudflare accounts stops with "More than one account available but unable to select one in non-interactive mode"
+
+`측정 2026-10-25 · wrangler 4.135.0 · busan.mac logged in through OPS-636 · 6 accounts on the login`
+
+**증상:** `npm run deploy` over ssh printed the account table and exited. The log had `✘ [ERROR] More than one account available but unable to select one in non-interactive mode.` The same project deployed from the developer Mac without a prompt, because that checkout had `node_modules/.cache/wrangler/wrangler-account.json` from an earlier interactive pick. A fresh checkout on another host has no such cache.
+
+**해결:** pass `CLOUDFLARE_ACCOUNT_ID=<id>` to the deploy, or copy the developer checkout's `node_modules/.cache/wrangler/wrangler-account.json` (account id and name only, no secret) to the host's checkout. Both deployed at once. Add `account_id` to the wrangler config to make it permanent.
 
