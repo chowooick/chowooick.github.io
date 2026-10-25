@@ -3080,3 +3080,11 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **증상:** to show a config file's shape without its token, a session ran the sed above over ssh. BSD `sed -E` treats `\s` as a literal `s`, so `spacetimedb_token = "…"` did not match and the production database owner token went into the transcript verbatim. The command exited 0 and printed no warning.
 
 **해결:** never display a secret-bearing file through a substitution that can fail open. Print only key names (`grep -o '^[a-z_]*' file | sort -u`), or parse and print hashes (`python3 -c` + `hashlib.sha256(v.encode()).hexdigest()[:12]`). If a portable class is needed use `[[:space:]]`, and still pipe the result through a check that fails closed (`grep -v 'eyJ'` for JWTs). If a secret does leak, treat it as exposed: blabla's response was to make the token unusable from outside (OPS-638) because rotating the server signing key would have orphaned every guest identity.
+
+## AGT-175 — A claude.ai Artifact body served locally for a browser test shows mojibake Korean and a 980px phone layout: the body has no charset or viewport meta until the publish skeleton adds them
+
+`측정 2026-10-25 · Claude Code Artifact tool · python3 -m http.server · Playwright + Brave 1.98 on busan.mac`
+
+**증상:** an Artifact page is written without `<!doctype>`/`<head>` because the Artifact tool wraps it in a skeleton (charset + `viewport-fit=cover` viewport) at publish time. Served as-is from `python3 -m http.server` (which sends `text/html` with no charset), every Korean string rendered as mojibake, `locator('[data-v="반찬"]')` timed out because the attribute bytes no longer matched, and with `isMobile: true` at 390px the page laid out at 980px, so `max-width` media queries never fired and a phone-only button was "not visible". Nothing errored; the screenshot was the only signal.
+
+**해결:** put `<meta charset="utf-8">` and `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">` at the very top of the Artifact file. The publish skeleton's own copies are identical, so the duplicates are harmless after publishing and the local test now matches the published page.
