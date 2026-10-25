@@ -11001,7 +11001,7 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 `측정 2026-10-25 · GitLab.com SaaS runner saas-linux-small-amd64 · cimg/android:2026.08.1 · AGP 8.13.0 · Gradle 8.14.3 · glab · macOS keytool 25.0.1 · Android Studio JBR keytool`
 
 **증상:** moving a Play upload keystore and its passwords from a workstation into GitLab CI/CD variables hit four things that are not obvious:
-- `glab variable set KEY -m` refused nothing, but a 6-character key alias cannot be masked (GitLab masks only values of 8+ characters). It has to stay a protected, unmasked variable.
+- A 6-character key alias cannot be masked (GitLab masks only values of 8+ characters), so it stays a protected, unmasked variable. The passwords (28 characters) masked fine.
 - A variable created with `--hidden` (needs `-m`) returns no `value` from `GET /projects/:id/variables` any more, so the stored copy cannot be compared by hash afterwards. Only a real signed build proves it.
 - A Gradle `signingConfigs` block guarded by `if (findProperty("…StoreFile") != null)` builds an **unsigned** release bundle without any error when the property is missing, so a "BUILD SUCCESSFUL" alone proves nothing.
 - On the developer Mac, `/usr/bin/keytool -printcert -jarfile app.aab` (keytool 25.0.1, system locale ko) printed `서명자 #1:` / `Certificate #1:` and then `keytool 오류: java.util.IllegalFormatConversionException: d != java.lang.String`, exit 0 and no fingerprints. `-J-Duser.language=en` did not help. Android Studio's bundled `…/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool` printed the certificate normally.
