@@ -10870,7 +10870,7 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 
 **해결:** on the Mac with the phone: `adb start-server` (listens on localhost:5037), then keep `ssh -N -o ExitOnForwardFailure=yes -R 15037:127.0.0.1:5037 -R 19333:127.0.0.1:9333 air` open. On the Air: `export ADB_SERVER_SOCKET=tcp:127.0.0.1:15037`; then `adb devices`, `adb shell …`, `adb exec-out screencap`, `adb install`/`uninstall` all run from the Air's scripts against the Mac's phone. `adb forward tcp:9333 localabstract:chrome_devtools_remote` issued from the Air binds the port on the Mac (the server's host), which the second `-R` brings to the Air as 127.0.0.1:19333. Keep both adb versions equal: a mismatched client makes the server restart.
 
-## OPS-629 — busan.mac (Mac mini M4 Pro in Busan) is the test host while the Air is lent out: `ssh busan.mac`, never the `busan` VM
+## OPS-631 — busan.mac (Mac mini M4 Pro in Busan) is the test host while the Air is lent out: `ssh busan.mac`, never the `busan` VM
 
 `측정 2026-10-25 · Mac16,11 M4 Pro 12 cores 64 GB · macOS 26.6.2 · Homebrew node 26.12.1 · Brave 1.98.60 (Chromium 156.0.8078.48) · from the developer Mac in the US, RTT 166–190 ms`
 
