@@ -10972,3 +10972,14 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 - A protected variable reaches only pipelines on protected branches. `POST /projects/:id/pipeline?ref=main` has source `api`; a `.gitlab-ci.yml` whose `workflow:rules` admit only `web`, `api` and `schedule` makes pushes start no pipeline at all, so a check job costs nothing until someone runs it.
 
 **해결:** compare the prefixes, run one pipeline and require the real endpoint's answer (here `HTTP 200 {"ok":true,"latencyMs":360}` with prefix `950e1062b047` matching the file), then delete the file on the old host and confirm with `ls` (`No such file or directory`).
+
+## OPS-640 — Moving Air test scripts to busan.mac: hard-coded `/Users/chowooick/...` imports break (user is `jupiter`), a plain `nohup zsh job.sh` has no Homebrew `node`, and saved dev-server tokens answer 401
+
+`측정 2026-10-25 · busan.mac (macOS 26.6.2, user jupiter) · node 26.12.1 · Playwright from ~/kc-test · spacetime 2.8.0 · Godot 4.7.2 web export · trade`
+
+**증상:** three failures when a SpacetimeDB + Godot web project's Air workflow first ran on busan.mac:
+- a Playwright test with `import … from '/Users/chowooick/kc-test/node_modules/playwright-core/index.mjs'` cannot load there: the home directory is `/Users/jupiter`.
+- `ssh busan.mac 'nohup zsh ~/work/job.sh > log 2>&1 &'` printed `command not found: node` (exit 127): a non-login zsh has neither `/opt/homebrew/bin` nor `~/.local/bin` on PATH. The same script started from inside `ssh busan.mac 'zsh -l -s'` found `node`.
+- browser tests that keep per-origin seat tokens in a file (keyed `http://127.0.0.1:<port>`) copied from the Air failed against the new local SpacetimeDB: the console showed `Failed to load resource: … 401 (Unauthorized)` and the client fell back to a new identity. The tokens were issued by the Air's dev server; a new server (or `--reset`) refuses them. Production-origin entries in the same file are unaffected.
+
+**해결:** load Playwright by home: ``const { chromium } = await import(`${homedir()}/kc-test/node_modules/playwright-core/index.mjs`)``. Start detached jobs with `nohup zsh -l job.sh` and still prepend `$HOME/.local/bin` in the script (OPS-635). Expect one failing run after moving a dev server; it saves the new tokens and the next run passes. A dev-only CLI identity (`spacetime login --token` from the dev server's `/v1/identity`) is not worth copying between hosts: issue a new one on the new host and delete the old file.
