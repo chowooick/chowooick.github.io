@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T18:58:59Z · 소스 커밋 `e2541c0` · 이 파일은 자동 생성물이다.
+생성 2026-10-25T19:05:18Z · 소스 커밋 `648c835` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20721,4 +20721,15 @@ PocketBase has no bound parameters for a filter that arrives as raw text from th
 - `screencapture` over ssh fails with `could not create image from display` (no Screen Recording permission for sshd); take screenshots through Playwright instead.
 
 **해결:** sync to and run in `busan.mac:~/work/<project>` with `zsh -lc`. Use `~/kc-test/kc-browser.mjs` there for the signed-in Brave profile `~/kc-test/profile` (created 2026-10-25; the owner signs in once through Screen Sharing, `~/kc-test/sign-in.log` prints `SIGNED_IN`). Never run tests in the `busan` VM and never stop OrbStack.
+
+## OPS-632 — busan.mac (the test host since 2026-10-25) has no Godot or Rust; a user-level install takes about two minutes and runs Godot's GPU tests over ssh
+
+`측정 2026-10-25 · busan.mac (Mac mini M4 Pro, macOS 26.6, user jupiter) · Godot 4.7.2-stable · rustup 1.99.1`
+
+**증상:** `ssh busan.mac 'zsh -lc "which godot cargo"'` printed `godot not found` and `cargo not found`; only Homebrew node was there. Godot and Rust test suites written for the Air could not start.
+
+**해결:** install both per user, no sudo:
+- Godot: `mkdir -p ~/godot && cd ~/godot && curl -fsSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_macos.universal.zip && unzip -q godot.zip && rm godot.zip && mkdir -p ~/.local/bin && ln -sf ~/godot/Godot.app/Contents/MacOS/Godot ~/.local/bin/godot` (~/.local/bin is already on the login shell's PATH).
+- Rust: `curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal`, then use `~/.cargo/bin/cargo` or add it to PATH in the job script.
+- Measured: a full landgrab run there (import, cargo test 32, 13 headless Godot suites, the GPU suite with a window, two screenshot captures) all passed from a detached script started over ssh; non-headless Godot opens its window in the logged-in session without extra setup.
 
