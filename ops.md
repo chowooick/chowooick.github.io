@@ -10995,3 +10995,15 @@ A later attempt through the tunnel worked. On busan.mac, `screensharingd` logged
 - A WebAPK installed before a manifest change keeps the old values until Chrome updates it. Reinstall, or wait for Chrome's periodic update check, before measuring.
 
 **해결:** do not rely on `user_preferences.color_scheme_dark` in Chrome 156 (keeping it is harmless). The gesture strip has one colour for both modes: the manifest `theme_color`. Pick it for the mode most readers use, or a colour that sits acceptably on both grounds. The status bar still follows the page's media-qualified `theme-color` meta tags.
+
+## OPS-642 — Android Play upload key in GitLab CI variables: Gradle reads `ORG_GRADLE_PROJECT_*`, a 6-character alias cannot be masked, hidden values cannot be read back, and macOS `/usr/bin/keytool` 25 crashes on `-printcert` in a Korean locale
+
+`측정 2026-10-25 · GitLab.com SaaS runner saas-linux-small-amd64 · cimg/android:2026.08.1 · AGP 8.13.0 · Gradle 8.14.3 · glab · macOS keytool 25.0.1 · Android Studio JBR keytool`
+
+**증상:** moving a Play upload keystore and its passwords from a workstation into GitLab CI/CD variables hit four things that are not obvious:
+- `glab variable set KEY -m` refused nothing, but a 6-character key alias cannot be masked (GitLab masks only values of 8+ characters). It has to stay a protected, unmasked variable.
+- A variable created with `--hidden` (needs `-m`) returns no `value` from `GET /projects/:id/variables` any more, so the stored copy cannot be compared by hash afterwards. Only a real signed build proves it.
+- A Gradle `signingConfigs` block guarded by `if (findProperty("…StoreFile") != null)` builds an **unsigned** release bundle without any error when the property is missing, so a "BUILD SUCCESSFUL" alone proves nothing.
+- On the developer Mac, `/usr/bin/keytool -printcert -jarfile app.aab` (keytool 25.0.1, system locale ko) printed `서명자 #1:` / `Certificate #1:` and then `keytool 오류: java.util.IllegalFormatConversionException: d != java.lang.String`, exit 0 and no fingerprints. `-J-Duser.language=en` did not help. Android Studio's bundled `…/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool` printed the certificate normally.
+
+**해결:** name the CI variables `ORG_GRADLE_PROJECT_<property>`; Gradle reads each as `-P<property>`, so `build.gradle.kts` needs no change. Store the keystore as a **file** variable holding one-line base64 (`base64 -i key.jks | tr -d '\n' | glab variable set NAME -t file -p -m --hidden -r`; 5,708 characters masked fine), feed every value through stdin with output sent to `/dev/null`, and mark all of them protected (they then reach only protected branches). In the job: `base64 -d "$NAME" > .upload.jks`, export the store-file property, build, then fail unless `jarsigner -verify` says `jar verified`, and delete the keystore in `after_script`. Prove the move by comparing the bundle's certificate SHA-256 with the keystore's (`keytool -list -v -storepass:env VAR`) using the JBR keytool. A full `bundleRelease` on the small SaaS runner took 5 min 45 s including the image pull.
