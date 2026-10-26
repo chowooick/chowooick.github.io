@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-25T23:03:31Z · 소스 커밋 `f6b9b24` · 이 파일은 자동 생성물이다.
+생성 2026-10-26T19:14:10Z · 소스 커밋 `253b5f8` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20927,4 +20927,36 @@ QR alphanumeric mode holds `0-9 A-Z space $ % * + - . / :` at 5.5 bits a charact
 **증상:** `application.dropDeployment` for one service returned `true` at 20:47:18Z; the same call for a second service nine seconds later, and every call after (`project.all` included), returned `401 {"message":"Unauthorized"}`. The key is shared by the docs of at least seven projects (battris, cuckoo, darklord, dungeonpop, fake, papa, threekingdom). This matches OPS-424 (a key created through `user.createApiKey` gets better-auth's default limit of 10 calls a day and then answers 401, not 429). The account `chowooick` on nj2 has no docker access, so the `apikey` row cannot be fixed from there.
 
 **해결:** spend no calls on probing: make the real call the probe and retry it on a long interval (CUCKOO: `deploy-cuckoo2-when-key-works.sh`, every 30 minutes for 25 hours). Put sessions that deploy two services from one release first in line for the day's calls, or remove the limit for good from `dokploy-postgres` (`update apikey set rate_limit_enabled=false, request_count=0 where …`, OPS-424); that needs someone with docker on nj2.
+
+## OPS-649 — Cloudflare's login page hides "Sign in with Google" when the visitor's IP is in Korea; open `oidc.iam.cfapi.net/api/v1/sso/init?client=google` directly
+
+`측정 2026-10-26 · dash.cloudflare.com/login · Brave 1.98 (Chromium 156) via Playwright on busan.mac (Korean IP), profile copied from ~/kc-test/profile`
+
+**증상:** on a host in Korea the login page showed only email and password (and 「가입」); no Google, Apple or GitHub button,
+in English and in Korean, before and after typing the email. `https://dash.cloudflare.com/login/google` redirected back
+to `/login`. The same profile family on a US host had shown 「chowooick@gmail.com 계정으로 Google 사용하여 계속」 (OPS-399,
+OPS-474). The page script decides it: `N0=e=>!(globalThis?.bootstrap?.ip_country==='KR'||…)`. An account that only
+signs in with Google cannot sign in there at all through the page.
+
+**해결:** go straight to the URL the hidden button would open:
+`https://oidc.iam.cfapi.net/api/v1/sso/init?client=google&env=production&login_hint=<email>`. With a profile already
+signed in to Google it returned to `https://dash.cloudflare.com/` signed in, with no clicks; `GET /api/v4/memberships`
+from the page then answered 200. `client=apple` and `client=github` are the other values the script uses.
+
+## OPS-650 — A Cloudflare login at its account-creation limit had five additional accounts, two of them empty and unrecorded; list the accounts after a 422
+
+`측정 2026-10-26 · dash.cloudflare.com (ko UI), account switcher → 「계정 생성」 · one login, six accounts`
+
+**증상:** 「계정 생성」 answered `POST /api/v4/accounts` → **422** `{"code":1206,"message":"The standalone free account
+creation limit has been reached"}`; the dialog said 「생성할 수 있는 계정 수의 한도에 도달했습니다」. `GET /accounts` listed
+six accounts: the original plus five created between 2026-10-19 15:43 and 2026-10-20 01:37 UTC. That is the "five
+additional Free accounts" of the official "Create account" page; OPS-528 counted three. Two of the five
+(`withthebible.com` 05b8049b…, created 01:36:43, and `kyominmart.com` 1d5bc010…, 01:37:06) held no zone, Worker, D1, KV,
+Pages project, registration or API token, and the session's notes did not mention them; they were created in the minute
+when that session recorded every creation as failed. A second account with an existing name is accepted, so two
+accounts can carry the same name.
+
+**해결:** after any failed or batch account creation, read `GET /api/v4/accounts?per_page=50` (works from a signed-in
+dashboard page, OPS-301) and compare names and `created_on` with your notes before calling the limit reached. Empty
+accounts are free slots: rename one (`PUT /accounts/:id {"name": …}`, OPS-528) instead of waiting for a new one.
 
