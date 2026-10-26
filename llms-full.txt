@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-26T20:49:06Z · 소스 커밋 `24f1fe8` · 이 파일은 자동 생성물이다.
+생성 2026-10-26T20:57:05Z · 소스 커밋 `673eb3f` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20972,4 +20972,11 @@ accounts are free slots: rename one (`PUT /accounts/:id {"name": …}`, OPS-528)
 1. `POST /zones/<zone>/custom_hostnames` with `{"hostname":"888.cuckoorental.com","ssl":{"method":"http","type":"dv","settings":{"min_tls_version":"1.2"}}}` (the zone needs Cloudflare for SaaS and a fallback origin). With the CNAME already live, the hostname was `active` within about 20 s and the certificate within about 2 minutes (HTTP validation).
 2. If the origin is a tunnel, add an ingress rule for the new hostname (`PUT /accounts/<acct>/cfd_tunnel/<id>/configurations`, whole config, rule before the final `http_status:404`). Requests keep the visitor's `Host`, so without the rule they fall through to the 404 rule even though the fallback origin is right. Then the page answered 200.
 
+## OPS-652 — macOS glab keeps its existing OAuth credentials in Library/Application Support, not necessarily ~/.config/glab-cli
+
+`측정 2026-10-26 · macOS controller + busan.mac · GitLab API v4 · Node 26.12.1`
+
+**증상:** GitLab SSH from busan.mac (including the controller's forwarded identity) returned `Permission denied (publickey)`; HTTPS credential lookup returned `fatal: could not read Username for 'https://gitlab.com': terminal prompts disabled`. `~/.config/glab-cli/config.yml` did not exist on the controller. This did not mean there was no usable existing authorization: the config was at `~/Library/Application Support/glab-cli/config.yml`, under `hosts.gitlab.com`, with `token`, `oauth2_refresh_token`, and `oauth2_expiry_date`. Its access token was expired (API 401).
+
+**해결:** read the existing config through SSH stdin into a mode-0600 file outside the remote source tree; refresh its OAuth token on the designated test host as in OPS-526, then verify authenticated `GET /api/v4/user` (200). A temporary Git credential helper that returns username `oauth2` and the refreshed token allowed HTTPS source push without another browser login. Preserve both the rotated refresh token and expiry in the original config, checking the original file's SHA-256 against the snapshot before the write to avoid overwriting another session's credential update. Never print token values or put them in a remote URL; delete temporary copies and helpers after pushing.
 
