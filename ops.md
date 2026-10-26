@@ -11058,6 +11058,8 @@ QR alphanumeric mode holds `0-9 A-Z space $ % * + - . / :` at 5.5 bits a charact
 
 **해결:** spend no calls on probing: make the real call the probe and retry it on a long interval (CUCKOO: `deploy-cuckoo2-when-key-works.sh`, every 30 minutes for 25 hours). Put sessions that deploy two services from one release first in line for the day's calls, or remove the limit for good from `dokploy-postgres` (`update apikey set rate_limit_enabled=false, request_count=0 where …`, OPS-424); that needs someone with docker on nj2.
 
+**갱신 (2026-10-26, better-auth 1.3.27 source · Dokploy on nj2):** the window is counted from `lastRequest`, which only a *successful* call moves (`isRateLimited` returns `update: null` when it refuses). So the key comes back exactly 24 h after its 10th successful call (here 2026-10-26T20:47:18Z), no matter how many 401s came in between; probing every 30 minutes neither helps nor hurts. With the reset key, a new key without the limit was made over REST with `x-api-key` alone (no panel, no password): `GET /api/organization.all`, then `POST /api/user.createApiKey` with `{"name":"…","metadata":{"organizationId":"<id>"},"rateLimitEnabled":false}`. The reply still says `rateLimitMax: 10` but `rateLimitEnabled: false`; the new key answered 12 calls in a row. The key is in the reply's `key`; write it straight to the file (mode 600), never print it. `~/.config/dokploy/nj2.key` now holds that key; the old one is `nj2.key.old-20261026`.
+
 ## OPS-649 — Cloudflare's login page hides "Sign in with Google" when the visitor's IP is in Korea; open `oidc.iam.cfapi.net/api/v1/sso/init?client=google` directly
 
 `측정 2026-10-26 · dash.cloudflare.com/login · Brave 1.98 (Chromium 156) via Playwright on busan.mac (Korean IP), profile copied from ~/kc-test/profile`
@@ -11089,3 +11091,14 @@ accounts can carry the same name.
 **해결:** after any failed or batch account creation, read `GET /api/v4/accounts?per_page=50` (works from a signed-in
 dashboard page, OPS-301) and compare names and `created_on` with your notes before calling the limit reached. Empty
 accounts are free slots: rename one (`PUT /accounts/:id {"name": …}`, OPS-528) instead of waiting for a new one.
+
+## OPS-651 — A CNAME from another DNS host to a proxied hostname of a Cloudflare zone gives Error 1001 until that zone lists it as a custom hostname
+
+`측정 2026-10-26 · Cloudflare for SaaS on zone mnori.com · cloudflared remote-managed tunnel`
+
+**증상:** `888.cuckoorental.com` (DNS at GoDaddy) was made a CNAME of `cuckoo2.mnori.com`, a proxied record on Cloudflare pointing at a Cloudflare Tunnel. DNS resolved to Cloudflare's addresses, but every request returned **Error 1001 "DNS resolution error"** ("Cloudflare is currently unable to resolve your requested domain"). Cloudflare does not follow a foreign hostname into a zone that has not claimed it.
+
+**해결:** two calls, no change at the other DNS host:
+1. `POST /zones/<zone>/custom_hostnames` with `{"hostname":"888.cuckoorental.com","ssl":{"method":"http","type":"dv","settings":{"min_tls_version":"1.2"}}}` (the zone needs Cloudflare for SaaS and a fallback origin). With the CNAME already live, the hostname was `active` within about 20 s and the certificate within about 2 minutes (HTTP validation).
+2. If the origin is a tunnel, add an ingress rule for the new hostname (`PUT /accounts/<acct>/cfd_tunnel/<id>/configurations`, whole config, rule before the final `http_status:404`). Requests keep the visitor's `Host`, so without the rule they fall through to the 404 rule even though the fallback origin is right. Then the page answered 200.
+
