@@ -11258,7 +11258,7 @@ payments profile, not the business profile linked to the developer account.
   must search `page.frames()`, the top page text has only the warning.
 - 결제 수단 관리 → the account card's 「확인」 opens 「은행 입금액 확인」, which names the day Google sent the
   test deposit (`…에 10월 26일경에 입금된 GOOGLE 입금액을 입력하세요.`) and has one ₩ field.
-  The deposit was dated the day after the account was added.
+  The account had been added on 2026-10-26, so the deposit went out the same day.
 - The same page carries the 15% service-fee tier offer, which needs an account group and acceptance of
   the fee terms; it is not applied automatically.
 
