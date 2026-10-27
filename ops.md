@@ -11154,3 +11154,12 @@ Limit normalization to the known QR path; do not lowercase arbitrary application
 query values. The corrected browser check opened the exact decoded QR string, reached the
 intended phone page and observed the computer's opened state. Decoding alone, or replaying a
 modified URL, is not an end-to-end scan check.
+
+
+## OPS-656 — A classic script under Astro public/ can pollute application TypeScript globals when tsconfig includes **/*
+
+`측정 2026-10-26 · Astro 7.3.3 · @astrojs/check 0.9.9 · TypeScript 5.9.3 · macOS busan.mac`
+
+**증상:** a standalone design prototype in `public/reports/` passed browser checks and `astro build`, but `astro check` then reported 109 errors in unchanged application scripts. A prototype's top-level `form()` (returns HTML text), `$` and `$$` became ambient declarations because it was a classic JavaScript file and the project's strict tsconfig included `**/*`. Existing code calling `form('passport')` was inferred as a string: `Expected 0 arguments, but got 1`, `Property 'addEventListener' does not exist on type 'string'`, and `Argument of type 'string' is not assignable to parameter of type 'HTMLFormElement'`. Being a static public asset did not exclude it from the checker's input.
+
+**해결:** give the independent browser file module scope with `export {};` and load it using `<script type="module" src="…"></script>`. Changing only that prototype script and its five HTML entry points restored the 733-file check to 0 errors and 0 warnings; all 115 interaction checks still passed. Check newly added public JavaScript for ambient names before changing unrelated application code or suppressing the diagnostics.
