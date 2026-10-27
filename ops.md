@@ -11377,3 +11377,26 @@ payments profile, not the business profile linked to the developer account.
 **증상:** a browser module created a span with `document.createElement('span')`, then moved an existing SVG into it with `icon.append(svg)`. The browser worked, but `astro check` failed with `Argument of type 'SVGSVGElement' is not assignable to parameter of type 'string | Response | ReadableStream<any>'`. The project combined Astro's strict DOM configuration with `types: ['@cloudflare/workers-types']`; the reported content signature is the Workers HTML-rewriting API, rather than a DOM node parameter.
 
 **해결:** use `icon.appendChild(svg)` for this single DOM-node insertion. In this configuration it kept strict checking, passed `astro check` with 0 errors, and the exact released build's browser check still opened the composer on the first tap. The rest of the application also passed 594 tests.
+
+## OPS-678 — Forcing an installed Android web app (WebAPK) to pick up a new manifest: `chrome://webapks` → Update, relaunch, then close the task; it takes the manifest of whatever page is open, HTTP cache included
+
+`측정 2026-10-27 · Pixel 7 Pro (Android 17) · Chrome 156.0.8078.47 · site WebAPK, display: standalone`
+
+**증상:** after changing `theme_color` and `name`, the installed app kept the old values for hours (`dumpsys package <webapk>` showed `versionCode=1`, the old `lastUpdateTime`). `chrome://webapks` cannot be opened by intent or CDP `/json/new`; typed into a new tab's address bar it opens. Its `Update <app>` button raises a JS `alert` (a CDP `Runtime.evaluate` that clicks it hangs until the alert is dismissed on the screen), and the status turns `Pending`, not installed.
+
+What made it apply, measured end to end:
+1. Press `Update <app>` (tap with `adb shell input tap`; dismiss the alert with a tap on 확인/OK). Requests within a minute of the previous update are ignored.
+2. Launch the app (`adb shell monkey -p <webapk package> -c android.intent.category.LAUNCHER 1`). If the name or icon changed, Chrome shows "이름 및 아이콘 업데이트 검토" (old → new, with 앱 제거 / 확인) on top of the page; 확인 is needed.
+3. Close the app's task. Pressing Home or Back is not enough; `adb shell am stack remove <taskId>` (task id from `dumpsys activity recents`, the `Task{… #<id> … A=…:<webapk package>}` line) is. The new APK was installed within about 1 minute (`versionCode` 1 → 2 → 3).
+
+Chrome builds the update from the manifest linked by **the page open at launch**, not from the manifest URL it was installed with, when the manifest `id` matches. A signed-out launch landed on `/` whose `/manifest.webmanifest` (same computed id `/`) replaced the region manifest: `chrome://webapks` then showed `Manifest URL: …/manifest.webmanifest`. That file was served `cache-control: private, max-age=86400`, and the phone's HTTP cache returned the day-old copy, so the app got the old `theme_color` although the server already sent the new one.
+
+**해결:** keep every manifest that shares an `id` identical in name, icons and colours, and serve manifests `no-store` (the region manifests were; the root one was not). To force an update for a device check, run the three steps with the page that links the fresh manifest open at launch (here: signed in, `/co/manifest.webmanifest`, `no-store`). With `theme_color: #10171a` applied (`versionCode=3`), the navigation bar rows measured `(16,23,26)`, confirming OPS-675.
+
+## OPS-679 — A CSS grid with no `grid-template-columns` grows past a phone screen when a child is a flex row holding an `<input>`; desktop-emulated mobile Chromium did not show it
+
+`측정 2026-10-27 · Pixel 7 Pro, Chrome 156 (411 CSS px wide) vs Brave 1.98 / Chromium 156 Playwright isMobile at 320/375/411`
+
+**증상:** a signed-out landing page ran 30px past the screen on the phone: `innerWidth` 441 against `documentElement.clientWidth` 411, `visualViewport.offsetLeft` 16, text cut at the left edge after a hash jump. The section was `display: grid` with only a `gap` on phones; its one implicit column resolved to `425.388px`. Setting `width: min-content` on each descendant found the source: a `display: flex` field (input `flex: 1; min-width: 0` + a 115px button) whose min-content was 425px — the input's intrinsic width still counts toward the grid track's size. The same page in Playwright with `isMobile` at 320, 375 and 411 px had no overflow, so desktop-run checks missed it.
+
+**해결:** give phone grids an explicit `grid-template-columns: minmax(0, 1fr)` (the desktop rule already used `minmax(0, …)`). Measured on the phone after the change: `innerWidth` 411, track `379.429px`. To find such a culprit on a device, list elements whose `getBoundingClientRect().right` exceeds `documentElement.clientWidth` (not `innerWidth`, which already includes the overflow), then probe min-content widths.
