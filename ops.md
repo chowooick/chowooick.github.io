@@ -11446,3 +11446,12 @@ sized from `visualViewport` and zoomed by `1 / visualViewport.scale` so it stays
 **증상:** a branded SVG QR encoding a mixed-case HTTPS installation URL with error correction H rendered with a 45-unit viewBox. Its 100 CSS px border box (84 px drawable area after padding/border) decoded in the existing deviceScaleFactor=2 browser suite, but jsQR returned no result from the actual 1x production screenshot. The displayed URL and SVG were correct. Treating the high-density screenshot as proof for normal screens missed this failure.
 
 **해결:** enlarge this QR border box to 151 CSS px, leaving 135 drawable px (3 px per viewBox unit at 1x). Both production URLs then decoded at device scale factors 1, 1.25 and 2 across widths 701, 1101 and 1440 (18 cases), with the literal path/query preserved. Verify the production-length payload and normal-density rendered screenshot, not only a shorter localhost URL or a 2x screenshot. This is browser-decoder evidence, not a physical-phone camera measurement.
+
+
+## OPS-683 — Refresh a copied Google profile before treating a passkey prompt as lost access
+
+`측정 2026-10-27 · busan.mac · Brave 1.98.60 / Chromium 156 · Playwright persistent context`
+
+**증상:** an earlier isolated copy of ~/kc-test/profile reached Google's JavaScript-support error in headless mode and a passkey confirmation page in headed mode during an authorized OAuth check. ~/kc-test/sign-in.log still said SIGNED_IN, and the original profile's Google cookies had been updated more recently. The exact reason the earlier copy required reauthentication was not established.
+
+**해결:** preserve the original profile, make a fresh isolated copy excluding Singleton locks and caches, and use SQLite's read-only-source backup API to snapshot the original Cookies database consistently into the copy. Launch that copy headed with the existing kc-browser.mjs options. The authorized OAuth flow then returned to the application's administrator page and its authenticated read API returned 200 without entering a password or answering a passkey. A stale copied profile's challenge is not sufficient evidence that the original signed-in session is unusable. Do not print cookie values or copy profiles back into the shared source.
