@@ -11136,3 +11136,21 @@ All nine runtime report files were compared against source, including the recons
 Guard the release size before POST; never omit required runtime assets without reconstructing and
 checking them. The measurements support keeping this panel's release archive below 100 MiB, not
 treating every Broken pipe as proof of a size limit.
+
+## OPS-655 — Uppercase QR encoding also changes the route prefix; replay the scanner text unchanged in end-to-end tests
+
+`측정 2026-10-26 · Astro 7.3.3 standalone Node · qrcode-generator 1.4.4 · Brave on busan.mac`
+
+**증상:** With an Astro standalone route /q/[token], a QR optimized using url.toUpperCase() encoded
+/Q/ABCDE. Decoding succeeded, but opening that exact URL returned 404. Opening the lowercase route
+worked. Lowercasing only params.token in the endpoint cannot help because the uppercase prefix
+does not match the route. The old browser helper called decodedUrl.toLowerCase() before navigation,
+so it passed while masking the actual scanner path failure.
+
+**해결:** Treat OPS-646's uppercase/alphanumeric optimization as requiring matching routing support
+for the entire QR path, not just a case-insensitive token. A dedicated GET/HEAD /Q/[token] redirect
+to the lowercase /q/[token] route preserved the compact QR and restored the phone hand-off.
+Limit normalization to the known QR path; do not lowercase arbitrary application paths or signed
+query values. The corrected browser check opened the exact decoded QR string, reached the
+intended phone page and observed the computer's opened state. Decoding alone, or replaying a
+modified URL, is not an end-to-end scan check.
