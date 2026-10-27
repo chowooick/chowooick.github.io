@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T01:28:20Z · 소스 커밋 `6fedb83` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T04:19:32Z · 소스 커밋 `5fe85df` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9863,6 +9863,22 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **증상:** an Artifact page is written without `<!doctype>`/`<head>` because the Artifact tool wraps it in a skeleton (charset + `viewport-fit=cover` viewport) at publish time. Served as-is from `python3 -m http.server` (which sends `text/html` with no charset), every Korean string rendered as mojibake, `locator('[data-v="반찬"]')` timed out because the attribute bytes no longer matched, and with `isMobile: true` at 390px the page laid out at 980px, so `max-width` media queries never fired and a phone-only button was "not visible". Nothing errored; the screenshot was the only signal.
 
 **해결:** put `<meta charset="utf-8">` and `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">` at the very top of the Artifact file. The publish skeleton's own copies are identical, so the duplicates are harmless after publishing and the local test now matches the published page.
+
+## AGT-176 — Claude Code `Agent` 도구의 `isolation: "worktree"`는 로컬 HEAD가 아니라 `origin/HEAD`에서 갈라진다: 푸시하지 않은 커밋이 쌓인 저장소에서는 에이전트가 며칠 전 코드로 작업한다
+
+`측정 2026-10-26 · Claude Code (Opus 5.5) · Agent 도구 isolation worktree · git 2.x`
+
+**증상:** 로컬 `main`은 `42e068a`(푸시 안 한 커밋 9개)였는데, worktree 격리로 띄운 하위 에이전트의 브랜치가 `origin/main`
+`fab045f`(사흘 전 마지막 푸시)에서 시작했다. 에이전트는 사흘 전 파일을 고쳤고, 병합하자 중간 커밋이 건드린 파일 4개
+(`StoryRoom.astro`, `StoryFeed.astro`, `LocalExperts.astro`, `housing.astro`)가 충돌했다. 새로 뽑아 낸 파일
+(`housing-load.ts`)은 충돌 없이 들어와 옛 로직(`SMART_SEARCH_MIN`)을 조용히 되살렸다. 확인: `git merge-base HEAD <에이전트 브랜치>`가
+`origin/main`과 같다.
+
+**해결:**
+- 푸시를 사람이 정하는 저장소(자동 푸시 금지)에서는 에이전트를 띄우기 전에 브리프에 "먼저 `git reset --hard <로컬 main 해시>`로
+  시작하라"고 해시를 적어 준다. 또는 worktree 격리 없이 같은 트리를 쓰고 파일을 나눈다.
+- 병합 전에 `git merge-base`를 확인하고, 충돌이 안 난 파일도 `git diff <merge-base> <로컬 main> -- <에이전트가 새로 만든 파일의 원본>`으로
+  옮겨지는 동안 사라진 변경이 없는지 본다.
 
 ---
 
