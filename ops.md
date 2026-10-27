@@ -11241,3 +11241,27 @@ cuckoo-rental-america 4fe3464, tests/stamp-888-browser.mjs and tests/stamp-domai
 **증상:** on real phones, a vertical swipe that starts on a canvas with `touch-action: pan-y` delivers a few `pointermove` events before `pointercancel`, and a physics toy that pushes objects on `pointermove` visibly nudges them while the page scrolls. In emulation, a 220 px vertical `dispatchTouchEvent` drag starting on the canvas scrolled the page 205 px and moved 0 objects, both before and after the fix; a sideways drag moved 18–24. Frame timings under 4× throttling on an M4 Pro (p95 18.5 ms) also did not show the jank owners saw on their phones.
 
 **해결:** treat emulation as unable to prove or disprove this class of bug. Fix it from the event model (ignore touch moves until about 10 px of movement shows a mostly sideways direction; drop the pointer on `pointercancel` at once) and confirm on a real device (`adb` with Chrome remote debugging, or Safari Web Inspector on an iPhone).
+
+## OPS-664 — Play Console payout bank verification: the deposit-amount field is under the developer account's payments profile, not pay.google.com
+
+`측정 2026-10-27 · Play Console web (ko UI), organization account with a separate business payments profile · Google Payments embedded pages`
+
+**증상:** a Korean bank account added as the payout method shows 「확인 대기중」 and Play Console warns
+`결제하거나 대금을 받으려면 은행 계좌 •••• NNN의 인증을 완료하세요.` Opening `pay.google.com/gp/w/u/0/home/paymentmethods`
+in the same signed-in browser showed `결제 수단이 아직 없으신가요?`: it opens the Google account's personal
+payments profile, not the business profile linked to the developer account.
+
+**사실:**
+- The business profile is reached at `play.google.com/console/u/0/developers/<developer id>/paymentssettings`
+  (계정 관리 → 「결제 프로필 페이지 보기」). Its content sits in iframes from `payments.google.com`
+  (`embedded_landing_page`, then `payment_methods`, then `instrumentmanager` for the dialog); Playwright
+  must search `page.frames()`, the top page text has only the warning.
+- 결제 수단 관리 → the account card's 「확인」 opens 「은행 입금액 확인」, which names the day Google sent the
+  test deposit (`…에 10월 26일경에 입금된 GOOGLE 입금액을 입력하세요.`) and has one ₩ field. Opening and
+  closing it does not use up an attempt. The deposit was dated the day after the account was added.
+- The same page carries the 15% service-fee tier offer, which needs an account group and acceptance of
+  the fee terms; it is not applied automatically.
+
+**해결:** read the amount from the bank statement, open the dialog through the developer account's
+`paymentssettings` page and enter it there. Do not guess amounts.
+
