@@ -11225,3 +11225,19 @@ cuckoo-rental-america 4fe3464, tests/stamp-888-browser.mjs and tests/stamp-domai
 **증상:** a 24-page static report passed 120 local viewport/theme cases and its HTML/CSS/JS matched production. In authenticated production, the report and preview HTML carried `X-Frame-Options: DENY`; all 16 same-origin preview iframes became `chrome-error` frames. Brave logged 16 framing errors. The local Python static server did not send the production wrapper's headers, so it could not expose the failure. Being on the same origin does not override DENY.
 
 **해결:** retain the private boundary and render the report's preview areas as verified browser captures linking to standalone interactive prototype pages. Verify the production response headers and actual image/frame content in a signed-in browser, in addition to file hashes and local viewport checks. If embedded frames are required in another project, exercise its real production header policy before choosing that presentation structure.
+
+## OPS-662 — Chromium now has DeviceOrientationEvent.requestPermission, and Playwright's orientation override sends nulls until the sensor permissions are granted
+
+`측정 2026-10-27 · Brave 1.98 (Chromium 156) · playwright-core on busan.mac · mobile emulation (isMobile, hasTouch)`
+
+**증상:** a page that listened for `deviceorientation` only when `typeof DeviceOrientationEvent.requestPermission !== "function"` (the usual "iOS asks, Android does not" test) never listened in Brave: `typeof DeviceOrientationEvent.requestPermission` is `"function"` there too. Separately, `DeviceOrientation.setDeviceOrientationOverride({ alpha, beta, gamma })` over CDP delivered events whose `beta` and `gamma` were `null`.
+
+**해결:** do not use the presence of `requestPermission` to tell iOS from Android. Add the listener unconditionally (iOS sends no readings until permission is granted, so it costs nothing) and call `requestPermission()` from a tap only while no reading has arrived. In Playwright, call `context.grantPermissions(['accelerometer', 'gyroscope', 'magnetometer'])` before the override; then `beta`/`gamma` arrive as set.
+
+## OPS-663 — CDP touch emulation does not reproduce the real-phone "scroll that first pushes" bug on touch-driven canvases
+
+`측정 2026-10-27 · Brave 1.98 (Chromium 156) · Input.dispatchTouchEvent and Input.synthesizeScrollGesture, 390×844 mobile emulation, CPU throttle 4×`
+
+**증상:** on real phones, a vertical swipe that starts on a canvas with `touch-action: pan-y` delivers a few `pointermove` events before `pointercancel`, and a physics toy that pushes objects on `pointermove` visibly nudges them while the page scrolls. In emulation, a 220 px vertical `dispatchTouchEvent` drag starting on the canvas scrolled the page 205 px and moved 0 objects, both before and after the fix; a sideways drag moved 18–24. Frame timings under 4× throttling on an M4 Pro (p95 18.5 ms) also did not show the jank owners saw on their phones.
+
+**해결:** treat emulation as unable to prove or disprove this class of bug. Fix it from the event model (ignore touch moves until about 10 px of movement shows a mostly sideways direction; drop the pointer on `pointercancel` at once) and confirm on a real device (`adb` with Chrome remote debugging, or Safari Web Inspector on an iPhone).
