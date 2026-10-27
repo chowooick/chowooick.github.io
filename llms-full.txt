@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T15:30:45Z · 소스 커밋 `1ee47d1` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T16:00:44Z · 소스 커밋 `a3025ac` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21151,4 +21151,28 @@ payments profile, not the business profile linked to the developer account.
 **해결:** read the amount from the bank statement, open the dialog through the developer account's
 `paymentssettings` page and enter it there. Do not guess amounts.
 
+
+## OPS-665 — glab fails every command with "parsing time … as \"02 Jan 06 15:04 MST\"" after something rewrote its OAuth expiry in ISO format
+
+`측정 2026-10-27 · glab 1.82.0 · macOS, ~/Library/Application Support/glab-cli/config.yml`
+
+**증상:** every `glab` command, including `glab ci list`, printed `Failed to initialize auth source: parsing time "2026-10-27T09:23:46.000Z" as "02 Jan 06 15:04 MST": cannot parse "26-10-27T09:23:46.000Z" as " "` and exited. The config's `oauth2_expiry_date` held an ISO 8601 timestamp; glab 1.82 reads only the RFC 822 form it writes itself.
+
+**해결:** back up the config and rewrite that one value in glab's own form, e.g. `oauth2_expiry_date: 27 Oct 26 09:23 UTC`. glab then sees the token as expired, refreshes it with the stored refresh token and works (`glab ci list` and `glab api` answered at once). Do not print the token values while editing.
+
+## OPS-666 — Next.js 16 `RouteContext` fails a CI that runs `tsc --noEmit` before any `next build` or `next typegen`
+
+`측정 2026-10-27 · Next.js 16.3.2 · GitLab CI verify job (npm run typecheck = tsc --noEmit, then build)`
+
+**증상:** a route handler typed `ctx: RouteContext<"/api/qr/[token]">`, as the Next 16 docs show, passed `tsc` locally (where `next dev`/`next build` had generated `.next/types`) and failed CI with `error TS2304: Cannot find name 'RouteContext'`: the global type exists only after Next has generated its types.
+
+**해결:** type the context by hand, `ctx: { params: Promise<{ token: string }> }`, or run `next typegen` before `tsc` in CI. To reproduce locally, delete `.next/types` and `.next/dev/types` before `tsc --noEmit`.
+
+## OPS-667 — A small element with a width transition, painted in a big layer, checkerboards the scroll on Android Chrome; its own layer stops it
+
+`측정 2026-10-27 · Pixel 7 Pro (120 Hz), Chrome over adb remote debugging · cc PipelineReporter in a CDP trace, real swipes with adb shell input swipe`
+
+**증상:** on a page whose first screen holds a speech capsule that animates its `width` (a layout transition) as each line arrives, three fling-scrolls during the entrance showed 33–59 frames with `checkerboarded_needs_raster` (blank tiles) in `PipelineReporter` (`args.frame_reporter`). Hiding parts of the page with injected `visibility: hidden` isolated it: hiding the canvas animation halved it, but hiding only the capsule, or disabling only its width transition, brought it to 0–1. CDP emulation on a desktop could not show any of this.
+
+**해결:** give the animating element its own compositing layer (`will-change: transform` on its small absolutely positioned container): 0 checkerboarded frames in the same test, with the animation unchanged. To find such causes, count `PipelineReporter` begin events whose `scroll_state` is not `SCROLL_NONE`, by `state` and `checkerboarded_needs_raster`, across CSS variants injected with `page.addStyleTag`. On Android 14+, `dumpsys SurfaceFlinger --latency` returns nothing for Chrome's BLAST SurfaceView, so use the trace.
 
