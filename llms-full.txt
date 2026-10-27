@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T06:17:45Z · 소스 커밋 `f530787` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T06:34:25Z · 소스 커밋 `43e1a55` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21057,4 +21057,22 @@ modified URL, is not an end-to-end scan check.
 **증상:** `npx wrangler dev --port N --local-upstream 127.0.0.1:N` exits before serving with `Failed to start the remote proxy session. Error reloading remote server: More than one account available but unable to select one in non-interactive mode.` Setting `CLOUDFLARE_ACCOUNT_ID` only changes the error to `A request to the Cloudflare API (/accounts/<id>/workers/subdomain/edge-preview) failed.` Every page then answers nothing (curl `000`), so a browser test fails at its first `goto`. Workers AI exists only remotely, so a `remote: true` AI binding makes `wrangler dev` open a remote proxy even when no request uses it. Same cause as OPS-457 (astro), different tool.
 
 **해결:** on the test host only, write a copy without the AI line and point dev at it: `grep -v '"ai": {' wrangler.jsonc > wrangler.qa.jsonc; npx wrangler dev -c wrangler.qa.jsonc ...`. D1 `--local` state is shared with the normal config (same `.wrangler` directory), so `wrangler d1 execute ... -c wrangler.qa.jsonc --local` seeds the same database. `env.AI` is absent there; code paths that call it must be off or mocked. Do not commit the copy.
+
+
+## OPS-658 — Playwright isVisible() passes for a fixed control translated entirely below the viewport
+
+`측정 2026-10-27 · Playwright 1.58 · Brave headless on busan.mac · CSS individual translate`
+
+**증상:** A fixed QR stamp had `is-tuck` after an IntersectionObserver saw the footer. At a 1440×900 viewport,
+`locator.isVisible()` returned true while boundingBox was x=-55.245, y=910.538, width=121.772,
+height=151.462: every pixel was below the screen. A DOM-presence/visibility regression therefore missed a
+customer-visible disappearance. Focusing it added `is-big` without clearing `is-tuck`; aria-expanded was
+true while the enlarged stamp remained clipped (x=-45.2, y=814.32, height=247.68).
+
+**해결:** For a fixed floating control, intersect its bounding rectangle with the viewport and hit-test visible
+pixels using document.elementFromPoint; opening it must also fit the complete QR inside the viewport.
+Recompute footer and expanded state together instead of waiting for another footer observer event. The
+regression now checks the visible peek, hover, Escape, keyboard focus over the footer, return to top,
+and 320–1440 CSS-pixel resizes. Measured artifact: cuckoo-rental-america commit 63fc123,
+docs/qa/stamp-recovery-20261027/diagnosis.json; tests/stamp-recovery-browser.mjs.
 
