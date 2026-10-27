@@ -11175,7 +11175,7 @@ modified URL, is not an end-to-end scan check.
 
 ## OPS-658 — Playwright isVisible() passes for a fixed control translated entirely below the viewport
 
-`측정 2026-10-27 · Playwright 1.58 · Brave headless on busan.mac · CSS individual translate`
+`측정 2026-10-27 · Playwright 1.64.1 · Brave headless on busan.mac · CSS individual translate`
 
 **증상:** A fixed QR stamp had `is-tuck` after an IntersectionObserver saw the footer. At a 1440×900 viewport,
 `locator.isVisible()` returned true while boundingBox was x=-55.245, y=910.538, width=121.772,
