@@ -11207,3 +11207,12 @@ report or administrator permissions. Run the browser using the actual hostname e
 hostname, then check the exact destination, repeat scans, and post-install visibility. Test GET and HEAD
 uppercase redirects for each host/service pair and preserve opaque query text. Measured fix:
 cuckoo-rental-america 4fe3464, tests/stamp-888-browser.mjs and tests/stamp-domain.test.ts.
+
+
+## OPS-660 — Astro dev's error overlay can block unrelated Playwright clicks after a background D1 API error; migrate every exercised local binding and restart the isolated dev server
+
+`측정 2026-10-27 · Astro 7.3.3 · Wrangler 4.x · Playwright 1.63.0 · Brave on busan.mac`
+
+**증상:** a signed-in local page returned 200 and exposed the expected article links, but a browser test timed out after 150 seconds at `locator.click`. The trace said `<vite-error-overlay dir="ltr"></vite-error-overlay> intercepts pointer events`. The isolated D1 state had no regional schema at first (`D1_ERROR: no such table: region_records: SQLITE_ERROR`); after MEMBERS migrations, background beta feedback requests still hit another unmigrated binding. A page can render normally while this dev overlay intercepts every click. Reading the page DOM or counting its links does not prove that it is clickable.
+
+**해결:** apply the project migrations with `wrangler d1 migrations apply <binding> --local` inside the isolated directory for each binding the page and background scripts exercise (here MEMBERS, BETA, COUPONS and ANALYTICS), then restart only that directory's dev server to clear prior overlay state. Keep local state isolated and never add `--remote` for these fixtures. The same automatic-turn desktop/mobile tests then passed in 33.8s / 11.6s without forced clicks or overlay removal.
