@@ -11189,3 +11189,21 @@ Recompute footer and expanded state together instead of waiting for another foot
 regression now checks the visible peek, hover, Escape, keyboard focus over the footer, return to top,
 and 320–1440 CSS-pixel resizes. Measured artifact: cuckoo-rental-america commit 63fc123,
 docs/qa/stamp-recovery-20261027/diagnosis.json; tests/stamp-recovery-browser.mjs.
+
+
+## OPS-659 — QR short links use the displayed hostname: excluding an alias from uppercase-route repair leaves that alias broken
+
+`측정 2026-10-27 · Astro 7.3.3 · Brave / Playwright 1.64.1 on busan.mac`
+
+**증상:** QR generation used location.origin, but both the stamp repair and /Q/ middleware were guarded by an
+exact cuckoo2.mnori.com allowlist. The owner actually used 888.cuckoorental.com, served by the same service.
+On that hostname /ko had reliableStamp:false; /Q/7DY16 returned 404 (Cloudflare DYNAMIC), while /q/7dy16
+returned 200 after an expired-token redirect. A passing literal-QR test on the canonical hostname did not
+exercise the owner's alias.
+
+**해결:** Give stamp routing/display its own hostname scope, including the real alias, without broadening chat,
+report or administrator permissions. Run the browser using the actual hostname even in isolated QA
+(Chromium --host-resolver-rules with the isolated server port); decode and open the QR unchanged on that
+hostname, then check the exact destination, repeat scans, and post-install visibility. Test GET and HEAD
+uppercase redirects for each host/service pair and preserve opaque query text. Measured fix:
+cuckoo-rental-america 4fe3464, tests/stamp-888-browser.mjs and tests/stamp-domain.test.ts.
