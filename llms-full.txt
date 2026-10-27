@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T06:34:25Z · 소스 커밋 `43e1a55` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T06:34:56Z · 소스 커밋 `692ee69` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21061,7 +21061,7 @@ modified URL, is not an end-to-end scan check.
 
 ## OPS-658 — Playwright isVisible() passes for a fixed control translated entirely below the viewport
 
-`측정 2026-10-27 · Playwright 1.58 · Brave headless on busan.mac · CSS individual translate`
+`측정 2026-10-27 · Playwright 1.64.1 · Brave headless on busan.mac · CSS individual translate`
 
 **증상:** A fixed QR stamp had `is-tuck` after an IntersectionObserver saw the footer. At a 1440×900 viewport,
 `locator.isVisible()` returned true while boundingBox was x=-55.245, y=910.538, width=121.772,
