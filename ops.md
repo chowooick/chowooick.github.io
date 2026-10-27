@@ -11329,3 +11329,27 @@ payments profile, not the business profile linked to the developer account.
 **증상:** `ssh -A busan.mac` followed by `git ls-remote origin refs/heads/main` answered `git@gitlab.com: Permission denied (publickey).` Adding `-o AddKeysToAgent=yes` to the test-host connection did not fix it. The controller's `ssh -G gitlab.com` named a different `IdentityFile` from the key used to reach the test host; that GitLab identity was not loaded into the forwarded agent. This was not loss of repository access.
 
 **해결:** inspect the repository host's SSH config before changing credentials. For a task-scoped transport, run `ssh-agent sh -c 'ssh-add -q <configured-key> && ssh -A <test-host> <remote-git-command>'`; Git itself still runs on the test host, and the private key remains on the controller. This successfully read the GitLab main ref and pushed the owner's explicitly approved fast-forward. The temporary agent exits with its command, without changing the user's existing agent or GitLab credentials.
+
+## OPS-672 — Playwright `page.route` stops seeing a page's reloads once its service worker controls the page; a mocked server-rendered list silently reverts
+
+`측정 2026-10-27 · Playwright 1.63.0 · Brave 1.98 (Chromium 156) · astro dev · a site that registers /sw.js`
+
+**증상:** a test fixture rewrote the HTML of `/la/stories?tab=tips` through `page.route` so the page embedded test rows. The first `page.goto` got the rewritten document; the `page.reload()` right after it got the server's original HTML (`DOC 200 … []` in a `page.on('response')` log), and the test failed on `toHaveCount(1)` with the list empty. The response headers were `Cache-Control: private, no-store` with no ETag, so it was not the HTTP cache. The page had registered its service worker during the first visit; from then on the worker fetched navigations itself, and Playwright's page routes do not see requests a service worker makes.
+
+**해결:** `use: { serviceWorkers: 'block' }` in `playwright.config.ts` (or per context) for suites that mock pages or APIs with `page.route`; test the worker itself in a separate project that allows it. In one suite this alone turned five "flaky after reload" story-room tests green.
+
+## OPS-673 — Android: Chrome's own notification permission off makes every site tab report `Notification.permission === 'denied'`, but an installed WebAPK of the site has its own permission and can still ask
+
+`측정 2026-10-27 · Pixel 7 Pro (Android 17) · Chrome 156.0.8078.47 · site WebAPK org.chromium.webapk.*_v2`
+
+**증상:** on a test phone, a site's "알림 받기" switch in a Chrome tab showed the browser-blocked state; `Notification.permission` was `denied` without the site ever having asked. `adb shell dumpsys package com.android.chrome | grep POST_NOTIFICATIONS` showed `granted=false, flags=[USER_SET|USER_FIXED…]`: the phone's owner had turned off notifications for Chrome itself. The same site's installed app (a WebAPK, started with `adb shell am start -a android.intent.action.VIEW -d <url> <webapk package>`) reported `default`, and pressing the switch there showed Android's own prompt titled with the app's name ("교민센터 뉴저지에서 알림을 보내도록 허용하시겠습니까?"). After 허용, a Web Push arrived as a notification of the WebAPK package (`dumpsys notification --noredact | grep <package>`), even with the app closed.
+
+**해결:** when a site's notification test fails on a real Android phone, check both packages' `POST_NOTIFICATIONS` first: `dumpsys package com.android.chrome` and each `org.chromium.webapk.*` (find the site's by the `Authority: "<host>"` line in `dumpsys package <pkg>`). Test push in the WebAPK if Chrome's is user-fixed off; do not flip the owner's Chrome permission. Afterwards restore the WebAPK with `pm revoke <pkg> android.permission.POST_NOTIFICATIONS` and `pm clear-permission-flags <pkg> android.permission.POST_NOTIFICATIONS user-set user-fixed` if it was unset before.
+
+## OPS-674 — `sqlite3` CLI errors repeat the failing SQL text: a secret interpolated into a query is printed when the query fails
+
+`측정 2026-10-27 · SQLite 3.45 CLI (Ubuntu 24.04) and macOS /usr/bin/sqlite3`
+
+**증상:** a check meant to print only a count, `sqlite3 data.db "select count(*) from t where listRule like \"%$KEY%\" or authRule like \"%$KEY%\""`, failed on a missing column and answered `Error: in prepare, no such column: authRule` followed by the statement around the error position, with a caret line: about 56 of the key's 64 hex characters were in the output. A `sed` meant to mask quoted values in a printed rule (`s/"[^"]{20,}"/"<KEY>"/g`) also leaked the key, because the rule's escaped quotes shifted the match.
+
+**해결:** never put a secret in SQL text, a command line or a masking regex whose failure prints its input. Read the secret inside a small script from a file and print only derived numbers (counts, `sha256` prefixes); compare values by hash. If a secret was printed anyway, treat it as exposed and rotate it, including a not-yet-deployed replacement.
