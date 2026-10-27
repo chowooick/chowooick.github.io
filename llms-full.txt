@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T22:07:48Z · 소스 커밋 `f57917c` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T22:11:51Z · 소스 커밋 `22130fe` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21255,4 +21255,12 @@ payments profile, not the business profile linked to the developer account.
 **증상:** an isolated `wrangler dev` served a built Astro application from `dist/server/wrangler.json`. After `npm run build` replaced the output while that process remained running, the HTML still answered 200, but hashed `/_astro/*.js`, images and even the public favicon answered `404 Not Found`. No page JavaScript exception was raised because the modules never loaded; a test waiting for client initialization timed out. Authentication was not the explanation: the public favicon also failed. The same build worked after restarting only that task's Wrangler process.
 
 **해결:** complete the build, restart the owned Wrangler dev process with the same isolated config and persistence directory, and wait for a known static asset to answer 200 before running browser checks. When a document renders but its client controls never initialize, inspect failed script/image requests as well as `pageerror`. Do not stop another session's server or alter the product to hide the test-host failure.
+
+## OPS-677 — With DOM and Cloudflare Workers types together, append(svg) can select the HTML content signature; appendChild(svg) stays DOM-typed
+
+`측정 2026-10-27 · Astro 7.3.3 · TypeScript DOM + @cloudflare/workers-types`
+
+**증상:** a browser module created a span with `document.createElement('span')`, then moved an existing SVG into it with `icon.append(svg)`. The browser worked, but `astro check` failed with `Argument of type 'SVGSVGElement' is not assignable to parameter of type 'string | Response | ReadableStream<any>'`. The project combined Astro's strict DOM configuration with `types: ['@cloudflare/workers-types']`; the reported content signature is the Workers HTML-rewriting API, rather than a DOM node parameter.
+
+**해결:** use `icon.appendChild(svg)` for this single DOM-node insertion. In this configuration it kept strict checking, passed `astro check` with 0 errors, and the exact released build's browser check still opened the composer on the first tap. The rest of the application also passed 594 tests.
 
