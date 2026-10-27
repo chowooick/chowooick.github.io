@@ -11437,3 +11437,12 @@ Check for `null` before copying.
 already rendered the element. For touch-only devices replace hover with a tap that opens a full-screen `<dialog>`,
 sized from `visualViewport` and zoomed by `1 / visualViewport.scale` so it stays large on a zoomed-out page
 (334 CSS px QR on screen in both the 390 px and the 980-px-zoomed-out cases). Real WebKit was not measured.
+
+
+## OPS-682 — A QR that decodes in Retina screenshots can fail at normal screen density
+
+`측정 2026-10-27 · Brave / Chromium 156 · qrcode-generator 1.4.4 · jsQR 1.4.0`
+
+**증상:** a branded SVG QR encoding a mixed-case HTTPS installation URL with error correction H rendered with a 45-unit viewBox. Its 100 CSS px border box (84 px drawable area after padding/border) decoded in the existing deviceScaleFactor=2 browser suite, but jsQR returned no result from the actual 1x production screenshot. The displayed URL and SVG were correct. Treating the high-density screenshot as proof for normal screens missed this failure.
+
+**해결:** enlarge this QR border box to 151 CSS px, leaving 135 drawable px (3 px per viewBox unit at 1x). Both production URLs then decoded at device scale factors 1, 1.25 and 2 across widths 701, 1101 and 1440 (18 cases), with the literal path/query preserved. Verify the production-length payload and normal-density rendered screenshot, not only a shorter localhost URL or a 2x screenshot. This is browser-decoder evidence, not a physical-phone camera measurement.
