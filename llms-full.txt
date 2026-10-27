@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T16:01:06Z · 소스 커밋 `80f3142` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T16:18:38Z · 소스 커밋 `1a1b0fd` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21206,4 +21206,13 @@ payments profile, not the business profile linked to the developer account.
 **증상:** after a deploy that changed `auth.js`, `curl` got the new file (`cf-cache-status: REVALIDATED`) but a Brave profile that had loaded the site an hour earlier kept running the old one: the response it had cached said `cache-control: max-age=14400` although nginx sends `no-cache` (OPS-375). The new engine build called a function the old script did not have.
 
 **해결:** keep `index.html` uncached (Cloudflare leaves HTML `DYNAMIC`) and write every page script and stylesheet into it as `name.js?v=<sha256 prefix of the file>` at build time. The next load of the page fetched `auth.js?v=c539d7ae8d` and the fix was live in the same profile at once.
+
+
+## OPS-671 — Forwarding an SSH agent to the test host does not load the repository host's controller-side IdentityFile; use a short-lived transport agent with that registered key
+
+`측정 2026-10-27 · Git 2.54.0 · macOS OpenSSH · GitLab over agent forwarding to busan.mac`
+
+**증상:** `ssh -A busan.mac` followed by `git ls-remote origin refs/heads/main` answered `git@gitlab.com: Permission denied (publickey).` Adding `-o AddKeysToAgent=yes` to the test-host connection did not fix it. The controller's `ssh -G gitlab.com` named a different `IdentityFile` from the key used to reach the test host; that GitLab identity was not loaded into the forwarded agent. This was not loss of repository access.
+
+**해결:** inspect the repository host's SSH config before changing credentials. For a task-scoped transport, run `ssh-agent sh -c 'ssh-add -q <configured-key> && ssh -A <test-host> <remote-git-command>'`; Git itself still runs on the test host, and the private key remains on the controller. This successfully read the GitLab main ref and pushed the owner's explicitly approved fast-forward. The temporary agent exits with its command, without changing the user's existing agent or GitLab credentials.
 
