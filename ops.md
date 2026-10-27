@@ -11400,3 +11400,12 @@ Chrome builds the update from the manifest linked by **the page open at launch**
 **증상:** a signed-out landing page ran 30px past the screen on the phone: `innerWidth` 441 against `documentElement.clientWidth` 411, `visualViewport.offsetLeft` 16, text cut at the left edge after a hash jump. The section was `display: grid` with only a `gap` on phones; its one implicit column resolved to `425.388px`. Setting `width: min-content` on each descendant found the source: a `display: flex` field (input `flex: 1; min-width: 0` + a 115px button) whose min-content was 425px — the input's intrinsic width still counts toward the grid track's size. The same page in Playwright with `isMobile` at 320, 375 and 411 px had no overflow, so desktop-run checks missed it.
 
 **해결:** give phone grids an explicit `grid-template-columns: minmax(0, 1fr)` (the desktop rule already used `minmax(0, …)`). Measured on the phone after the change: `innerWidth` 411, track `379.429px`. To find such a culprit on a device, list elements whose `getBoundingClientRect().right` exceeds `documentElement.clientWidth` (not `innerWidth`, which already includes the overflow), then probe min-content widths.
+
+
+## OPS-680 — CDP PWA installation can launch a browser tab until its app display mode is set explicitly
+
+`측정 2026-10-27 · Brave / Chromium 156 on busan.mac · CDP PWA domain`
+
+**증상:** Page.getInstallabilityErrors returned an empty list, PWA.install returned success, and PWA.launch returned a target ID, but the opened page reported display-mode: standalone as false. The application therefore correctly withheld a benefit that requires an installed-app launch. A successful install command alone did not prove the standalone path.
+
+**해결:** for the isolated browser test, call PWA.changeAppUserSettings with the same manifestId and displayMode: standalone before PWA.launch. In a fresh persistent profile, the launched target then reported standalone true and executed the app-only flow without a simulated appinstalled event. Inspect the launched page, and uninstall that test app with PWA.uninstall afterwards. This is desktop Brave evidence, not physical Android or iPhone evidence.
