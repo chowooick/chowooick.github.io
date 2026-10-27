@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T16:00:44Z · 소스 커밋 `a3025ac` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T16:01:06Z · 소스 커밋 `80f3142` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21175,4 +21175,35 @@ payments profile, not the business profile linked to the developer account.
 **증상:** on a page whose first screen holds a speech capsule that animates its `width` (a layout transition) as each line arrives, three fling-scrolls during the entrance showed 33–59 frames with `checkerboarded_needs_raster` (blank tiles) in `PipelineReporter` (`args.frame_reporter`). Hiding parts of the page with injected `visibility: hidden` isolated it: hiding the canvas animation halved it, but hiding only the capsule, or disabling only its width transition, brought it to 0–1. CDP emulation on a desktop could not show any of this.
 
 **해결:** give the animating element its own compositing layer (`will-change: transform` on its small absolutely positioned container): 0 checkerboarded frames in the same test, with the animation unchanged. To find such causes, count `PipelineReporter` begin events whose `scroll_state` is not `SCROLL_NONE`, by `state` and `checkerboarded_needs_raster`, across CSS variants injected with `page.addStyleTag`. On Android 14+, `dumpsys SurfaceFlinger --latency` returns nothing for Chrome's BLAST SurfaceView, so use the trace.
+
+## OPS-668 — Google account photos: real ones (`lh3…/a-/…`) carry no CORS header, so a canvas cannot read them; accounts without a picture get a generated letter image
+
+`측정 2026-10-27 · lh3.googleusercontent.com · Firebase Auth user.photoURL · Brave 156 · nginx 1.28 · blabla`
+
+**증상:** a web game drew the signed-in account's `photoURL` into a canvas (`img.crossOrigin='anonymous'`) to hand the pixels to the engine. It worked in tests with `https://lh3.googleusercontent.com/a/default-user=s96-c` (answers `access-control-allow-origin: *`) and failed in production: the real photo URL (`/a-/ALV-Uj…=s96-c`) answers 200 `image/png` with only `access-control-expose-headers`, no `access-control-allow-origin`, so the browser logs `Access to image … has been blocked by CORS policy` and `fetch()` fails the same way. A second surprise: an account with no picture still has a `photoURL`; the image is Google's generated initial (white letter on one flat colour), so "show the photo instead of a letter" shows a letter again.
+
+- The size suffix can be rewritten (`=s160-c`, `=s400-c`); the path without it is the photo id.
+- A generated initial is recognisable in the page: draw it at 32×32 and every pixel is a blend between the corner colour and white (per-channel `(p-bg)/(255-bg)` within 0.12 of each other). Measured: the generated "W" true; Google's default silhouette, a game screenshot and an app icon false.
+
+**해결:** relay the photo through the site's own origin and read it there. nginx: `location ~ "^/photo/(a-?/[A-Za-z0-9_-]{8,2048}=s[0-9]{2,3}-c)$" { resolver 127.0.0.11 ipv6=off; proxy_pass https://lh3.googleusercontent.com/$1; proxy_ssl_server_name on; proxy_set_header Host lh3.googleusercontent.com; proxy_set_header Cookie ""; proxy_hide_header Set-Cookie; expires 1d; }` (a variable in `proxy_pass` needs a `resolver`; `127.0.0.11` is Docker's DNS). Check the config before deploying in a throwaway container on the compose network (`docker run --rm --network <app>_default -v conf:/etc/nginx/conf.d/default.conf:ro nginx:1.28-alpine nginx -t`), because a static `proxy_pass http://<service>` elsewhere in the file only resolves there. Treat a generated initial like a missing photo.
+
+## OPS-669 — SpacetimeDB 2.8: a view's `Vec` order is lost over HTTP SQL, a view needs `<table>__view` in scope for tables of another module, and owner `UPDATE` is a usable test lever
+
+`측정 2026-10-27 · SpacetimeDB 2.8.0 standalone · Rust module · spacetime CLI sql · blabla weekly league`
+
+**증상:** three things while adding a leaderboard view.
+
+- `SELECT * FROM my_league` over `/v1/database/<db>/sql` returned the view's rows in a different order from the `Vec` the view built (rank 2 first). A test that read `rows[0]` as first place passed once and failed the next run. Return an explicit `rank` column and sort on the client.
+- In a view (`ViewContext`), `ctx.db.player_directory()` for a table declared in a sibling module failed with `E0599 no method named player_directory found for struct LocalReadOnly`; `use crate::admin::player_directory as _;` (the reducer trait) is not enough. The compiler's hint is right: `use crate::admin::player_directory__view as _;`.
+- `spacetime sql --server http://127.0.0.1:<port> <db> "UPDATE league_clock SET week = 2964, day = 20753 WHERE id = 0"` works for the database owner (the CLI identity that published), commits like a reducer, and pushes the change to subscribers. That is enough to make a scheduled reducer see "next Monday" in a test without a clock hook in the module. Updating a column does not rename a string primary key built from it; delete such rows afterwards or later inserts with the same key hit the old row.
+
+**해결:** sort view output by a column, import the `__view` trait for cross-module tables in views, and use owner SQL `UPDATE`/`INSERT`/`DELETE` on a private local database to stage time-based states.
+
+## OPS-670 — Cloudflare's 4 h browser TTL on unversioned page scripts: a new release ran the previous `auth.js` until each script URL carried a content hash
+
+`측정 2026-10-27 · Cloudflare free plan, zone browser cache TTL 4시간 · nginx `expires -1` origin · Brave 156 persistent profile · blabla`
+
+**증상:** after a deploy that changed `auth.js`, `curl` got the new file (`cf-cache-status: REVALIDATED`) but a Brave profile that had loaded the site an hour earlier kept running the old one: the response it had cached said `cache-control: max-age=14400` although nginx sends `no-cache` (OPS-375). The new engine build called a function the old script did not have.
+
+**해결:** keep `index.html` uncached (Cloudflare leaves HTML `DYNAMIC`) and write every page script and stylesheet into it as `name.js?v=<sha256 prefix of the file>` at build time. The next load of the page fetched `auth.js?v=c539d7ae8d` and the fix was live in the same profile at once.
 
