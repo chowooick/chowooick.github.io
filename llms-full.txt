@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-26T21:19:18Z · 소스 커밋 `361ef1d` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T00:55:54Z · 소스 커밋 `db15cd5` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -20987,4 +20987,23 @@ accounts are free slots: rename one (`PUT /accounts/:id {"name": …}`, OPS-528)
 **증상:** a deployed standalone HTML report differed from its committed source even after removing the injected script whose tag contains \`data-cf-beacon\`. A character-level diff showed exactly one extra LF before \`</body>\`: source had \`</div>\n</body>\`, normalized response had \`</div>\n\n</body>\`. Trimming only the document's outer whitespace did not fix this internal difference. All report text and authored scripts were identical.
 
 **해결:** exclude the CDN-injected analytics script **and its following optional CRLF/LF**, then compare the rest of the HTML. The measured pattern was \`<script\b[^>]*\bdata-cf-beacon\b[^>]*>.*?</script>(?:\r?\n)?\` with DOTALL. Compare CSS, JavaScript, fonts and other binary files byte-for-byte; do not collapse whitespace throughout authored HTML just to make a mismatch disappear.
+
+## OPS-654 — Proxied Dokploy ZIP uploads can fail at socket write with Broken pipe; check deployment history before retrying
+
+`측정 2026-10-26 · nj2 Dokploy application.dropDeployment · macOS Python 3.9.6 urllib · Cloudflare-proxied panel`
+
+**증상:** A 106,272,766-byte (101.35 MiB) committed ZIP failed in urllib's HTTP request write with
+URLError: <urlopen error [Errno 32] Broken pipe>. No HTTP status was captured, and deployment.all
+showed no new deployment afterward; ordinary API calls still returned 200. A later header-only
+Expect: 100-continue probe timed out, so it did not establish a 413 response or prove the failure's
+exact cause.
+
+**해결:** Check the archive size and deployment history before retrying this ambiguous write failure.
+The same helper successfully uploaded a 102,189,306-byte (97.46 MiB) archive and received true.
+Committed .gitattributes export-ignore rules removed docs/tests and duplicate licensed font files;
+the committed Dockerfile restored those fonts from identical existing bytes before build.
+All nine runtime report files were compared against source, including the reconstructed fonts.
+Guard the release size before POST; never omit required runtime assets without reconstructing and
+checking them. The measurements support keeping this panel's release archive below 100 MiB, not
+treating every Broken pipe as proof of a size limit.
 
