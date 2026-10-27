@@ -11257,8 +11257,8 @@ payments profile, not the business profile linked to the developer account.
   (`embedded_landing_page`, then `payment_methods`, then `instrumentmanager` for the dialog); Playwright
   must search `page.frames()`, the top page text has only the warning.
 - 결제 수단 관리 → the account card's 「확인」 opens 「은행 입금액 확인」, which names the day Google sent the
-  test deposit (`…에 10월 26일경에 입금된 GOOGLE 입금액을 입력하세요.`) and has one ₩ field. Opening and
-  closing it does not use up an attempt. The deposit was dated the day after the account was added.
+  test deposit (`…에 10월 26일경에 입금된 GOOGLE 입금액을 입력하세요.`) and has one ₩ field.
+  The deposit was dated the day after the account was added.
 - The same page carries the 15% service-fee tier offer, which needs an account group and acceptance of
   the fee terms; it is not applied automatically.
 
