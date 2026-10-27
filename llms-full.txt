@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T23:34:23Z · 소스 커밋 `2d65a8d` · 이 파일은 자동 생성물이다.
+생성 2026-10-27T23:49:35Z · 소스 커밋 `5704f13` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21295,4 +21295,32 @@ Chrome builds the update from the manifest linked by **the page open at launch**
 **증상:** Page.getInstallabilityErrors returned an empty list, PWA.install returned success, and PWA.launch returned a target ID, but the opened page reported display-mode: standalone as false. The application therefore correctly withheld a benefit that requires an installed-app launch. A successful install command alone did not prove the standalone path.
 
 **해결:** for the isolated browser test, call PWA.changeAppUserSettings with the same manifestId and displayMode: standalone before PWA.launch. In a fresh persistent profile, the launched target then reported standalone true and executed the app-only flow without a simulated appinstalled event. Inspect the launched page, and uninstall that test app with PWA.uninstall afterwards. This is desktop Brave evidence, not physical Android or iPhone evidence.
+
+## OPS-681 — A desktop component gated on the user agent reaches "desktop site" phones; test the zoomed-out layout with a viewport-meta rewrite, not route.fulfill
+
+`측정 2026-10-27 · Astro 7.3.3 · Brave 1.98 (Chromium 156) / Playwright on busan.mac`
+
+**증상:** a server-rendered desktop-only element (a QR stamp) was gated on a user agent without `Android|iPhone|iPad|Mobile`.
+A phone whose browser asks for the computer site (iPadOS Safari by default, "Request Desktop Website", Android "Desktop
+site") sends a Mac/Linux desktop UA, so it received the element; the client code started its desktop flow because
+the server element existed, skipping its own pointer check. Result on the phone: an 84 CSS px QR over the bottom
+call/consultation bar. Reproduced in Chromium with `devices['iPhone 15']` plus a Mac Safari `userAgent`; ordinary
+phone UAs got nothing.
+
+Two test traps while reproducing the zoomed-out page such a phone shows:
+- `route.fulfill` of the HTML (to strip `<meta name="viewport">`) while `--host-resolver-rules` maps the host to
+  127.0.0.1 makes Private Network Access block every subresource: "The request client is not a secure context and the
+  resource is in more-private address space `loopback`". The page renders without CSS or scripts.
+- Removing the meta from an init script after parse does not re-layout (`visualViewport.scale` stays 1). Setting
+  its `content` does: `addInitScript(() => new MutationObserver(() => { const m = document.querySelector('meta[name=viewport]'); if (m && m.content !== 'width=980') m.content = 'width=980' }).observe(document, {childList: true, subtree: true}))`
+  gives `innerWidth` 980 and `visualViewport.scale` 0.398 on a 390 px mobile context.
+
+Also: `Animation.currentTime` of a CSS animation that has not started yet is `null`; assigning that to another
+animation throws "currentTime may not be changed from resolved to unresolved" and aborts the rest of the module.
+Check for `null` before copying.
+
+**해결:** decide behaviour on the client with `matchMedia('(any-pointer: fine)')`, not on the UA, even when the server
+already rendered the element. For touch-only devices replace hover with a tap that opens a full-screen `<dialog>`,
+sized from `visualViewport` and zoomed by `1 / visualViewport.scale` so it stays large on a zoomed-out page
+(334 CSS px QR on screen in both the 390 px and the 980-px-zoomed-out cases). Real WebKit was not measured.
 
