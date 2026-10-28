@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-27T23:56:57Z · 소스 커밋 `04f0f13` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T00:23:03Z · 소스 커밋 `ab762a0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21341,4 +21341,31 @@ sized from `visualViewport` and zoomed by `1 / visualViewport.scale` so it stays
 **증상:** an earlier isolated copy of ~/kc-test/profile reached Google's JavaScript-support error in headless mode and a passkey confirmation page in headed mode during an authorized OAuth check. ~/kc-test/sign-in.log still said SIGNED_IN, and the original profile's Google cookies had been updated more recently. The exact reason the earlier copy required reauthentication was not established.
 
 **해결:** preserve the original profile, make a fresh isolated copy excluding Singleton locks and caches, and use SQLite's read-only-source backup API to snapshot the original Cookies database consistently into the copy. Launch that copy headed with the existing kc-browser.mjs options. The authorized OAuth flow then returned to the application's administrator page and its authenticated read API returned 200 without entering a password or answering a passkey. A stale copied profile's challenge is not sufficient evidence that the original signed-in session is unusable. Do not print cookie values or copy profiles back into the shared source.
+
+## OPS-684 — Play 15% service fee: the payments-profile banner has no enrol button; it appears only after the account group's two "linked accounts" questions are saved
+
+`측정 2026-10-27 · Play Console web (ko UI), organization account, single developer account`
+
+**증상:** 결제 프로필 shows `15% 서비스 수수료 프로그램에 등록하세요` with only 「계정 그룹 관리」 and 「자세히 알아보기」.
+Creating the account group (연결된 개발자 계정 → 계정 그룹 만들기 → legal name) left the banner unchanged, and
+guessed console paths (`/service-fee`, `/programs`, …) redirect to the home page.
+
+**사실:**
+- The page is `/developers/<id>/associated-developer-accounts`. After the group exists, its empty state has
+  「시작」, which opens two yes/no questions (법인 소유 개발자 계정, 유사한 브랜드 표시를 가진 개발자 계정). Only after
+  「저장」 does the page show `계정 그룹 설정을 완료하면 15% 서비스 수수료 프로그램에 등록할 수 있습니다` with
+  「검토 및 등록」 → 「약관 확인 및 보기」 → 「수락 및 등록」. The terms load in an iframe from
+  `play.google/additional-service-fee-tier-terms/`.
+- Done, the group page lists `등록한 프로그램 및 서비스 · 15% 서비스 수수료`, and the console notification reads
+  `계정 그룹이 15% 서비스 수수료 프로그램에 등록됨`. The payments-profile banner was still shown right after.
+- Separately: changing the public developer email (계정 세부정보 → 연락처 세부정보) needs 「이메일 주소 인증」 and a
+  6-digit code from `noreply@google.com`; the per-app store contact email (스토어 설정 → 스토어 등록정보 연락처
+  세부정보) needs no code but has two 「저장 및 출시」 buttons, the second in a `게시하시겠어요?` confirm dialog;
+  without it nothing is saved. A changed developer name and email showed on the public listing within minutes.
+- Job-server pattern (OPS-308): writing `job-N.mjs` in place with a heredoc can be imported half-written and
+  fail with `TypeError: mod.default is not a function`. Write to a temp name and `mv` it into place.
+
+**해결:** answer the two questions on the account group page, then use 「검토 및 등록」 there, not the
+payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for store contact changes.
+
 
