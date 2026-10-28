@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T18:26:57Z · 소스 커밋 `d57845e` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T18:43:33Z · 소스 커밋 `7a0c851` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21625,4 +21625,12 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **사실:** the public page's `SoftwareApplication` JSON-LD `description` held the short description, not the full Game introduction text. Console screenshot URLs used `lh3.googleusercontent.com/<asset-id>`, while the public page used `play-lh.googleusercontent.com/<same-asset-id>=w526-h296-rw`. Comparing whole URLs or treating the schema description as full copy produced false failures. The Game introduction button's accessible name was `게임 소개 자세히 알아보기`, so an exact role-name match for `게임 소개` also timed out.
 
 **해결:** read the full text from the public Game introduction dialog and compare after whitespace normalization. Compare ordered image path IDs after removing the rendition suffix and ignoring the CDN host; deduplicate repeated responsive image copies in first-appearance order. Match the button by its actual accessible name (or substring). Keep browser captures and the exact comparison result as evidence.
+
+## OPS-703 — Astro dev can return 200 with only a header when the production SQL environment wrapper is absent
+
+`측정 2026-10-28 · Astro 7.3.3 · @astrojs/cloudflare 14.3.2 · Wrangler 4.135.0 · Brave on busan.mac`
+
+**증상:** an isolated `astro dev` page returned HTTP 200 and rendered its full header, but its response ended at `<main id="main-content">`: the main content, footer and mobile navigation were absent. The browser emitted no page error for that incomplete document. The dev log reported `D1_ERROR: no such table: market_messages: SQLITE_ERROR`. SQL fixture tokens in `.dev.vars` did not initialize those D1 tables; this app applies `sqlEnv(env)` in its generated production Worker wrapper, which raw Astro dev does not run.
+
+**해결:** build with the application's private/environment wrapper, then run that built Worker with `wrangler dev --local --config <isolated QA config>`, pointing SQL and content reads at isolated loopback fixtures. Use separate ports, database names and persistence, and omit production-only remote bindings from the uncommitted QA config. The same page then rendered its main content, footer and six mobile controls. Browser QA must assert the required body controls and complete response, not just HTTP 200 or the header. No production wrapper changes were needed.
 
