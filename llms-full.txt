@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T05:31:46Z · 소스 커밋 `3198e97` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T05:45:20Z · 소스 커밋 `908a8d6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21545,4 +21545,13 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 - 기상청 단기예보 15084084, 에어코리아 대기오염정보 15073861, 국토교통부 아파트 매매 실거래가 15126469, 행정안전부 일반음식점 15154916 · 휴게음식점 15154921 and 소상공인 상가(상권)정보 15012005 were all `[승인]` immediately. The account's single 64-character key (마이페이지 → 활용신청 현황 → a dataset → 인증키) answered 단기예보, 에어코리아 (`getCtprvnRltmMesureDnsty`, sidoName=경기) and 실거래가 (LAWD_CD 41450) at once.
 
 **해결:** sign up and pass 본인인증 once by hand (it cannot be scripted); everything after it is scriptable as above. Keep the key out of output and in a 0600 file.
+
+
+## OPS-696 — Astro's default Origin guard rejects RFC 8058 unsubscribe before the route; carve out that exact path in middleware
+
+`측정 2026-10-27 · Astro 7.3.3 · Node 26.12.1 · Brave 1.98.60`
+
+**증상:** a token-authenticated unsubscribe route explicitly accepts a form POST without Origin, yet a real HTTP request with `application/x-www-form-urlencoded` and `List-Unsubscribe=One-Click` returns 403 before the handler. Same-origin browser confirmation works, so unit tests and clicking the confirmation button miss the failure. This is Astro's `security.checkOrigin` default (related OPS-105 / OPS-331).
+
+**해결:** set `security.checkOrigin: false` and retain the form-origin guard in middleware for every other path. Exempt exactly the unsubscribe POST; its unguessable mail token remains the authority. Other JSON writers must still check Origin and JSON content type in their own handlers. Keep GET confirmation read-only. Measured on a built Node server: anonymous one-click POST 200, repeat POST 200, GET leaves the reader intact, other no-Origin form POST 403 and foreign-Origin JSON POST 400. Verify these as real HTTP requests, since direct handler calls bypass the framework guard.
 
