@@ -11631,3 +11631,11 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** an async `page.on('response')` handler awaited a local asset read before calling `response.body()`, while the main loop navigated through pages. It failed with `response.body: Protocol error (Network.getResponseBody): No resource with given identifier found` and `Response body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.` Collecting the handler promises and awaiting them only after all navigations did not retain the CDP resource; the uncaught rejection stopped the checker.
 
 **해결:** collect the same-origin asset paths in the response listener, then fetch those paths through the authenticated browser context's `context.request.get()` after the page checks. Its response body is independent of the page target's navigation. The same production asset comparison then completed with every captured asset matching the release. This was a verification-tool failure, not an application response failure.
+
+## OPS-698 — Absolutely positioned screen-reader labels in a horizontal carousel can escape its clip and widen the document
+
+`측정 2026-10-28 · Brave / Chromium 156 · CSS overflow and containing blocks · busan.mac`
+
+**증상:** a 390px page with a populated horizontal card strip had `document.body.scrollWidth = 390` but `document.documentElement.scrollWidth = 544`. The newly added `.sr-only` count labels were `position:absolute`; labels in offscreen cards had viewport x positions 508 and 542.625, with `offsetParent` equal to BODY. The cards themselves were inside an overflow-scrolling strip. An empty-card fixture had no such labels and passed the same width check.
+
+**해결:** establish the label's containing block inside its own card. Adding `position:relative` to `.content-metric`, the label's immediate parent, changed the root width from 544 to 390 in the same authenticated page without changing card layout. Test a populated carousel and check both root width and the hidden label's `offsetParent`; body width alone missed this overflow.
