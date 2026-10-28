@@ -11726,3 +11726,19 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 
 - API observation: https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7692123&MLSV_FROM_YMD=20261026&MLSV_TO_YMD=20261030
 - School view: https://misa-e.goegh.kr/misa-e/ad/fm/foodmenu/selectFoodMenuView.do?mi=608
+
+## OPS-708 — macOS launchd에서 Tailscale 번들은 exit 0과 GUI 오류를 함께 반환할 수 있다
+
+`측정 2026-10-28 · Tailscale 1.104.2 · macOS launchd · busan.mac / macOS viewer`
+
+**증상:** 같은 Tailscale status --json이 터미널에서는 정상인데, TERM과 SHLVL이 없는 LaunchAgent에서는 종료 코드 0과 함께 `The Tailscale GUI failed to start: The operation couldn’t be completed. (Tailscale.CLIError error 3.)`를 출력했다. 종료 코드만 검사한 감시는 정상으로 오판할 수 있다.
+
+**해결:** subprocess 환경에 `TAILSCALE_BE_CLI=1`을 지정하고 TERM이 없으면 dumb으로 보완했다. clean environment JSON 파싱과 실제 launchd 실행을 각각 검증했고, 설치 후 status=healthy, exit=0을 확인했다. 공식 CLI 참고: https://tailscale.com/docs/reference/tailscale-cli?tab=macos . 일반 터미널 실행 성공만으로 백그라운드 동작을 보장하지 않는다.
+
+## OPS-709 — 직접 연결된 Tailscale 화면 공유도 경로 손실·TCP 재전송으로 느려질 수 있다
+
+`측정 2026-10-28 · Tailscale 1.104.2 · macOS Screen Sharing · busan.mac`
+
+**증상:** 서버 CPU·메모리·1Gbps 유선 링크와 양쪽 LAN/일반 인터넷 대조는 정상이었지만, 두 장비 사이 ping 손실은 15–35%, 화면 공유 TCP 재전송 바이트 비율은 약24.6%였다. Tailscale 실제 ping은 직접 연결이었고, 별도 직접 WAN·SSH 흐름에서도 손실·재전송을 확인했다. 중계 지역을 나타내는 JSON 필드만으로 DERP 경유 중이라고 단정하면 원인을 잘못 좁힌다.
+
+**해결:** 실제 ping 출력과 현재 직접 주소를 함께 대조했다. 수신측 `tailscale debug rebind`로 UDP 연결을 재협상한 뒤 직접 연결이 유지되면서 100/100 수신, 손실0%, 평균152ms를 확인했고, 후속40개도 손실0%였다. 이는 전송 재협상 후 회복을 측정한 결과이며 특정 통신사 고장 홉이나 Tailscale 단독 결함을 입증하지 않는다. 서버·VM·VPN 서비스 전체 재시작 없이 활성 화면 공유만 감시하고, 반복 손실 시 로컬 대조·다른 활성 peer·cooldown·일일 횟수·복구 실패 억제를 적용했다. 국제 구간 왕복 약150ms 자체는 남는다.
