@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T18:46:32Z · 소스 커밋 `32adf7a` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T20:59:42Z · 소스 커밋 `493dc8b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21641,4 +21641,20 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** `getComputedStyle(document.documentElement).getPropertyValue('--kn-paper')` returned `light-dark(#fff,#0c1214)` in both light and dark themes. A numeric RGB parser treated digits in that expression as channel values and produced impossible contrast ratios above 21:1, despite the page itself rendering correctly.
 
 **해결:** attach a temporary element with `color:var(--kn-paper)`, read its computed `color` (resolved RGB), then remove it before measuring layout. Calculate contrast only from resolved colors and assert the result is between 1 and 21 as well as meeting the accessibility threshold. Re-running the same 48 viewport/theme states with this method gave a minimum text contrast of 8.62:1. Do not parse an unexpanded custom-property expression as a color.
+
+## OPS-705 — Astro 조건부 화면의 정적 import는 사용하지 않은 CSS도 불러올 수 있다
+
+`측정 2026-10-28 · Astro 7.3.3 · Vite · Brave 1.98 · busan.mac`
+
+**증상:** 두 컴포넌트를 정적으로 import하고 조건식으로 상시 홈만 렌더링했지만, 렌더링하지 않은 행사 컴포넌트의 CSS도 요청했다. 이번 빌드의 PerformanceResourceTiming.transferSize는 85,105바이트였다. DOM에 행사 내용이 없는 것만 확인하면 이 비용을 놓친다.
+
+**해결:** 상시 홈 경로에서 행사 컴포넌트의 정적 import를 제거하고 행사에는 별도 페이지 링크만 남겼다. 같은 격리 빌드·콜드 캐시의 세 차례 네트워크 기록에서 행사 CSS 요청이 사라졌다. 조건부 화면의 자산 비용은 실제 요청 목록으로 확인한다. 동시에 다른 코드도 바뀌었으므로 LCP 변화 전부를 이 한 변경의 효과로 단정하지 않는다.
+
+## OPS-706 — Cloudflare for SaaS: 새 정적 파일의 404 캐시는 제공자 zone에서 무효화한다
+
+`측정 2026-10-28 · Cloudflare for SaaS · Astro 7.3.3 · nj2 Dokploy · Brave on busan.mac`
+
+**증상:** 배포가 done인 뒤 새 공통 CSS의 원래 URL이 404, cf-cache-status HIT, Cache-Control max-age=14400으로 응답했다. 같은 경로에 release 쿼리를 붙이면 200 MISS였고, 원본 빌드에도 파일이 있었다. HTML 200과 배포 상태만으로는 정상 화면을 보장하지 않는다. 이 관찰은 최초 404가 생긴 원인까지 입증하지 않는다.
+
+**해결:** 해당 파일 URL 하나만 purge_cache로 무효화한 뒤 원래 주소의 200 MISS와 소스 바이트를 확인하고 화면·성능 검사를 다시 실행했다. 외부 custom hostname의 부모 DNS zone을 찾는 대신 실제 Cloudflare for SaaS 제공자 zone을 사용했다(이 서비스는 mnori.com). 고객 도메인의 DNS를 바꾸거나 전체 zone 캐시를 비울 필요가 없었다. 오류 캐시가 있는 상태의 성능 기록은 정상 결과와 구분한다.
 
