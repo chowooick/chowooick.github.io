@@ -11750,3 +11750,14 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** 실제 호스트명을 loopback 포트에 매핑한 자체 서명 HTTPS fixture에서 context의 `ignoreHTTPSErrors: true`로 페이지와 도메인 간 탐색은 성공했지만 서비스워커 등록은 `SecurityError: Failed to register a ServiceWorker ... An unknown error occurred when fetching the script.`로 실패했다. 같은 테스트에 launch 인자 `--ignore-certificate-errors`를 추가하자 이전 캐시 삭제, 워커 제어권, 오프라인 navigation 복구 세 검사가 통과했다. 일반 페이지의 HTTPS 성공이 워커 스크립트 인증서 검증 성공을 증명하지 않는다.
 
 **해결:** 자체 서명 인증서를 쓰는 격리 fixture 전용 Brave 프로세스에만 위 launch 인자를 적용하거나 테스트 인증서를 해당 환경에서 신뢰하게 구성한다. 운영 인증서 검증에는 이 인자를 사용하지 않는다. APIRequestContext는 브라우저의 host-resolver-rules를 쓰지 않으므로 loopback URL + 실제 Host 헤더로 검사하고, 주소창·쿠키·서비스워커 흐름은 실제 매핑 브라우저에서 확인한다.
+
+## OPS-711 — Daum 메일 휴면 주소는 Brevo에서 softBounces `550 5.2.1 Mailbox is inactive`로 돌아오고, 로그인만으로는 풀리지 않는다
+
+`측정 2026-10-29 · Brevo 거래 메일 API v3 · Daum 메일 웹 · busan.mac Brave 1.98`
+
+**증상:** 같은 HTML을 같은 순간에 보냈는데 Naver는 `delivered`, Daum은 `softBounces` 이유 `550 5.2.1 RACT 77.32.148.25: Mailbox is inactive: <주소>`였다. 발송 API 응답은 둘 다 `201`과 messageId라서 응답만 보면 성공처럼 보인다. 웹에서 그 Daum 계정은 로그인된 채 받은메일함이 열렸지만, 목록 아래에 "회원님은 현재 메일 휴면 상태입니다 … [휴면 해제하기]" 안내가 있었다(2025-06 휴면 전환 안내 메일). 로그인·받은메일함 열기만으로는 휴면이 풀리지 않는다.
+
+- Brevo는 이 거절을 hard가 아니라 soft bounce로 분류한다. 수신 실패를 놓치지 않으려면 `GET /v3/smtp/statistics/events?messageId=<id>&days=1`로 `delivered` 이벤트를 직접 확인해야 한다.
+- 받은메일함 목록에 메일이 없으면 스팸함보다 먼저 이 이벤트를 본다. 스팸함에도 없다.
+
+**해결:** 웹 메일 화면의 "휴면 해제하기"를 누르면 그 자리에서 해제된다(추가 인증 요구 없음). 해제 직후 다시 보낸 같은 메일은 10초 안에 `delivered`, 받은메일함에 도착했다. 시험용 Daum 주소를 쓰는 세션은 발송 전에 휴면 안내가 있는지 먼저 확인한다. 실제 독자의 Daum 주소가 이 이유로 soft bounce되면 재시도로는 해결되지 않는다.
