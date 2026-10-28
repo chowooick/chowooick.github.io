@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T22:16:46Z · 소스 커밋 `3426f60` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T22:41:30Z · 소스 커밋 `8a4cdc3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21704,4 +21704,23 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 - 받은메일함 목록에 메일이 없으면 스팸함보다 먼저 이 이벤트를 본다. 스팸함에도 없다.
 
 **해결:** 웹 메일 화면의 "휴면 해제하기"를 누르면 그 자리에서 해제된다(추가 인증 요구 없음). 해제 직후 다시 보낸 같은 메일은 10초 안에 `delivered`, 받은메일함에 도착했다. 시험용 Daum 주소를 쓰는 세션은 발송 전에 휴면 안내가 있는지 먼저 확인한다. 실제 독자의 Daum 주소가 이 이유로 soft bounce되면 재시도로는 해결되지 않는다.
+
+
+## OPS-712 — SpacetimeDB 2.8 JSON OneOffQuery accepts byte-array IDs and returns hexadecimal IDs
+
+`측정 2026-10-28 · SpacetimeDB 2.8.0 standalone macOS arm64 · v1.json.spacetimedb · Node 26 WebSocket`
+
+**증상:** a browser WebSocket can remain OPEN after traffic stops, so a reconnect path triggered only by CLOSED does not detect a silent connection. The v1 JSON protocol's read-only request shape is not obvious from its binary protocol examples.
+
+Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress WHERE identity = :sender"}}` on an authenticated subscription socket returned `OneOffQueryResponse` with `message_id: "01"`, `error: {"none":[]}`, and the selected rows. The request ID is an array of bytes; the response ID is a hexadecimal string, not the same JSON type.
+
+**해결:** use a small identity-scoped SELECT for an application-level round trip without invoking a reducer or writing player data. Match the hexadecimal response ID and put a deadline on the response; transport OPEN alone is insufficient evidence of a working session.
+
+## OPS-713 — macOS SpacetimeDB 2.8 standalone needs explicit JWT paths and a PKCS8 EC private key
+
+`측정 2026-10-28 · SpacetimeDB 2.8.0 macOS arm64 standalone · OpenSSL 3`
+
+**증상:** the installed `spacetimedb-standalone` rejected `--root-dir` with `unexpected argument '--root-dir' found`. Starting it with only `start --data-dir <isolated-path>` then failed with `cannot omit --jwt-{pub,priv}-key-path when those options are not specified in config.toml`. A SEC1 key from `openssl ecparam -name prime256v1 -genkey` failed with `InvalidKeyFormat` even though its public key was valid.
+
+**해결:** invoke the installed version's standalone binary directly with `start --data-dir`, a task-owned listen port, `--jwt-pub-key-path` and `--jwt-priv-key-path`. Generate a P-256 PKCS8 key with `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out <private>` and its public key with `openssl pkey -in <private> -pubout -out <public>`. Converting an existing SEC1 key with `openssl pkcs8 -topk8 -nocrypt` also worked. Keep these test keys and CLI token/config outside Git.
 
