@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T22:41:30Z · 소스 커밋 `8a4cdc3` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T22:54:19Z · 소스 커밋 `fb9dcd0` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21723,4 +21723,15 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** the installed `spacetimedb-standalone` rejected `--root-dir` with `unexpected argument '--root-dir' found`. Starting it with only `start --data-dir <isolated-path>` then failed with `cannot omit --jwt-{pub,priv}-key-path when those options are not specified in config.toml`. A SEC1 key from `openssl ecparam -name prime256v1 -genkey` failed with `InvalidKeyFormat` even though its public key was valid.
 
 **해결:** invoke the installed version's standalone binary directly with `start --data-dir`, a task-owned listen port, `--jwt-pub-key-path` and `--jwt-priv-key-path`. Generate a P-256 PKCS8 key with `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out <private>` and its public key with `openssl pkey -in <private> -pubout -out <public>`. Converting an existing SEC1 key with `openssl pkcs8 -topk8 -nocrypt` also worked. Keep these test keys and CLI token/config outside Git.
+
+## OPS-714 — 식품 인허가 API의 일간 갱신은 2일 전 기준이며 업종별 키 등록을 확인해야 한다
+
+`측정 2026-10-28 · data.go.kr KRDS / 행정안전부 지방행정 인허가 OpenAPI · busan.mac`
+
+**증상:** 같은 서비스 키로 일반음식점·휴게음식점 조회는 성공했지만 제과점 조회는 HTTP 403, `SERVICE_KEY_IS_NOT_REGISTERED_ERROR`를 반환했다. 휴게음식점(15154921)과 제과점(15155252) 공개 Swagger `/info` 설명에는 “매일 갱신되는 데이터로 2일전 기준으로 현행화”라고 명시되어 있다. 일간 갱신을 당일 실시간 개업 정보로 해석하면 지연과 업종 누락을 감추게 된다.
+
+**해결:** 업종별 endpoint와 실제 권한을 각각 확인하고 실패 업종을 따로 보류한다. 키가 다른 업종에서 작동한다는 이유로 전 업종 권한이 있다고 판단하지 않는다. `DAT_UPDT_PNT` 변경 기록과 신규 개업을 구분하고, 첫 수집의 기존 점포는 기준자료로 저장한다. 개업일·장소·영업 사실은 별도 근거로 확인하며 새 기사 수에 기준자료나 단순 변경 건수를 합산하지 않는다. 조회 화면에는 2일 전 기준 갱신 조건을 유지한다.
+
+- 휴게음식점: https://www.data.go.kr/data/15154921/openapi.do — `apis.data.go.kr/1741000/rest_cafes/info`
+- 제과점: https://www.data.go.kr/data/15155252/openapi.do — `apis.data.go.kr/1741000/bakeries/info`
 
