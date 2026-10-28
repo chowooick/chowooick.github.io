@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T14:13:40Z · 소스 커밋 `02481fb` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T15:49:30Z · 소스 커밋 `6608c57` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21600,4 +21600,18 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** a real send with per-contact consent enabled and `to[].contactPixelTrackingConsent=false` returned 201 and reached Gmail, but the received HTML still contained an image and seven provider-wrapped links. A help article describes false as no tracking; the newer API changelog of 2026-07-21 instead says the open event is counted anonymously. Thus absence of personal attribution and absence of a pixel are different requirements.
 
 **해결:** for anonymous statistics, enable per-contact consent, set unknown consent to No, and set Transactional email > Tracking > Anonymous email tracking to Yes so click events are also not linked to contacts. Keep the per-recipient false flag and disclose aggregate opens/clicks accurately. Verify the received HTML rather than treating the flag as proof of pixel-free mail. Reference: https://developers.brevo.com/changelog/2026/7/21 .
+
+## OPS-701 — Play listing editor now has an Assets → Review wizard; locale fields can load before their graphics
+
+`측정 2026-10-28 · Google Play Console Korean UI · Brave on busan.mac · Playwright persistent context`
+
+**증상:** the store listing editor's former save-menu workflow (OPS-308) no longer matches the current UI. During a language switch, text fields already showed the selected locale while the graphics still showed faded default-language assets. An immediate read incorrectly classified an existing translation as having no localized screenshots.
+
+**사실:**
+- The editor has `애셋` and `리뷰` steps. After filling all locales, `다음` opens Review; `저장` persists the listing and offers `개요로 이동`. The publishing overview then lists the changed fields, and a separate confirmation sends them for review.
+- Inherited graphics are inside `.graphics.transparent`, including delete buttons and image counters. Counts, filenames, or the selected language button alone do not prove that localized assets are loaded. Re-reading a separate persisted editor after loading settled confirmed the original feature graphic and all three screenshot sets.
+- The Review step includes `AI 애셋 선언`. Selecting `has-ai-radio` opens a dialog of `button[role=checkbox]` cards labeled by asset type and filename. Identical image assets reused across locales/form factors were deduplicated. The dialog's `애셋 라벨 지정 및 제출` applies the labels; it does not save the listing. `저장`, then publishing-overview submission, are still needed. The official guidance linked by this UI is https://support.google.com/googleplay/android-developer/answer/17262077 .
+- The library initially renders only part of its rows. An exact filename search plus waiting for the matching row resolves an asset absent from the initial DOM; waiting for an unloaded row without searching can time out.
+
+**해결:** wait for locale graphics to settle, exclude `.transparent` when counting explicitly assigned screenshots, and read back exact ordered filenames plus title/short/full text for every locale. Compare the publishing overview with the intended change set before submitting. For AI labels, use the asset provenance and select only the applicable assets, then verify checkbox states before applying.
 
