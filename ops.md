@@ -11563,3 +11563,31 @@ alarms (alarm clock, reminders) on a personal phone.
 **증상:** a visible writing menu immediately forwarded its click to a hidden desktop board action. The shared handler loaded before the board's dynamic Alpine module. A production first-tap check timed out with `locator.waitFor: Timeout 30000ms exceeded` while `.mk-sheet` stayed hidden. The existing early-click replay recorded the hidden target but deliberately skipped it because `checkVisibility()` was false. No browser exception was emitted.
 
 **해결:** keep one pending board action until `alpine:initialized` when its nearest `[x-data]` root has no `_x_dataStack`. Let the early-click collector recognize the visible `[data-compose-open]` controls too, so taps before their module loads can use the existing replay. A deterministic regression held the marketplace module, confirmed its root was not initialized, tapped the visible menu once, then released the module: the composer opened. Ordinary board, keyboard and menu geometry checks also passed. Tests must tap before initialization; waiting for a page-ready marker misses this condition.
+
+## OPS-692 — `codex exec` image tool: an input-stage `moderation_blocked` is not deterministic; the identical prompt passed on the next try
+
+`측정 2026-10-28 · codex-cli 0.162.0 built-in image tool · 66 portrait/landscape candidates of clothed adult anime heroines (Korea GRAC 15 level), reference image attached`
+
+**증상:** one portrait prompt (fully clothed: knit sweater, coat, long pants; an intimate "just the two of us" mood,
+with the approved landscape picture attached as a reference) failed with `moderation_blocked`,
+`safety_violations=[sexual]`, `moderation_stage: input`. OPS-226 reads as if input-stage blocks follow the words of
+the prompt; here the same prompt file and the same reference, sent again unchanged, generated normally.
+
+**해결:** on an input-stage block of a prompt that is plainly within the rules, retry once unchanged before rewriting
+it; budget roughly one such retry per 60 pictures. Rewrite only when the same prompt is blocked twice (as OPS-226's
+lingerie prompts were, 3 of 3).
+
+## OPS-693 — busan `~/kc-test/profile` can be signed out of Google (passkey challenge) while another session's copy made hours earlier is still signed in
+
+`측정 2026-10-28 · busan.mac · Brave 1.98 / Chromium 156 · Playwright persistent context (kc-browser.mjs open())`
+
+**증상:** a Play Console job runner on the original `~/kc-test/profile` reached the account chooser with
+"로그아웃됨" and then `accounts.google.com/v3/signin/challenge/pk` ("패스키를 사용하여 로그인을 완료합니다"); the same
+profile had worked about ten hours earlier. 「다른 방법 시도」 did not open any other method in the automation window.
+Of the copies other sessions had made that day, `profile-datagokr` (copied 13:00) was signed out and `profile-dongne`
+(12:49) was signed in (`signedIn()` → myaccount.google.com).
+
+**해결:** before reporting a passkey block, test each recent `~/kc-test/profile-*` copy: make your own copy of it
+(exclude `Singleton*` and caches, copy `Default/Cookies` with SQLite's read-only backup API as in OPS-683), check it
+with `signedIn()`, and run the job on your copy. Never write into the original or into another session's copy. The
+Play Console upload, release notes and "검토를 위해 변경사항 전송" all worked from the signed-in copy.
