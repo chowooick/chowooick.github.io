@@ -11539,7 +11539,7 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 
 ## OPS-690 — `adb shell am broadcast -n` to a non-exported receiver prints success but nothing is delivered
 
-`측정 2026-10-28 · Pixel 7 Pro (production build, no root) · adb 36`
+`측정 2026-10-28 · Pixel 7 Pro (production build, no root) · adb 37.0.1`
 
 **증상:** to check that a scheduled phone notification really shows, the app's own `BroadcastReceiver`
 (`android:exported="false"`, the target of an `AlarmManager` PendingIntent) was fired from the shell:
