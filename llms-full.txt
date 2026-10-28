@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T02:02:54Z · 소스 커밋 `9dc8342` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T02:04:11Z · 소스 커밋 `65ec22b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -9879,6 +9879,14 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
   시작하라"고 해시를 적어 준다. 또는 worktree 격리 없이 같은 트리를 쓰고 파일을 나눈다.
 - 병합 전에 `git merge-base`를 확인하고, 충돌이 안 난 파일도 `git diff <merge-base> <로컬 main> -- <에이전트가 새로 만든 파일의 원본>`으로
   옮겨지는 동안 사라진 변경이 없는지 본다.
+
+## AGT-177 — Background subagents share the parent's scratchpad directory: one agent's helper script with a common name (`add_strings.py`, `run_suites.sh`) silently replaces another's
+
+`측정 2026-10-28 · Claude Code (Opus 5.5) · three Agent tool subagents with isolation: "worktree" plus the main session`
+
+**증상:** the main session kept `scratchpad/add_strings.py` (inserts keys into a JSON string table) and ran it again an hour later. A subagent had written its own `scratchpad/add_strings.py` in between; the second run added that agent's 27 mission keys to the main session's table, printed an unfamiliar line and exited 0. Worktree isolation separates the git checkouts only; the scratchpad path in every agent's system prompt is the same session directory. A second agent reported its `run_suites.sh` overwritten the same way.
+
+**해결:** give each agent a subdirectory in the brief (`scratchpad/<agent-name>/`) and keep the parent's own helpers in one too. Before reusing a helper, `head` it. Verify generated data by key prefix (`git diff | grep '^+ "'`), not by exit code.
 
 ---
 
@@ -21389,4 +21397,18 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 **증상:** earlier isolated copies of the designated Google test profile stopped at `accounts.google.com/v3/signin/challenge/pk`, so authenticated production checks were reported blocked. On the owner's later retry request, the original `~/kc-test/profile` had no SingletonLock or running Brave process using it. Opening that original through `kc-browser.mjs` and `autologin.mjs` completed Google sign-in without owner intervention. The regional production page loaded and authenticated compose-motion checks passed. This observation does not establish why Google challenged the earlier copies.
 
 **해결:** check the current original-profile availability and genuine session before treating an older copied-profile challenge as a permanent requirement for owner help. If the original designated profile is idle, one authorized retry there may complete normally. Keep using copies while another task owns the original profile. Record the new success timestamp and keep exported cookies/storage state in the test host's private directory, outside Git.
+
+## OPS-687 — Godot 4 `HTTPRequest` polling of SpacetimeDB through Cloudflare costs a TLS handshake per request (~700 ms from Korea); one websocket pushes every 130 ms tick, and scheduled reducers become callable by clients
+
+`측정 2026-10-28 · Godot 4.7.2 native · SpacetimeDB 2.8.0 behind nginx + Cloudflare (landgrab.mnori.com, origin nj1) · client on busan.mac (Korea)`
+
+**증상:** a versus client polled `POST /v1/database/<db>/sql` at 5 Hz and sent reducer calls through Godot `HTTPRequest`. Players reported frequent "server connection failed". A 300 s soak at the client's own cadence measured, per request, p50 704 ms, p95 740 ms, p99 872 ms (421 polls, 437 calls, zero errors): `HTTPRequest` closes its `HTTPClient` after every request, so each one is TCP + TLS + request over the long haul, and the snapshot updated at 1.4 Hz instead of 5 Hz. The failures came from the client's zero tolerance on top of that: it gave up on the first failed reducer call, after 4 failed polls in a row, or after 4 s without a new tick. The host's nightly restic backup (`nj-backup.timer`, 07:00 UTC) delays the scheduled `tick` by 4.3–6.0 s every day (SpacetimeDB log: `scheduled function tick ... is delayed by 5.966s`).
+
+**해결:**
+- One websocket per player (`v2.bsatn.spacetimedb`, OPS-153; `?compression=Gzip`, decode tag 2 with `decompress_dynamic(-1, COMPRESSION_GZIP)`), subscribed to the arena row, reducer calls on the same socket. Measured on production from Korea: 454 snapshots in 60 s (7.6 Hz), gap p95 141 ms, join 1.65 s, 6.1 KB/s with gzip. nginx needs `location = .../subscribe` with `Upgrade`/`Connection` headers and a long `proxy_read_timeout`, plus `/v1/identity/websocket-token` for the token swap (OPS-145). Cloudflare proxies it with no change.
+- Never end a session on one error: redial with the same token (backoff 0.3/1/2/3 s), call `join` again (same identity → same seat while the server holds it), re-send queued reports; redial an open socket with no new tick for 6 s; end only after 12 s (below the server's 15 s seat expiry) without a fresh tick. Test it against a local server stopped with `kill -STOP <pid>` for 6 s.
+- Over a websocket a client can call **any** reducer, including the scheduled one that nginx used to hide (the SDK docs say so too). Guard it: `if ctx.sender() != ctx.database_identity() { return; }`.
+- Keep an HTTP fallback after two websocket attempts that never open.
+
+관련: OPS-153, OPS-145, OPS-134
 
