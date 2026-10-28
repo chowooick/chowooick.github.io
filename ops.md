@@ -11555,3 +11555,11 @@ and prove delivery through the app itself: send a short-delay notification from 
 "notifications are on" sample a few seconds after the permission is granted) and read
 `dumpsys notification`. Changing the clock with `cmd alarm set-time` would also fire every other app's
 alarms (alarm clock, reminders) on a personal phone.
+
+## OPS-691 — A visible menu forwarding clicks to a hidden Alpine button can lose the first tap while a board module loads
+
+`측정 2026-10-27 · Astro 7.3.3 · Alpine 3.15 · Brave / Playwright on busan.mac`
+
+**증상:** a visible writing menu immediately forwarded its click to a hidden desktop board action. The shared handler loaded before the board's dynamic Alpine module. A production first-tap check timed out with `locator.waitFor: Timeout 30000ms exceeded` while `.mk-sheet` stayed hidden. The existing early-click replay recorded the hidden target but deliberately skipped it because `checkVisibility()` was false. No browser exception was emitted.
+
+**해결:** keep one pending board action until `alpine:initialized` when its nearest `[x-data]` root has no `_x_dataStack`. Let the early-click collector recognize the visible `[data-compose-open]` controls too, so taps before their module loads can use the existing replay. A deterministic regression held the marketplace module, confirmed its root was not initialized, tapped the visible menu once, then released the module: the composer opened. Ordinary board, keyboard and menu geometry checks also passed. Tests must tap before initialization; waiting for a page-ready marker misses this condition.
