@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T00:23:03Z · 소스 커밋 `ab762a0` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T00:46:09Z · 소스 커밋 `97f42ea` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21367,5 +21367,18 @@ guessed console paths (`/service-fee`, `/programs`, …) redirect to the home pa
 
 **해결:** answer the two questions on the account group page, then use 「검토 및 등록」 there, not the
 payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for store contact changes.
+
+## OPS-685 — Withdrawing a Play production release already sent to review: 「변경사항 삭제」 only un-sends it; the draft is deleted from the release details page
+
+`측정 2026-10-28 · Play Console web (ko UI), managed publishing off, quick checks still running (「최대 13분 남음」)`
+
+**증상:** a production release was submitted by mistake and had to be withdrawn before Google's review started.
+
+**사실:**
+- 게시 개요 → 검토 중인 변경사항 → 「변경사항 삭제」 → confirm 「변경사항 삭제」 moves it back to `변경사항이 아직 검토를 위해 제출되지 않음`. The release still sits there as 「나중을 위해 저장」, ready for anyone to resubmit.
+- Opening `…/tracks/<track>/releases/<n>/prepare` then redirects to `…/releases/<n>/details`, where the button is 「버전 삭제」 (not 「임시 출시 삭제」, which exists only on the prepare page of an unsaved draft). After it, 게시 개요 lists no changes and the track's latest release is the previous one again.
+- The uploaded bundle stays in the library, so its version code stays used. The next upload needs a higher one.
+
+**해결:** un-send with 「변경사항 삭제」, then delete the release with 「버전 삭제」 on its details page, so no saved release is left for a later submit to carry along.
 
 
