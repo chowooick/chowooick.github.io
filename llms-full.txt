@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T02:04:11Z · 소스 커밋 `65ec22b` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T02:04:43Z · 소스 커밋 `5f0e523` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21411,4 +21411,15 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 - Keep an HTTP fallback after two websocket attempts that never open.
 
 관련: OPS-153, OPS-145, OPS-134
+
+## OPS-688 — A 60-second screen timeout relocks the shared Pixel between adb steps; an injected Shift key every 20 s keeps it unlocked without changing any setting
+
+`측정 2026-10-27 · Pixel 7 Pro · Android 17 · adb 1.0.41 · screen_off_timeout 60000`
+
+**증상:** a session launched an installed web app over adb, opened its sign-in page through CDP, and 7 s later the screenshot showed the lock screen. `dumpsys window` → `isKeyguardShowing=true`; the owner unlocked it, and it was locked again before the next command ran. OPS-222's fix was gone: `settings get global stay_on_while_plugged_in` printed `0`, `screen_off_timeout` was `60000`, and `dumpsys battery` showed `USB powered: false` even with the data cable in, so the stay-on setting would not have helped anyway. A secure lock (PIN plus fingerprint) cannot be opened over adb (OPS-222).
+
+**해결:** before asking for an unlock, start a keep-awake loop, then do the whole device check in one pass and stop the loop at the end:
+`while [ ! -f stop ]; do adb shell input keyevent 59; sleep 20; done &` (59 = `KEYCODE_SHIFT_LEFT`). Measured: with only that key every 20 s for 100 s, the phone stayed `mWakefulness=Awake`, `isKeyguardShowing=false`. No settings are changed. A focused web page receives a harmless Shift keydown. Check `isKeyguardShowing` and `USB powered` first, before planning on the phone.
+
+관련: OPS-222
 
