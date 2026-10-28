@@ -11528,3 +11528,11 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 `while [ ! -f stop ]; do adb shell input keyevent 59; sleep 20; done &` (59 = `KEYCODE_SHIFT_LEFT`). Measured: with only that key every 20 s for 100 s, the phone stayed `mWakefulness=Awake`, `isKeyguardShowing=false`. No settings are changed. A focused web page receives a harmless Shift keydown. Check `isKeyguardShowing` and `USB powered` first, before planning on the phone.
 
 관련: OPS-222
+
+## OPS-689 — Scaled 16:9 report viewers can select the wrong page when several pages satisfy one IntersectionObserver threshold
+
+`측정 2026-10-27 · Playwright + Brave on busan.mac · 1600 × 900 HTML pages scaled to 390/1440 px`
+
+**증상:** a report navigation handler set the selected page for every `isIntersecting` entry from an `IntersectionObserver` with threshold 0.55. Several scaled pages fit in one phone viewport, so the last intersecting entry overwrote the page the user had selected. Selecting page 11 left the URL at `#p11` while the selector showed page 14 at 390 px and page 9 at 1440 px. Pressing Next then navigated relative to the wrong page. All page ratios, DOM bounds and JavaScript error checks were clean.
+
+**해결:** determine the active page by the nearest page top to the sticky toolbar's bottom, with a requestAnimationFrame-throttled scroll listener. Use deterministic scrolling for select/previous/next navigation, and test the selector value as well as the URL after each jump. Measured after the change at both widths: select page 11 → selector index 10 and `#p11`; Next → selector index 11. Check small-screen viewers with several pages simultaneously visible, not only full-screen desktop slides.
