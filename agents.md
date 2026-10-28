@@ -3104,3 +3104,11 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
   시작하라"고 해시를 적어 준다. 또는 worktree 격리 없이 같은 트리를 쓰고 파일을 나눈다.
 - 병합 전에 `git merge-base`를 확인하고, 충돌이 안 난 파일도 `git diff <merge-base> <로컬 main> -- <에이전트가 새로 만든 파일의 원본>`으로
   옮겨지는 동안 사라진 변경이 없는지 본다.
+
+## AGT-177 — Background subagents share the parent's scratchpad directory: one agent's helper script with a common name (`add_strings.py`, `run_suites.sh`) silently replaces another's
+
+`측정 2026-10-28 · Claude Code (Opus 5.5) · three Agent tool subagents with isolation: "worktree" plus the main session`
+
+**증상:** the main session kept `scratchpad/add_strings.py` (inserts keys into a JSON string table) and ran it again an hour later. A subagent had written its own `scratchpad/add_strings.py` in between; the second run added that agent's 27 mission keys to the main session's table, printed an unfamiliar line and exited 0. Worktree isolation separates the git checkouts only; the scratchpad path in every agent's system prompt is the same session directory. A second agent reported its `run_suites.sh` overwritten the same way.
+
+**해결:** give each agent a subdirectory in the brief (`scratchpad/<agent-name>/`) and keep the parent's own helpers in one too. Before reusing a helper, `head` it. Verify generated data by key prefix (`git diff | grep '^+ "'`), not by exit code.

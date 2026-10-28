@@ -11503,3 +11503,17 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 **증상:** earlier isolated copies of the designated Google test profile stopped at `accounts.google.com/v3/signin/challenge/pk`, so authenticated production checks were reported blocked. On the owner's later retry request, the original `~/kc-test/profile` had no SingletonLock or running Brave process using it. Opening that original through `kc-browser.mjs` and `autologin.mjs` completed Google sign-in without owner intervention. The regional production page loaded and authenticated compose-motion checks passed. This observation does not establish why Google challenged the earlier copies.
 
 **해결:** check the current original-profile availability and genuine session before treating an older copied-profile challenge as a permanent requirement for owner help. If the original designated profile is idle, one authorized retry there may complete normally. Keep using copies while another task owns the original profile. Record the new success timestamp and keep exported cookies/storage state in the test host's private directory, outside Git.
+
+## OPS-687 — Godot 4 `HTTPRequest` polling of SpacetimeDB through Cloudflare costs a TLS handshake per request (~700 ms from Korea); one websocket pushes every 130 ms tick, and scheduled reducers become callable by clients
+
+`측정 2026-10-28 · Godot 4.7.2 native · SpacetimeDB 2.8.0 behind nginx + Cloudflare (landgrab.mnori.com, origin nj1) · client on busan.mac (Korea)`
+
+**증상:** a versus client polled `POST /v1/database/<db>/sql` at 5 Hz and sent reducer calls through Godot `HTTPRequest`. Players reported frequent "server connection failed". A 300 s soak at the client's own cadence measured, per request, p50 704 ms, p95 740 ms, p99 872 ms (421 polls, 437 calls, zero errors): `HTTPRequest` closes its `HTTPClient` after every request, so each one is TCP + TLS + request over the long haul, and the snapshot updated at 1.4 Hz instead of 5 Hz. The failures came from the client's zero tolerance on top of that: it gave up on the first failed reducer call, after 4 failed polls in a row, or after 4 s without a new tick. The host's nightly restic backup (`nj-backup.timer`, 07:00 UTC) delays the scheduled `tick` by 4.3–6.0 s every day (SpacetimeDB log: `scheduled function tick ... is delayed by 5.966s`).
+
+**해결:**
+- One websocket per player (`v2.bsatn.spacetimedb`, OPS-153; `?compression=Gzip`, decode tag 2 with `decompress_dynamic(-1, COMPRESSION_GZIP)`), subscribed to the arena row, reducer calls on the same socket. Measured on production from Korea: 454 snapshots in 60 s (7.6 Hz), gap p95 141 ms, join 1.65 s, 6.1 KB/s with gzip. nginx needs `location = .../subscribe` with `Upgrade`/`Connection` headers and a long `proxy_read_timeout`, plus `/v1/identity/websocket-token` for the token swap (OPS-145). Cloudflare proxies it with no change.
+- Never end a session on one error: redial with the same token (backoff 0.3/1/2/3 s), call `join` again (same identity → same seat while the server holds it), re-send queued reports; redial an open socket with no new tick for 6 s; end only after 12 s (below the server's 15 s seat expiry) without a fresh tick. Test it against a local server stopped with `kill -STOP <pid>` for 6 s.
+- Over a websocket a client can call **any** reducer, including the scheduled one that nginx used to hide (the SDK docs say so too). Guard it: `if ctx.sender() != ctx.database_identity() { return; }`.
+- Keep an HTTP fallback after two websocket attempts that never open.
+
+관련: OPS-153, OPS-145, OPS-134
