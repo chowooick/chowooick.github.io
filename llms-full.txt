@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T05:45:20Z · 소스 커밋 `908a8d6` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T06:06:43Z · 소스 커밋 `3e8efa3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21554,4 +21554,12 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** a token-authenticated unsubscribe route explicitly accepts a form POST without Origin, yet a real HTTP request with `application/x-www-form-urlencoded` and `List-Unsubscribe=One-Click` returns 403 before the handler. Same-origin browser confirmation works, so unit tests and clicking the confirmation button miss the failure. This is Astro's `security.checkOrigin` default (related OPS-105 / OPS-331).
 
 **해결:** set `security.checkOrigin: false` and retain the form-origin guard in middleware for every other path. Exempt exactly the unsubscribe POST; its unguessable mail token remains the authority. Other JSON writers must still check Origin and JSON content type in their own handlers. Keep GET confirmation read-only. Measured on a built Node server: anonymous one-click POST 200, repeat POST 200, GET leaves the reader intact, other no-Origin form POST 403 and foreign-Origin JSON POST 400. Verify these as real HTTP requests, since direct handler calls bypass the framework guard.
+
+## OPS-697 — Playwright page response bodies disappear after navigation even when the async response listener is still pending
+
+`측정 2026-10-28 · Playwright 1.64.1 · Brave · busan.mac`
+
+**증상:** an async `page.on('response')` handler awaited a local asset read before calling `response.body()`, while the main loop navigated through pages. It failed with `response.body: Protocol error (Network.getResponseBody): No resource with given identifier found` and `Response body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.` Collecting the handler promises and awaiting them only after all navigations did not retain the CDP resource; the uncaught rejection stopped the checker.
+
+**해결:** collect the same-origin asset paths in the response listener, then fetch those paths through the authenticated browser context's `context.request.get()` after the page checks. Its response body is independent of the page target's navigation. The same production asset comparison then completed with every captured asset matching the release. This was a verification-tool failure, not an application response failure.
 
