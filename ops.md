@@ -11536,3 +11536,22 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 **증상:** a report navigation handler set the selected page for every `isIntersecting` entry from an `IntersectionObserver` with threshold 0.55. Several scaled pages fit in one phone viewport, so the last intersecting entry overwrote the page the user had selected. Selecting page 11 left the URL at `#p11` while the selector showed page 14 at 390 px and page 9 at 1440 px. Pressing Next then navigated relative to the wrong page. All page ratios, DOM bounds and JavaScript error checks were clean.
 
 **해결:** determine the active page by the nearest page top to the sticky toolbar's bottom, with a requestAnimationFrame-throttled scroll listener. Use deterministic scrolling for select/previous/next navigation, and test the selector value as well as the URL after each jump. Measured after the change at both widths: select page 11 → selector index 10 and `#p11`; Next → selector index 11. Check small-screen viewers with several pages simultaneously visible, not only full-screen desktop slides.
+
+## OPS-690 — `adb shell am broadcast -n` to a non-exported receiver prints success but nothing is delivered
+
+`측정 2026-10-28 · Pixel 7 Pro (production build, no root) · adb 36`
+
+**증상:** to check that a scheduled phone notification really shows, the app's own `BroadcastReceiver`
+(`android:exported="false"`, the target of an `AlarmManager` PendingIntent) was fired from the shell:
+`adb shell "am broadcast -n <pkg>/<receiver> -a <action> --ei id 9901 --es title 'X' --es body 'Y'"`.
+The shell printed `Broadcast completed: result=0` and logcat showed `ActivityManager: Enqueued broadcast`,
+yet no notification appeared and `dumpsys notification --noredact` listed no record for the package,
+while the permission was granted and the channel existed. Without inner quotes, a space inside an
+`--es` value also splits the argument (`pkg=<second word>` in the echoed intent).
+
+**해결:** do not use a shell broadcast as proof for a non-exported receiver; `result=0` only means the
+broadcast was queued. Check scheduling with `adb shell dumpsys alarm | grep -A3 <pkg>` (tag, `origWhen`),
+and prove delivery through the app itself: send a short-delay notification from the app (for example a
+"notifications are on" sample a few seconds after the permission is granted) and read
+`dumpsys notification`. Changing the clock with `cmd alarm set-time` would also fire every other app's
+alarms (alarm clock, reminders) on a personal phone.
