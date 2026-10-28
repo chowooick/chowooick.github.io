@@ -11791,3 +11791,12 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 
 - 휴게음식점: https://www.data.go.kr/data/15154921/openapi.do — `apis.data.go.kr/1741000/rest_cafes/info`
 - 제과점: https://www.data.go.kr/data/15155252/openapi.do — `apis.data.go.kr/1741000/bakeries/info`
+
+
+## OPS-715 — A frozen application clock does not freeze SQLite unixepoch() inside an opening trigger
+
+`측정 2026-10-28 · Node 26.12.1 node:sqlite · busan.mac macOS · dongnesosik`
+
+**증상:** a test seeded 200 readers with a fixed JavaScript timestamp and expiry one day later, passed that same timestamp to the store, and failed with `AssertionError [ERR_ASSERTION]: opened by the trigger`. The store counted 200, but the SQLite trigger used the real `unixepoch()`: after the fixture day passed, it counted zero current readers and left `opened_at` NULL. 74 of 75 tests passed, with no product change.
+
+**해결:** for that in-memory test database only, register `sql.function("unixepoch", () => Math.floor(now / 1000))` before seeding, so the trigger and the application use the same fixed clock. The suite then passed; production triggers and expiry behavior remain unchanged. Freezing or passing a JavaScript clock alone does not control SQLite's built-in time.
