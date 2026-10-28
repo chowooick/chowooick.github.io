@@ -11639,3 +11639,21 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** a 390px page with a populated horizontal card strip had `document.body.scrollWidth = 390` but `document.documentElement.scrollWidth = 544`. The newly added `.sr-only` count labels were `position:absolute`; labels in offscreen cards had viewport x positions 508 and 542.625, with `offsetParent` equal to BODY. The cards themselves were inside an overflow-scrolling strip. An empty-card fixture had no such labels and passed the same width check.
 
 **해결:** establish the label's containing block inside its own card. Adding `position:relative` to `.content-metric`, the label's immediate parent, changed the root width from 544 to 390 in the same authenticated page without changing card layout. Test a populated carousel and check both root width and the hidden label's `offsetParent`; body width alone missed this overflow.
+
+
+## OPS-699 — Apple Container exports OCI; Docker 28.5 classic load needs a Docker archive, and Skopeo on Mac must target Linux
+
+`측정 2026-10-28 · Apple Container 1.6.1 · Skopeo 1.24.1 · Docker Engine 28.5.0 · macOS arm64`
+
+**증상:** `container image save` exports an OCI archive. Loading it in the existing Docker engine failed with `open /var/lib/docker/tmp/docker-import-2781202806/blobs/json: no such file or directory`. Converting on the Mac with plain `skopeo copy` then failed with `no image found in image index for architecture "arm64", variant "v8", OS "darwin"`: Skopeo selects the host OS unless told otherwise.
+
+**해결:** build/export on the designated Mac, then `skopeo --override-os linux --override-arch arm64 copy oci-archive:<input.tar> docker-archive:<output.tar>:<name>:<tag>`. Load the converted Docker archive on the production host. Measured: the same prepared image loaded, booted and served all 682 client files byte-identically; no compiler or unit/browser test ran in the production VM.
+
+
+## OPS-700 — Brevo contactPixelTrackingConsent=false anonymizes opens; it does not remove the pixel or rewritten links
+
+`측정 2026-10-28 · Brevo v3 SMTP API · free account · Gmail`
+
+**증상:** a real send with per-contact consent enabled and `to[].contactPixelTrackingConsent=false` returned 201 and reached Gmail, but the received HTML still contained an image and seven provider-wrapped links. A help article describes false as no tracking; the newer API changelog of 2026-07-21 instead says the open event is counted anonymously. Thus absence of personal attribution and absence of a pixel are different requirements.
+
+**해결:** for anonymous statistics, enable per-contact consent, set unknown consent to No, and set Transactional email > Tracking > Anonymous email tracking to Yes so click events are also not linked to contacts. Keep the per-recipient false flag and disclose aggregate opens/clicks accurately. Verify the received HTML rather than treating the flag as proof of pixel-free mail. Reference: https://developers.brevo.com/changelog/2026/7/21 .
