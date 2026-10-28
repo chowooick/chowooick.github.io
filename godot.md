@@ -5805,3 +5805,19 @@ When driving a shared personal phone over adb, check `dumpsys window | grep mCur
 **증상:** 자바스크립트 객체에 정의한 `connect(callback)`을 `JavaScriptBridge.get_interface("duetAccess").connect(callback)`으로 호출하자 `Parse Error: Too few arguments for "connect()" call. Expected at least 2 but received 1.`이 발생했다. 해당 웹 경로는 headless export 종료 코드 0 뒤 실제 웹 실행에서 실패했다.
 
 **해결:** 브리지 메서드를 `attach(callback)`으로 바꾸고 GDScript 호출도 함께 수정했다. 수정 후 웹에서 실제 DOM 버튼이 게임 화면을 전환했고 콘솔 스크립트 오류가 없었다. `JavaScriptObject`의 상속 메서드와 이름이 겹치는 API를 피하고, export 성공 외에 웹 기능 경로를 실제 실행해 확인한다.
+
+## GDT-333 — A Button's minimum width is its whole text, so one long translation widens every container above it; `text_overrun_behavior` drops it to 8 px, and on a Label it makes `reset_size()` collapse the text to 1 px
+
+`측정 2026-10-28 · Godot 4.7.2 · macOS headless and phone-size captures (411×891 dp)`
+
+**증상:** a title menu that fit in Korean ran off the right edge of a phone in English and Spanish: every slab, its right-aligned detail and the last button of a four-button utility row ("Settings · How to play · English · Quit game") were cut. The row is an `HBoxContainer` of `SIZE_EXPAND_FILL` buttons inside the menu's `VBoxContainer`; setting `menu.size.x` to the screen width did not help, because a Control is never smaller than its minimum size and a `Button`'s minimum width includes its whole label. Measured for "Cambiar de dispositivo" at 16 px: `get_combined_minimum_size().x` = 181 with the default `OVERRUN_NO_TRIMMING`, 8 with `OVERRUN_TRIM_ELLIPSIS`, 8 with `clip_text = true`. The same switch on a `Label` has a trap: with an overrun behaviour set, `reset_size()` shrinks the label to 1 px wide (348 → 1 for a 13 px sentence), so a label laid out with `reset_size()` and then `_put()` shows nothing at all — a text-fit probe found four such boss tips, all invisible.
+
+**해결:** give every button whose label is translated `text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS`, then pick its font size on `resized` (largest size from the design size down to ~12 px at which the text fits `size.x` minus the stylebox side margins); only below that does the ellipsis show. In a row of such buttons set `size_flags_stretch_ratio` to each label's natural width so long words get the room. For a `Label` with an overrun behaviour, set `size.x` explicitly after `reset_size()`, and reset the behaviour to `OVERRUN_NO_TRIMMING` before measuring it with `get_combined_minimum_size()`. Related: GDT-021 (the same effect on `ScrollContainer`).
+
+## GDT-334 — `Font.get_multiline_string_size().y` is shorter than the Label that wraps the same text: 2 lines measure 1.64 font heights, 3 lines 2.45, so a box sized from it clips the last line
+
+`측정 2026-10-28 · Godot 4.7.2 · Pretendard 700 at 14 px, Latin text`
+
+**증상:** speech bubbles and profile boxes sized from `font.get_multiline_string_size(text, LEFT, width, size).y` cut the bottom of their last line in English and Spanish ("Wanna ride?" half under the bubble's edge), while Korean two-line texts looked right. Measured with a `Label` (`AUTOWRAP_WORD_SMART`, same font, size and width) against the font's measure, for "I'm Hana! The rooftops are my playground. Wanna ride?": at 150/170/190 px the label wrapped to 4/3/2 lines and `get_multiline_string_size().y / font.get_height(14)` was 3.27/2.45/1.64. The line count agrees; the height per line is about 0.82 of `get_height()`, while the Label spends a full `get_line_height()` (plus the theme's `line_spacing`) per line. Adding U+2060 word joiners between letters changed nothing.
+
+**해결:** measure with the label that will draw the text: set `label.size = Vector2(width, 0)`, then `height = lines * label.get_line_height() + (lines - 1) * label.get_theme_constant("line_spacing")` with `lines = label.get_line_count()` (it reshapes for the new width at once). Use that for the box and for anything laid out under it.
