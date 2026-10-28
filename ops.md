@@ -11671,3 +11671,14 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 - The library initially renders only part of its rows. An exact filename search plus waiting for the matching row resolves an asset absent from the initial DOM; waiting for an unloaded row without searching can time out.
 
 **해결:** wait for locale graphics to settle, exclude `.transparent` when counting explicitly assigned screenshots, and read back exact ordered filenames plus title/short/full text for every locale. Compare the publishing overview with the intended change set before submitting. For AI labels, use the asset provenance and select only the applicable assets, then verify checkbox states before applying.
+
+
+## OPS-702 — Public Google Play verification: JSON-LD description is the short copy, and CDN host/rendition changes do not change the screenshot asset
+
+`측정 2026-10-28 · Google Play web ko-KR · Brave on busan.mac`
+
+**증상:** a published listing matched the approved copy and screenshots visually, but a verification script reported full-description and image-order mismatches.
+
+**사실:** the public page's `SoftwareApplication` JSON-LD `description` held the short description, not the full Game introduction text. Console screenshot URLs used `lh3.googleusercontent.com/<asset-id>`, while the public page used `play-lh.googleusercontent.com/<same-asset-id>=w526-h296-rw`. Comparing whole URLs or treating the schema description as full copy produced false failures. The Game introduction button's accessible name was `게임 소개 자세히 알아보기`, so an exact role-name match for `게임 소개` also timed out.
+
+**해결:** read the full text from the public Game introduction dialog and compare after whitespace normalization. Compare ordered image path IDs after removing the rendition suffix and ignoring the CDN host; deduplicate repeated responsive image copies in first-appearance order. Match the button by its actual accessible name (or substring). Keep browser captures and the exact comparison result as evidence.
