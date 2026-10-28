@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-28T03:47:49Z · 소스 커밋 `f0ad44b` · 이 파일은 자동 생성물이다.
+생성 2026-10-28T03:48:31Z · 소스 커밋 `87ea8aa` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6768,6 +6768,14 @@ When driving a shared personal phone over adb, check `dumpsys window | grep mCur
 `ERROR: Condition "err != 0 && err != 1" is true. Returning: FAILED` / `at: _process (core/io/stream_peer_gzip.cpp:117)`, `request_completed` came back without the body, and the game fell back to a guest. The trigger was routing the API through nginx (`gzip on; gzip_types application/json ...; gzip_min_length 1024`): the account's token response was ~1,700 bytes and went out as `Content-Encoding: gzip`, the guest's was 406 bytes and was not compressed. On the web the browser's `fetch` has already decoded the body, but the response still carries the `Content-Encoding: gzip` header, and `HTTPRequest` (with `accept_gzip = true`, the default) decodes it a second time. Cloudflare passed nginx's gzip through unchanged. It re-encoded uncompressed origin responses as `zstd`, which Godot does not try to decode, so those worked. That hides the bug until a response crosses the size threshold.
 
 **해결:** set `accept_gzip = false` on every `HTTPRequest` in a web build. The browser still negotiates compression and decodes the body, and Godot leaves the bytes alone. On the server, also turn `gzip off` for API locations the game calls, so builds already in players' hands recover without an update. To check, look for one token exchange followed by the websocket in the browser's network log, and no second exchange.
+
+## GDT-332 — JavaScriptObject.connect 이름은 Object.connect와 충돌한다
+
+`측정 2026-10-27 · Godot 4.7.2-stable Web export · Brave · busan.mac`
+
+**증상:** 자바스크립트 객체에 정의한 `connect(callback)`을 `JavaScriptBridge.get_interface("duetAccess").connect(callback)`으로 호출하자 `Parse Error: Too few arguments for "connect()" call. Expected at least 2 but received 1.`이 발생했다. 해당 웹 경로는 headless export 종료 코드 0 뒤 실제 웹 실행에서 실패했다.
+
+**해결:** 브리지 메서드를 `attach(callback)`으로 바꾸고 GDScript 호출도 함께 수정했다. 수정 후 웹에서 실제 DOM 버튼이 게임 화면을 전환했고 콘솔 스크립트 오류가 없었다. `JavaScriptObject`의 상속 메서드와 이름이 겹치는 API를 피하고, export 성공 외에 웹 기능 경로를 실제 실행해 확인한다.
 
 ---
 
@@ -21452,7 +21460,7 @@ alarms (alarm clock, reminders) on a personal phone.
 
 ## OPS-691 — A visible menu forwarding clicks to a hidden Alpine button can lose the first tap while a board module loads
 
-`측정 2026-10-27 · Astro 7.3.3 · Alpine 3.15 · Brave / Playwright on busan.mac`
+`측정 2026-10-27 · Astro 7.3.3 · Alpine 3.17.3 · Brave / Playwright on busan.mac`
 
 **증상:** a visible writing menu immediately forwarded its click to a hidden desktop board action. The shared handler loaded before the board's dynamic Alpine module. A production first-tap check timed out with `locator.waitFor: Timeout 30000ms exceeded` while `.mk-sheet` stayed hidden. The existing early-click replay recorded the hidden target but deliberately skipped it because `checkVisibility()` was false. No browser exception was emitted.
 
