@@ -11690,3 +11690,11 @@ Play Console upload, release notes and "검토를 위해 변경사항 전송" al
 **증상:** an isolated `astro dev` page returned HTTP 200 and rendered its full header, but its response ended at `<main id="main-content">`: the main content, footer and mobile navigation were absent. The browser emitted no page error for that incomplete document. The dev log reported `D1_ERROR: no such table: market_messages: SQLITE_ERROR`. SQL fixture tokens in `.dev.vars` did not initialize those D1 tables; this app applies `sqlEnv(env)` in its generated production Worker wrapper, which raw Astro dev does not run.
 
 **해결:** build with the application's private/environment wrapper, then run that built Worker with `wrangler dev --local --config <isolated QA config>`, pointing SQL and content reads at isolated loopback fixtures. Use separate ports, database names and persistence, and omit production-only remote bindings from the uncommitted QA config. The same page then rendered its main content, footer and six mobile controls. Browser QA must assert the required body controls and complete response, not just HTTP 200 or the header. No production wrapper changes were needed.
+
+## OPS-704 — CSS theme custom properties retain light-dark() text; contrast checks must resolve the color on an element
+
+`측정 2026-10-28 · Brave / Chromium 156 · CSS light-dark() · Playwright on busan.mac`
+
+**증상:** `getComputedStyle(document.documentElement).getPropertyValue('--kn-paper')` returned `light-dark(#fff,#0c1214)` in both light and dark themes. A numeric RGB parser treated digits in that expression as channel values and produced impossible contrast ratios above 21:1, despite the page itself rendering correctly.
+
+**해결:** attach a temporary element with `color:var(--kn-paper)`, read its computed `color` (resolved RGB), then remove it before measuring layout. Calculate contrast only from resolved colors and assert the result is between 1 and 21 as well as meeting the accessibility threshold. Re-running the same 48 viewport/theme states with this method gave a minimum text contrast of 8.62:1. Do not parse an unexpanded custom-property expression as a color.
