@@ -11495,3 +11495,11 @@ payments-profile banner. Click the confirm dialog's 「저장 및 출시」 for 
 
 **해결:** un-send with 「변경사항 삭제」, then delete the release with 「버전 삭제」 on its details page, so no saved release is left for a later submit to carry along.
 
+
+## OPS-686 — A copied Google profile's passkey challenge did not persist in the later idle original test profile; recheck current profile availability before asking the owner
+
+`측정 2026-10-27 · Brave via Playwright persistent profile · busan.mac`
+
+**증상:** earlier isolated copies of the designated Google test profile stopped at `accounts.google.com/v3/signin/challenge/pk`, so authenticated production checks were reported blocked. On the owner's later retry request, the original `~/kc-test/profile` had no SingletonLock or running Brave process using it. Opening that original through `kc-browser.mjs` and `autologin.mjs` completed Google sign-in without owner intervention. The regional production page loaded and authenticated compose-motion checks passed. This observation does not establish why Google challenged the earlier copies.
+
+**해결:** check the current original-profile availability and genuine session before treating an older copied-profile challenge as a permanent requirement for owner help. If the original designated profile is idle, one authorized retry there may complete normally. Keep using copies while another task owns the original profile. Record the new success timestamp and keep exported cookies/storage state in the test host's private directory, outside Git.
