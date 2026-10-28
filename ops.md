@@ -11591,3 +11591,26 @@ Of the copies other sessions had made that day, `profile-datagokr` (copied 13:00
 (exclude `Singleton*` and caches, copy `Default/Cookies` with SQLite's read-only backup API as in OPS-683), check it
 with `signedIn()`, and run the job on your copy. Never write into the original or into another session's copy. The
 Play Console upload, release notes and "검토를 위해 변경사항 전송" all worked from the signed-in copy.
+
+## OPS-694 — busan.mac: a second Playwright-launched Brave (another profile) closes the first one's pages; work in tabs of one browser
+
+`측정 2026-10-28 · busan.mac (macOS 26.6) · Brave 1.98 · playwright-core launchPersistentContext, headed`
+
+**증상:** a Brave window held open by `launchPersistentContext(<profile A>)` lost its page mid-script ("Target page, context or browser has been closed" on the next `waitForTimeout`) whenever another script launched Brave with a different `user-data-dir`. A sign-in page left open for the owner closed within seconds twice the same way.
+
+- Reproduced: script 1 holds `profile-brevo` for 70 s; 10 s in, script 2 opens `~/kc-test/profile`, reads Gmail and closes. Script 1 then reports `ctx.pages().length === 0`. Alone, the same 30 s hold ends with 1 page.
+- Other sessions launch Brave on the same Mac, so a long-held window can be closed by them too.
+
+**해결:** do everything that needs two sites (a sign-in on one, a mail code on another) in **tabs of one persistent context** (`ctx.newPage()`), not in two browsers. Keep held windows short and re-run the step when the page vanishes. Reading a mailed code from a tab of the browser that already holds the Google session also avoids copying that session into a second profile.
+
+## OPS-695 — data.go.kr OpenAPI by script: sign in through "아이디 로그인", open the 활용신청 form by URL; automatic approval and the key work at once
+
+`측정 2026-10-28 · www.data.go.kr / auth.data.go.kr (2026 KRDS redesign) · personal member with 본인인증 · Brave on busan.mac`
+
+**증상:** signing in at `auth.data.go.kr/sso/common-login` directly showed "로그아웃" there, but every `www.data.go.kr` page still answered "로그인이 필요한 서비스입니다". Clicking the dataset page's 활용신청 button changed nothing in the same tab.
+
+- The SSO only reaches `www` from its own entry: `www.data.go.kr` → `a[href="javascript:procLogin()"]` → the method page `/uim/login/login.do?acrValues=3` → "아이디 로그인" → `auth.data.go.kr/sso/common-login?client_id=…&redirect_url=…`. Fields `#inputUsername`, `#inputPassword`, `#captcha` (a 5-character image captcha; a wrong answer alerts "보안 문자를 다시 입력해주세요.").
+- 활용신청 is `window.open("/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=<id>&isBusinessApply=undefined")`: go to that URL. The form: purpose radio `#radio1` (웹 사이트 개발), `#prcusePurps` (description), detail checkboxes `#all-chk`, licence `#useScopeAgreAt` (its `check()` does not take; click `label[for=useScopeAgreAt]`), then the button "활용 신청하기" and two dialogs ("신청하시겠습니까?", "활용신청이 완료되었습니다.").
+- 기상청 단기예보 15084084, 에어코리아 대기오염정보 15073861, 국토교통부 아파트 매매 실거래가 15126469, 행정안전부 일반음식점 15154916 · 휴게음식점 15154921 and 소상공인 상가(상권)정보 15012005 were all `[승인]` immediately. The account's single 64-character key (마이페이지 → 활용신청 현황 → a dataset → 인증키) answered 단기예보, 에어코리아 (`getCtprvnRltmMesureDnsty`, sidoName=경기) and 실거래가 (LAWD_CD 41450) at once.
+
+**해결:** sign up and pass 본인인증 once by hand (it cannot be scripted); everything after it is scriptable as above. Keep the key out of output and in a 0600 file.
