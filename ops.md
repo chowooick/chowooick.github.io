@@ -11558,7 +11558,7 @@ alarms (alarm clock, reminders) on a personal phone.
 
 ## OPS-691 — A visible menu forwarding clicks to a hidden Alpine button can lose the first tap while a board module loads
 
-`측정 2026-10-27 · Astro 7.3.3 · Alpine 3.15 · Brave / Playwright on busan.mac`
+`측정 2026-10-27 · Astro 7.3.3 · Alpine 3.17.3 · Brave / Playwright on busan.mac`
 
 **증상:** a visible writing menu immediately forwarded its click to a hidden desktop board action. The shared handler loaded before the board's dynamic Alpine module. A production first-tap check timed out with `locator.waitFor: Timeout 30000ms exceeded` while `.mk-sheet` stayed hidden. The existing early-click replay recorded the hidden target but deliberately skipped it because `checkVisibility()` was false. No browser exception was emitted.
 
