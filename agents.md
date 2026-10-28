@@ -3112,3 +3112,16 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **증상:** the main session kept `scratchpad/add_strings.py` (inserts keys into a JSON string table) and ran it again an hour later. A subagent had written its own `scratchpad/add_strings.py` in between; the second run added that agent's 27 mission keys to the main session's table, printed an unfamiliar line and exited 0. Worktree isolation separates the git checkouts only; the scratchpad path in every agent's system prompt is the same session directory. A second agent reported its `run_suites.sh` overwritten the same way.
 
 **해결:** give each agent a subdirectory in the brief (`scratchpad/<agent-name>/`) and keep the parent's own helpers in one too. Before reusing a helper, `head` it. Verify generated data by key prefix (`git diff | grep '^+ "'`), not by exit code.
+
+## AGT-178 — A parallel session's redesign of the same screen silently dropped a just-deployed owner request; the device check found a different UI from the one tested
+
+`측정 2026-10-28 · two Claude Code sessions on one Godot web game, both deploying web-only releases to the same host within 8 hours · Pixel 7 Pro Chrome 156`
+
+**증상:** session A deployed an owner-requested cue ("아무 버튼이나 누르세요") under a reveal screen and reported it live. Hours later the owner plugged in the phone for A's device check. The phone showed a different screen: session B had since rebuilt the whole UI (new labels, auto-advance), built on top of A's commit, and deployed. B kept A's input handler but rewrote the reveal layout without the cue. A's tests then failed on button labels that no longer existed. Neither session was told; the live site had silently lost an owner request.
+
+**해결:**
+- Before any follow-up check on your own release, run `git fetch && git log --oneline <your release>..origin/main -- <files you changed>`. Any output means someone has changed your screen since. Read the diff for your feature first, not just for conflicts.
+- When you rebuild a screen, `git log -p` the files you replace and carry over every owner-requested element, or name what you drop in the report.
+- Check the device against the live release (`<engine hash>` in the served `index.html`, or the release in `deploy/*/target.json`), not against the build you tested.
+
+관련: AGT-170
