@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T00:44:30Z · 소스 커밋 `9cdec1e` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T01:00:56Z · 소스 커밋 `f6a3030` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6814,6 +6814,15 @@ On the real Pixel 7 Pro (Chrome 156, \`adb shell input swipe\`), Godot's own dra
 Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-for-load=90000`) returned `runWarnings: ["The page loaded too slowly to finish within the time limit. Results may be incomplete."]`, counted total-byte-weight 16.4 MB for a page that transfers 34.4 MB (wasm 11.7 MB gzip of 39.5 MB raw, pck 19.9 MB, one unsubsetted 2.06 MB woff2) and scored performance 67–68 — a number that compares with nothing. The desktop preset completed both runs: 33.8 MB, FCP 1.6 s, TBT 1,060 ms, bootup 7.7 s, TTI 4.6–4.9 s, CLS 0, performance 50–51.
 
 **해결:** read Lighthouse on a Godot web page from the desktop preset (or from `performance.getEntriesByType('resource')` summed in Playwright for the real transfer), and treat any mobile run carrying that warning as incomplete rather than as a score. For the viewport audit the export preset's custom HTML shell (`html/custom_html_shell`) is the place to change the meta; this session did not build with one, so the fix is the documented route, not a measured one.
+
+
+## GDT-337 — Web GL Compatibility accepts MSAA_2D at export but reports unsupported at runtime; render a denser SubViewport instead
+
+`측정 2026-10-28 · Godot 4.7.2 stable web export · GL Compatibility · Brave 1.98 on busan.mac`
+
+**증상:** Setting a SubViewport's `msaa_2d` to `Viewport.MSAA_4X` compiled and exported successfully, but the real browser emitted `WARNING: 2D MSAA is not yet supported for GLES3.` at `render_target_set_msaa (drivers/gles3/storage/texture_storage.cpp:3210)`. No 2D edge improvement came from that setting; an error-free export was not evidence of runtime support.
+
+**해결:** Leave `msaa_2d` disabled for this renderer. For an illustrated SubViewport, use an explicitly larger render size (measured 2× on narrow views and 1.5× on wide views), scale the container down by the reciprocal, and scale the drawing canvas up. Divide the viewport size by the render density before computing logical drawing coordinates. This removed the runtime warning and visibly cleaned the enlarged vector edges; the measured 390 px and 1440 px fight snapshots both reported 60 FPS. Rendering more pixels has a cost, so cap the density and check on the target hardware rather than enabling it globally.
 
 ---
 
