@@ -11800,3 +11800,11 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** a test seeded 200 readers with a fixed JavaScript timestamp and expiry one day later, passed that same timestamp to the store, and failed with `AssertionError [ERR_ASSERTION]: opened by the trigger`. The store counted 200, but the SQLite trigger used the real `unixepoch()`: after the fixture day passed, it counted zero current readers and left `opened_at` NULL. 74 of 75 tests passed, with no product change.
 
 **해결:** for that in-memory test database only, register `sql.function("unixepoch", () => Math.floor(now / 1000))` before seeding, so the trigger and the application use the same fixed clock. The suite then passed; production triggers and expiry behavior remain unchanged. Freezing or passing a JavaScript clock alone does not control SQLite's built-in time.
+
+## OPS-716 — Duplicating Astro's --host flag made the dev server bind IPv6 localhost
+
+`측정 2026-10-28 · Astro 7.3.3 · Node 26.12.1 · busan.mac macOS`
+
+**증상:** package.json already had `dev: astro dev --host 127.0.0.1`. Running `npm run dev -- --host 127.0.0.1 --port 4638` produced `astro dev --host 127.0.0.1 --host 127.0.0.1 --port 4638`; the server reported localhost and `lsof` showed only `[::1]:4638`. Brave requests to `http://127.0.0.1:4638` failed with `net::ERR_CONNECTION_REFUSED` even though the dev process was alive.
+
+**해결:** read the existing dev script before appending CLI flags. Launching `node node_modules/.bin/astro dev --host 127.0.0.1 --port 4638` with a single host flag bound the intended IPv4 loopback and the browser loaded successfully. Do not infer a server crash from a refused IPv4 connection without checking the actual listener.
