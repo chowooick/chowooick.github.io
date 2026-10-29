@@ -11867,3 +11867,11 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** 임시 GIT_ASKPASS로 인증한 HTTPS push가 `fatal: failed to store: -25308`을 출력한 뒤 정상적인 원격 브랜치 갱신 행을 내고 종료 코드 0으로 끝났다. SSH 세션의 macOS keychain에 새 자격 증명을 저장하지 못한 것이며, 원격 ref는 실제로 갱신됐다.
 
 **해결:** fatal 문자열만으로 push 실패로 판단하지 말고 종료 코드와 원격 ref를 확인한다. 일회성 자격 증명은 `git -c credential.helper= push`처럼 해당 명령에서 저장 도우미를 비우고 GIT_ASKPASS로 공급한다. 전역 credential.helper 설정을 바꾸거나 토큰을 출력하지 않는다.
+
+## OPS-724 — Dokploy dropDeployment는 title을 보내도 배포 제목을 Manual deployment로 고정한다
+
+`측정 2026-10-29 · nj2 Dokploy REST application.dropDeployment · upstream canary router 확인`
+
+**증상:** multipart 요청에 커밋 SHA가 들어간 `title`과 `description`을 전달해도 응답은 `true`, `deployment.all`의 새 배포 제목은 `Manual deployment`였다. 누락된 필드나 인증 오류가 아니었다. upstream `apps/dokploy/server/api/routers/application.ts`의 `dropDeployment` 입력 스키마는 `applicationId`, `zip`, `dropBuildPath`만 받고, 배포 큐의 `titleLog`를 직접 `Manual deployment`로 설정한다.
+
+**해결:** drop 업로드의 추가 title 필드로 UI 제목을 바꿀 수 있다고 가정하지 않는다. 배포 전 소스를 커밋·푸시하고 SHA 이름의 ZIP과 릴리스 기록을 만든 뒤, 반환된 실제 deployment ID를 SHA에 대응시켜 보존한다. UI 제목을 바꾸려고 같은 업로드를 반복하지 않는다. 소스: https://github.com/Dokploy/dokploy/blob/canary/apps/dokploy/server/api/routers/application.ts .
