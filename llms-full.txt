@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T21:31:50Z · 소스 커밋 `149ebf3` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T21:37:02Z · 소스 커밋 `9a9828d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22050,4 +22050,12 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** 공식 데스크톱 `searchTotal_2025.js`의 `searchAroundBusStationJson`을 `schBusAPI.action`에 호출하면 HTTP 200에 본문 `null`이 반환됐다. 공식 페이지를 Brave에서 열어 실제 지도 함수를 호출해도 같은 요청 경로였다. 기존 검색·정류장·노선 요청은 정상이며 charset 문제와 별개다. 데스크톱 검색 결과의 `lon/lat`은 EPSG:3857 값이다.
 
 **해결:** 현재 공식 모바일 페이지가 사용하는 `https://m.gbis.go.kr/api/aroundStation?locationX=<경도>&locationY=<위도>`는 WGS84를 받는다. `response.msgHeader.resultCode === 0`을 확인한 뒤 `response.msgBody.busStationAroundList`의 `stationId`, `stationName`, `x`, `y`를 읽는다. 미사 좌표로 실제 정류장 목록을 확인했다. `미정차` 지점도 포함되므로 승차 선택지에서는 제외한다. 제공된 distance와 별개로 좌표로 직선거리를 계산할 수 있으며, 이를 도보거리로 표시하지 않는다. 사용자 좌표를 영구 로그·저장소에 기록하지 않는다.
+
+## OPS-740 — Astro의 build Complete 뒤에도 npm prune은 약 4분 동안 로그 없이 계속될 수 있다
+
+\`측정 2026-10-29 · Dokploy Docker build · node:24-alpine\`
+
+**증상:** Docker의 단일 RUN 단계가 \`npm run build && npm prune --omit=dev --ignore-scripts --offline --no-audit --no-fund\`일 때 Astro는 11.26초에 Complete를 출력했지만, 해당 단계는 260.7초에 끝났다. 마지막에는 \`removed 82 packages in 4m\`이 출력됐다. 같은 날 이전 빌드도 270.6초 후 같은 정리 메시지를 출력했다. 중간 확인에서 호스트의 \`npm prune\` 프로세스가 살아 있었다. \`--offline\`이어도 즉시 끝난다는 뜻은 아니며, 지연 원인은 이 측정에서 확정하지 않았다.
+
+**해결:** Astro의 Complete만으로 배포 완료나 중단을 판단하지 않는다. 해당 RUN 단계의 DONE과 Dokploy의 최종 done을 확인한 뒤 새 런타임 식별자가 실제 HTTP 응답에 나타나는지 검사한다. 로그가 잠시 멈췄다는 이유로 정상적으로 계속 중인 정리 단계를 중단하지 않는다.
 
