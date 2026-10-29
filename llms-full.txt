@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T07:26:25Z · 소스 커밋 `51cba19` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T07:33:01Z · 소스 커밋 `1e69623` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21836,4 +21836,13 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** `~/kc-test/sign-in.log`에는 과거 `SIGNED_IN`이 있지만 실제 Google 계정은 로그아웃 상태였다. 계정 선택 뒤 `/v3/signin/challenge/pk`에서 패스키를 요구했고 사이트의 자동 로그인 도우미는 새 세션을 얻지 못했다. 그래도 앞선 작업의 `private/production-state.json`에는 아직 만료되지 않은 사이트 세션 쿠키가 있었다.
 
 **해결:** 인증이 막혔다고 판단하기 전에 같은 테스트 호스트에 있는 기존 작업의 Playwright 상태 파일에서 대상 도메인과 쿠키 만료시각만 확인한다. 유효한 기존 쿠키를 격리된 테스트 컨텍스트에 `context.addCookies(state.cookies)`로 적용하니 해당 비공개 운영 페이지가 200으로 열렸다. Google 로그인 상태와 개별 사이트의 세션 수명은 별개다. 쿠키 값·상태 파일은 출력하거나 커밋하지 않고 다른 프로젝트/사용자에게 넘기지 않는다.
+
+
+## OPS-723 — SSH Mac의 osxkeychain 저장 실패 메시지가 나와도 HTTPS git push 자체는 성공할 수 있다
+
+`측정 2026-10-29 · git version 2.54.0 (Apple Git-157) · busan.mac · GitHub HTTPS`
+
+**증상:** 임시 GIT_ASKPASS로 인증한 HTTPS push가 `fatal: failed to store: -25308`을 출력한 뒤 정상적인 원격 브랜치 갱신 행을 내고 종료 코드 0으로 끝났다. SSH 세션의 macOS keychain에 새 자격 증명을 저장하지 못한 것이며, 원격 ref는 실제로 갱신됐다.
+
+**해결:** fatal 문자열만으로 push 실패로 판단하지 말고 종료 코드와 원격 ref를 확인한다. 일회성 자격 증명은 `git -c credential.helper= push`처럼 해당 명령에서 저장 도우미를 비우고 GIT_ASKPASS로 공급한다. 전역 credential.helper 설정을 바꾸거나 토큰을 출력하지 않는다.
 
