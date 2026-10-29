@@ -11825,3 +11825,11 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** a long-lived browser fixture renewed the outer signed session's `iat`/`exp` and cookie `expires`, so protected member pages still returned 200. The embedded synthetic `pbToken` kept its old `exp`. The rendered `data-member-id` was empty; Alpine jobs state had `authUser = null`, and tapping 글쓰기 left `panel = ''` with `지금은 글을 올릴 수 없어요. 잠시 후 새로 고침해 주세요.` The same test passed after renewing the embedded fixture token expiry as well: member present, `panel = 'compose'`, empty error. The visible header and most read-only page checks had passed before this correction.
 
 **해결:** generate a fresh local-only fixture session with both expiry layers. For a controlled synthetic token against a local HTTP stand-in, renew its claims before sealing the outer cookie; explicitly restrict cookie domains to localhost/127.0.0.1. Never rewrite a real signed PocketBase JWT: obtain a fresh token from its local test database instead. Assert a non-empty rendered member id or the authenticated board state before testing member mutations; HTTP 200 on the protected shell alone does not prove that the inner member identity is valid.
+
+## OPS-719 — macOS Python 3.9.6 rejected a valid UTF-8 script until an encoding header was added
+
+`측정 2026-10-28 · busan.mac · Python 3.9.6`
+
+**증상:** Running a 40,912-byte script containing Korean HTML strings twice with `python3 file.py` failed at line 83 with `SyntaxError: Non-UTF-8 code starting with '\xec' ... but no encoding declared`. Reading the entire same file with `Path.read_bytes().decode("utf8")` succeeded, and `compile(Path.read_text(), filename, "exec")` also succeeded. The file was not invalid UTF-8; the failure was specific to direct script loading in this observed case.
+
+**해결:** Prepending `# -*- coding: utf-8 -*-` made direct execution succeed without changing the body. When this exact error occurs on the system Python, validate the bytes before re-encoding or rewriting Korean text, and try an explicit encoding header. This measurement does not establish an internal parser cause or claim that all UTF-8 scripts need a header.
