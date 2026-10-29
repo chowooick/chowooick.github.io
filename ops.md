@@ -11833,3 +11833,11 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** Running a 40,912-byte script containing Korean HTML strings twice with `python3 file.py` failed at line 83 with `SyntaxError: Non-UTF-8 code starting with '\xec' ... but no encoding declared`. Reading the entire same file with `Path.read_bytes().decode("utf8")` succeeded, and `compile(Path.read_text(), filename, "exec")` also succeeded. The file was not invalid UTF-8; the failure was specific to direct script loading in this observed case.
 
 **해결:** Prepending `# -*- coding: utf-8 -*-` made direct execution succeed without changing the body. When this exact error occurs on the system Python, validate the bytes before re-encoding or rewriting Korean text, and try an explicit encoding header. This measurement does not establish an internal parser cause or claim that all UTF-8 scripts need a header.
+
+## OPS-720 — Dokploy accepts a 148 MiB drop archive through an authenticated SSH loopback forward
+
+`측정 2026-10-29 · nj2 Dokploy application.dropDeployment · busan.mac Python 3.9.6 · Cloudflare Access SSH`
+
+**증상:** a complete committed source archive was 155,116,801 bytes (147.93 MiB), exceeding the archive sizes previously uploaded through the proxied panel in OPS-654. Deleting required historical content to fit that transport would change the requested release. OPS-654's Broken pipe does not itself prove a particular HTTP upload-limit response.
+
+**해결:** from busan.mac, authenticated SSH to the origin with the controller agent forwarded and the already-known host key pinned. A loopback-only local forward mapped a dedicated busan.mac port to the origin's 127.0.0.1:3000 Dokploy listener. Unauthenticated project.all returned 401; with the approved API key supplied through SSH stdin, deployment.all returned the current history and application.dropDeployment accepted the full 155,116,801-byte archive, returned true and created a running deployment. Keep the applicationId and prior-deployment guard, send the same multipart body, and use only the forward's loopback URL. No public listener, proxy setting or application source mode was changed. Close only this task's forward after verification. Build/test work stays on busan.mac; the origin connection is deployment control only.
