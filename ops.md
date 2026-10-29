@@ -11955,3 +11955,11 @@ runtime error.
 **증상:** `set -u`인 빌드 스크립트가 첫 내보내기에서는 성공했지만, Android 템플릿이 이미 있는 두 번째 실행에서 `first[@]: unbound variable`로 Godot export 전에 멈췄다. 선택적 템플릿 설치 옵션 배열 first가 비어 있었기 때문이다. AAB는 빌드 시작에 삭제돼 없었고 이전 APK는 남아 있어, APK 존재만 확인하면 새 빌드로 오판할 수 있었다.
 
 **해결:** 이 선택적 인자에는 배열 대신 `set --`로 위치 인자를 비우고, 필요할 때만 `set -- --install-android-build-template`를 넣은 뒤 인용한 `"$@"`로 전달했다. 같은 캐시·템플릿이 있는 상태에서 재빌드가 성공했고, 새 AAB와 APK의 패키지·versionCode·서명 검사를 통과했다. 파이프의 조기 종료 영향을 피하려면 aapt2 badging 전체를 변수에 받은 뒤 버전을 검사한다. 완료 판정은 두 산출물의 존재와 기대 versionCode까지 묶는다.
+
+## OPS-731 — Playwright CDP의 50 MB 파일 제한은 같은 호스트의 DOM.setFileInputFiles로 해결
+
+`측정 2026-10-29 · Playwright 1.64.1 · Brave Chromium 156.0.8078.74 · Node 26.12.1`
+
+**증상:** Brave와 Node가 같은 Mac에서 실행되어도 connectOverCDP로 연결하면 105,862,714바이트 AAB의 locator.setInputFiles가 `Cannot transfer files larger than 50Mb to a browser not co-located with the server`로 실패했다. OPS-308의 실행 프로세스 안 업로드 서버 외에도 아래 방법이 확인됐다.
+
+**해결:** 브라우저 호스트에 파일이 실제로 있을 때 context.newCDPSession(page)으로 세션을 만들고, DOM.getDocument → DOM.querySelector로 화면에서 확인한 input[type=file]의 nodeId를 구한 뒤 `DOM.setFileInputFiles({nodeId, files: [absolutePath]})`를 호출한다. Google Play Console이 파일 전송·최적화를 완료하고 해당 버전을 표시했다. 파일 경로는 컨트롤러가 아닌 Brave 호스트 기준이다. 브라우저와 인증 프로필은 그대로 유지했다.
