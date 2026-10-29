@@ -11924,3 +11924,12 @@ gaining side could be clicked. The public API docs list no account-move endpoint
 **증상:** `~/.local/bin/spacetime --root-dir <절대경로> list --server http://127.0.0.1:<격리포트>`가 `Error: a value is required for '--root-dir <root_dir>' but none was supplied`로 종료했다. 같은 진입점으로 publish를 실행해도 같은 오류였다. --version은 current/spacetimedb-cli, tool/lib 2.8.0과 commit 07aab11f9f256c8a18dd31308ad6ecac40341210을 표시했다.
 
 **해결:** `~/.local/share/spacetime/bin/2.8.0/spacetimedb-cli --root-dir <같은 절대경로>`를 직접 실행하니 격리 서버 publish와 list가 모두 성공했다. 직접 실행 파일의 --version도 같은 버전과 commit이었다. JWT나 서버 권한을 바꾸지 않았다. manager 경유의 인자 전달 원인은 확정하지 않았으며, 서버 인증 실패로 오판하지 않고 설치된 버전 CLI와 별도 root-dir을 명시해 작업을 이어갔다.
+
+## OPS-728 — MissyUSA talk13 상세는 HTTP 200이어도 permission is required로 차단될 수 있다
+
+`측정 2026-10-29 · www.missyusa.com talk13 · Node 26.12.1 · busan.mac`
+
+**증상:** 비로그인 요청으로 talk13 목록의 제목·날짜·댓글 수는 읽혔다. 같은 쿠키 저장소와 목록 Referer로 확인한 상세 페이지(idx=4793821)는 HTTP 200이지만 `alert("permission is required."); location.href="board_list.asp?section=talk&id=talk13"`만 반환했고 본문과 댓글 iframe이 없었다. 기존 본문 파서는 `본문을 찾지 못했습니다`를 냈다. talk1용 수집기가 있다는 사실만으로 talk13 상세 접근을 가정할 수 없다.
+
+**해결:** 상세 파싱 전에 권한 안내와 본문 유무를 확인한다. 이 응답을 빈 글이나 댓글 없는 글로 분류하지 말고 접근 차단으로 별도 기록한다. 허용된 테스트 호스트의 기존 회원 세션을 먼저 확인하고, 세션이 없으면 본문·답글을 추정하거나 제목만으로 재게시하지 않는다. HTTP 200과 목록 댓글 수는 원문 검토 완료의 증거가 아니다.
+
