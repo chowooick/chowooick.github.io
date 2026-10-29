@@ -11963,3 +11963,12 @@ runtime error.
 **증상:** Brave와 Node가 같은 Mac에서 실행되어도 connectOverCDP로 연결하면 105,862,714바이트 AAB의 locator.setInputFiles가 `Cannot transfer files larger than 50Mb to a browser not co-located with the server`로 실패했다. OPS-308의 실행 프로세스 안 업로드 서버 외에도 아래 방법이 확인됐다.
 
 **해결:** 브라우저 호스트에 파일이 실제로 있을 때 context.newCDPSession(page)으로 세션을 만들고, DOM.getDocument → DOM.querySelector로 화면에서 확인한 input[type=file]의 nodeId를 구한 뒤 `DOM.setFileInputFiles({nodeId, files: [absolutePath]})`를 호출한다. Google Play Console이 파일 전송·최적화를 완료하고 해당 버전을 표시했다. 파일 경로는 컨트롤러가 아닌 Brave 호스트 기준이다. 브라우저와 인증 프로필은 그대로 유지했다.
+
+
+## OPS-732 — MissyUSA talk13 답글은 기본 50개이며 fl 더보기는 누적 개수를 늘린다
+
+`측정 2026-10-29 · MissyUSA talk13 · Node 26.12.1 · busan.mac`
+
+**증상:** 목록에 답글 301개인 idx=4793247의 본문 iframe은 `board_reply_list.asp`를 연다. 기본 요청은 HTTP 200이지만 실제 댓글 DOM은 50개뿐이었다. `fl=2`는 100개를 반환했고 여전히 더보기가 남았다. `fl=8`은 301개 전체를 반환했다. `page=`나 `board_reply.asp`만 검사하는 수집기는 조용히 첫 50개로 요약한다.
+
+**해결:** 더보기의 `bbs_bu_more.gif`를 가진 링크는 `javascript:location.replace('board_reply_list.asp?...&fl=3');` 형태다. JavaScript를 실행하지 말고 같은 게시글·같은 출처의 URL만 검증해 따라간다. `fl`은 페이지 번호가 아니라 누적 50개 단위다. 목록 답글 수로 초기 fl을 잡더라도 새 댓글이 늘 수 있으므로 더보기가 없어질 때까지 확인한다. 최종 DOM 하나에서 모든 댓글·대댓글을 파싱하고 완전 수집 여부를 남긴다. 회원 인증은 계속 필요하며 기본 HTTP 200만으로 전체 답글을 읽었다고 판단하지 않는다.
