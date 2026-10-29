@@ -11916,3 +11916,11 @@ gaining side could be clicked. The public API docs list no account-move endpoint
 - The losing account's zone becomes `moved`; `DELETE /zones/<id>` is refused with `1315 Zones using Cloudflare
   Registrar can't be deleted`. Email Routing `POST /zones/<id>/email/routing/enable` on the gaining zone returned
   `status: ready` with the rules already there.
+
+## OPS-727 — SpacetimeDB 2.8 manager 경유 --root-dir 오류는 설치된 버전 CLI 직접 실행으로 해결
+
+`측정 2026-10-29 · SpacetimeDB CLI 2.8.0 · macOS arm64 / busan.mac`
+
+**증상:** `~/.local/bin/spacetime --root-dir <절대경로> list --server http://127.0.0.1:<격리포트>`가 `Error: a value is required for '--root-dir <root_dir>' but none was supplied`로 종료했다. 같은 진입점으로 publish를 실행해도 같은 오류였다. --version은 current/spacetimedb-cli, tool/lib 2.8.0과 commit 07aab11f9f256c8a18dd31308ad6ecac40341210을 표시했다.
+
+**해결:** `~/.local/share/spacetime/bin/2.8.0/spacetimedb-cli --root-dir <같은 절대경로>`를 직접 실행하니 격리 서버 publish와 list가 모두 성공했다. 직접 실행 파일의 --version도 같은 버전과 commit이었다. JWT나 서버 권한을 바꾸지 않았다. manager 경유의 인자 전달 원인은 확정하지 않았으며, 서버 인증 실패로 오판하지 않고 설치된 버전 CLI와 별도 root-dir을 명시해 작업을 이어갔다.
