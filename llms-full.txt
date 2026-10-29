@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T13:36:34Z · 소스 커밋 `d3ea9c2` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T15:37:33Z · 소스 커밋 `2719865` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21861,4 +21861,37 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** 유효한 사이트 storageState로 큰 WOFF2 파일을 요청했다. HTTP 200 헤더를 받은 뒤 본문 다운로드가 기본 30초를 넘기자 `apiRequestContext.get: Timeout 30000ms exceeded.`가 발생했다. 오류의 `stack`과 `console.error(error)`에는 `Call log:` 아래 실제 Cookie 요청 헤더가 포함됐다. 오류 객체를 결과 JSON에 그대로 넣으면 인증값까지 저장된다.
 
 **해결:** 인증된 도구 오류는 출력·저장 전에 `Call log:` 이전의 메시지만 취하거나 인증 헤더를 명시적으로 제거한다. 원본 오류 객체와 stack을 로그·공유 산출물에 넣지 않는다. 큰 파일의 바이트 대조는 제한 시간을 명시해 재실행하되 HTTP 200만으로 본문 다운로드나 해시 검증 성공을 판정하지 않는다.
+
+## OPS-726 — Cloudflare Registrar: move a registration between accounts by API (`move_request`), no dashboard; the site is dark between zone activation and the custom-domain deploy
+
+`측정 2026-10-29 · Cloudflare Registrar .com, 10 days after registration · API v4 with account-owned tokens · wrangler 4.155 · Workers Free`
+
+**증상:** the dashboard path (OPS-529) needs a Cloudflare dashboard session, and on busan.mac the Google sign-in of
+`~/kc-test/profile` and its copies stopped at the passkey challenge (same day as OPS-722), so neither the losing nor the
+gaining side could be clicked. The public API docs list no account-move endpoint.
+
+**해결:** the dashboard's own calls (from its bundle, `cf-authenticated-app.*.js`) work with plain API tokens:
+
+- Losing account, token with **Registrar Domains Admin**: `POST /accounts/<losing>/registrar/domains/<domain>/move_request`
+  `{"gaining_account_id": "<gaining>", "domain": "<domain>"}` → `Move request has been initiated…`.
+- Gaining account: `GET /accounts/<gaining>/registrar/domains` then shows `actionable_metadata` `domain_move`,
+  `account_context: gaining`, `expires_at` 5 days out. `PATCH …/registrar/domains/<domain>/move_request`
+  `{"decision": "approved", "domain": "<domain>"}` → `…has been decided (approved) and is in progress`. Other
+  decisions: `rejected`, `cancelled` (the losing side cancels with the same PATCH).
+- An account token made from the "Write all resources" template (OPS-515) answered `10000 Authentication error` on
+  every `/registrar/` path: the template has no Registrar permissions. It does have Account API Tokens Write, so it
+  can mint a short-lived token with Registrar Domains Admin `136d0be1ddc64eaf8516fa6994abfad4` + Read
+  `9bb90620717647a39679e1d951f140d6` (`POST /accounts/<a>/tokens`, `expires_on`), used once and deleted.
+- Timings: accepted 15:16:40 UTC; the `.com` servers showed the gaining zone's nameservers by 15:29; `PUT
+  /zones/<id>/activation_check` → `active` at 15:31:36. 8.8.8.8, 1.1.1.1, 9.9.9.9 and OpenDNS already answered the new
+  NS at that point. The domain then carries `transfer_out_lock` for 30 days.
+- **Outage gap:** as soon as the gaining zone is `active`, the edge serves that zone, not the old one. A zone that
+  only had a Worker custom domain planned (no apex A/AAAA records) answered nothing until `wrangler deploy` with
+  `routes: [{pattern, custom_domain: true}]` created them — about 5 minutes here, mostly a cold `npm ci`. Have the
+  build ready (dependencies installed, config edited) before accepting, and deploy the moment the zone turns active.
+  A resolver that had looked the host up during the gap kept the negative answer (`curl: Could not resolve host`
+  on the dev Mac while `dig` and other hosts saw the records).
+- The losing account's zone becomes `moved`; `DELETE /zones/<id>` is refused with `1315 Zones using Cloudflare
+  Registrar can't be deleted`. Email Routing `POST /zones/<id>/email/routing/enable` on the gaining zone returned
+  `status: ready` with the rules already there.
 
