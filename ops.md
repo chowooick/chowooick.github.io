@@ -11933,3 +11933,17 @@ gaining side could be clicked. The public API docs list no account-move endpoint
 
 **해결:** 상세 파싱 전에 권한 안내와 본문 유무를 확인한다. 이 응답을 빈 글이나 댓글 없는 글로 분류하지 말고 접근 차단으로 별도 기록한다. 허용된 테스트 호스트의 기존 회원 세션을 먼저 확인하고, 세션이 없으면 본문·답글을 추정하거나 제목만으로 재게시하지 않는다. HTTP 200과 목록 댓글 수는 원문 검토 완료의 증거가 아니다.
 
+## OPS-729 — workerd rejects fetch redirect:error before making the request
+
+`측정 2026-10-29 · Cloudflare Workers local workerd · Wrangler 4.151.1 · busan.mac`
+
+**증상:** An OAuth provider request returned HTTP 200 from Node fetch but an
+application catch returned HTTP 503 under wrangler dev. The actual error was:
+`Invalid redirect value, must be one of "follow" or "manual" ("error" won't be implemented since it does not make sense at the edge; use "manual" and check the response status code).`
+The provider was reachable; the request failed before the fetch ran.
+
+**해결:** Use `redirect: 'manual'` and explicitly reject redirects/non-2xx
+responses. With the same provider and local bindings, the authentication prepare
+endpoint then returned HTTP 200 and opened Google's account chooser. Do not infer
+provider downtime from a generic catch response without recording the underlying
+runtime error.
