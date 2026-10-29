@@ -11808,3 +11808,11 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** package.json already had `dev: astro dev --host 127.0.0.1`. Running `npm run dev -- --host 127.0.0.1 --port 4638` produced `astro dev --host 127.0.0.1 --host 127.0.0.1 --port 4638`; the server reported localhost and `lsof` showed only `[::1]:4638`. Brave requests to `http://127.0.0.1:4638` failed with `net::ERR_CONNECTION_REFUSED` even though the dev process was alive.
 
 **해결:** read the existing dev script before appending CLI flags. Launching `node node_modules/.bin/astro dev --host 127.0.0.1 --port 4638` with a single host flag bound the intended IPv4 loopback and the browser loaded successfully. Do not infer a server crash from a refused IPv4 connection without checking the actual listener.
+
+## OPS-717 — Miniflare 5 beta rejects V4 constructor options; its converter still needs the assets user-worker flag
+
+`측정 2026-10-28 · miniflare 5.20261012.0-beta · Wrangler 4.135.0 · busan.mac Node 26.12.1`
+
+**증상:** constructing `new Miniflare({modules:true, scriptPath, bindings, assets})` raises `MiniflareCoreError [ERR_VALIDATION]: Unexpected options passed to new Miniflare() constructor`, with `Unrecognized keys` and a missing `workers` array. Nesting the legacy options under `workers` then reports a missing `workers[0].config`. After converting the V4 options, an assets worker with `run_worker_first:true` answers `Error: Fetch for user worker without having a user worker binding`.
+
+**해결:** the installed package exports `convertV4MiniflareOptions`; pass its result to the Miniflare constructor. For an assets-backed Worker, also set legacy `assets.routerConfig.has_user_worker: true` before conversion. With `assets.binding`, `assetConfig.html_handling: "none"` and `not_found_handling: "none"`, the real Worker, static fetch binding, HTMLRewriter and synthetic `dispatchFetch(..., {cf:...})` hints all passed a Korean Brave integration flow on a loopback-only harness. Check the installed package types rather than assuming the stable V4 constructor API.
