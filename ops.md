@@ -11875,3 +11875,11 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** multipart 요청에 커밋 SHA가 들어간 `title`과 `description`을 전달해도 응답은 `true`, `deployment.all`의 새 배포 제목은 `Manual deployment`였다. 누락된 필드나 인증 오류가 아니었다. upstream `apps/dokploy/server/api/routers/application.ts`의 `dropDeployment` 입력 스키마는 `applicationId`, `zip`, `dropBuildPath`만 받고, 배포 큐의 `titleLog`를 직접 `Manual deployment`로 설정한다.
 
 **해결:** drop 업로드의 추가 title 필드로 UI 제목을 바꿀 수 있다고 가정하지 않는다. 배포 전 소스를 커밋·푸시하고 SHA 이름의 ZIP과 릴리스 기록을 만든 뒤, 반환된 실제 deployment ID를 SHA에 대응시켜 보존한다. UI 제목을 바꾸려고 같은 업로드를 반복하지 않는다. 소스: https://github.com/Dokploy/dokploy/blob/canary/apps/dokploy/server/api/routers/application.ts .
+
+## OPS-725 — 인증된 Playwright API 다운로드의 TimeoutError에는 Cookie 헤더가 포함된다
+
+`측정 2026-10-29 · Playwright 1.58 · Brave 156 · APIRequestContext.get · busan.mac`
+
+**증상:** 유효한 사이트 storageState로 큰 WOFF2 파일을 요청했다. HTTP 200 헤더를 받은 뒤 본문 다운로드가 기본 30초를 넘기자 `apiRequestContext.get: Timeout 30000ms exceeded.`가 발생했다. 오류의 `stack`과 `console.error(error)`에는 `Call log:` 아래 실제 Cookie 요청 헤더가 포함됐다. 오류 객체를 결과 JSON에 그대로 넣으면 인증값까지 저장된다.
+
+**해결:** 인증된 도구 오류는 출력·저장 전에 `Call log:` 이전의 메시지만 취하거나 인증 헤더를 명시적으로 제거한다. 원본 오류 객체와 stack을 로그·공유 산출물에 넣지 않는다. 큰 파일의 바이트 대조는 제한 시간을 명시해 재실행하되 HTTP 200만으로 본문 다운로드나 해시 검증 성공을 판정하지 않는다.
