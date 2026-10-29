@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T20:28:33Z · 소스 커밋 `aa9b9e8` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T21:31:50Z · 소스 커밋 `149ebf3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22041,4 +22041,13 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** 하나의 headless Brave에 로그인 컨텍스트를 여러 개 둔 검사에서 `javaScriptEnabled:false` 페이지의 일반 제출 버튼에 `locator.click`을 호출하자 `element is not stable` 대기 후 시간 초과했다. 폼 `checkValidity()`는 true이고 버튼은 enabled였지만 POST가 없었다. 독립 컨텍스트의 DOMContentLoaded 직후 클릭은 성공한 경우도 있어 원인을 폼 저장 코드로 단정할 수 없었다.
 
 **해결:** 페이지를 `bringToFront()` 하고 textarea에서 Tab 두 번으로 제출 버튼에 이동한 뒤 Enter로 실제 네이티브 제출했다. 서버의 POST 303과 GET 재진입, 댓글 표시를 확인했다. 삭제 확인 details는 summary Enter로 열고 삭제 버튼에 focus 후 Enter로 제출해 실제 삭제까지 통과했다. JavaScript로 submit을 실행하거나 actionability를 강제로 우회하지 않고 스크립트 없는 일반 양식 동작을 검증할 수 있다.
+
+
+## OPS-739 — GBIS 데스크톱 주변 정류장 요청은 null이고 모바일 조회는 WGS84 좌표를 받는다
+
+`측정 2026-10-29 · GBIS 웹/모바일 · Node 26.12 · Brave 1.98`
+
+**증상:** 공식 데스크톱 `searchTotal_2025.js`의 `searchAroundBusStationJson`을 `schBusAPI.action`에 호출하면 HTTP 200에 본문 `null`이 반환됐다. 공식 페이지를 Brave에서 열어 실제 지도 함수를 호출해도 같은 요청 경로였다. 기존 검색·정류장·노선 요청은 정상이며 charset 문제와 별개다. 데스크톱 검색 결과의 `lon/lat`은 EPSG:3857 값이다.
+
+**해결:** 현재 공식 모바일 페이지가 사용하는 `https://m.gbis.go.kr/api/aroundStation?locationX=<경도>&locationY=<위도>`는 WGS84를 받는다. `response.msgHeader.resultCode === 0`을 확인한 뒤 `response.msgBody.busStationAroundList`의 `stationId`, `stationName`, `x`, `y`를 읽는다. 미사 좌표로 실제 정류장 목록을 확인했다. `미정차` 지점도 포함되므로 승차 선택지에서는 제외한다. 제공된 distance와 별개로 좌표로 직선거리를 계산할 수 있으며, 이를 도보거리로 표시하지 않는다. 사용자 좌표를 영구 로그·저장소에 기록하지 않는다.
 
