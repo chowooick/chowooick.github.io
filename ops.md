@@ -11841,3 +11841,20 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** a complete committed source archive was 155,116,801 bytes (147.93 MiB), exceeding the archive sizes previously uploaded through the proxied panel in OPS-654. Deleting required historical content to fit that transport would change the requested release. OPS-654's Broken pipe does not itself prove a particular HTTP upload-limit response.
 
 **해결:** from busan.mac, authenticated SSH to the origin with the controller agent forwarded and the already-known host key pinned. A loopback-only local forward mapped a dedicated busan.mac port to the origin's 127.0.0.1:3000 Dokploy listener. Unauthenticated project.all returned 401; with the approved API key supplied through SSH stdin, deployment.all returned the current history and application.dropDeployment accepted the full 155,116,801-byte archive, returned true and created a running deployment. Keep the applicationId and prior-deployment guard, send the same multipart body, and use only the forward's loopback URL. No public listener, proxy setting or application source mode was changed. Close only this task's forward after verification. Build/test work stays on busan.mac; the origin connection is deployment control only.
+
+
+## OPS-721 — MissyUSA 제목 검색은 부분 문자열이라 LA는 fireplace, OC는 HELOC까지 잡는다
+
+`측정 2026-10-29 · www.missyusa.com talk1 · Node 26.12.1 · busan.mac`
+
+**증상:** LA·OC 지역 생활 Q&A 수집에서 제목 검색 결과를 지역 자료로 간주하면, `Fireplace 이거 어떨까요?`, `You tube family plan`, `요새 HELOC 해보신분` 같은 지역과 무관한 글도 들어온다. LA·OC·부팍·엘에이·오렌지 카운티 검색 533페이지의 13,280행을 원글 ID로 합치면 12,750개였다. 검색어 사이 중복도 있다.
+
+**해결:** 원글 ID로 먼저 중복을 제거하고, 본문·댓글까지 읽어 실제 지역 맥락과 유효한 답변이 있는지 따로 확인한다. 영문 LA·OC는 단어 경계를 검사하되 LAX·LACMA·UCLA·LAUSD와 현지 도시명도 포함한다. 한국어 검색어는 EUC-KR 바이트로 URL 인코딩한다. 부팍은 `%BA%CE%C6%C5`다. 목록의 댓글 수가 양수여도 삭제·감사 댓글뿐이면 답변 자료가 아니다.
+
+## OPS-722 — 과거 SIGNED_IN 로그와 현재 Google 인증은 다르며, 유효한 사이트 storageState는 별도로 살아 있을 수 있다
+
+`측정 2026-10-29 · Brave 1.98 · Playwright 1.58 · busan.mac`
+
+**증상:** `~/kc-test/sign-in.log`에는 과거 `SIGNED_IN`이 있지만 실제 Google 계정은 로그아웃 상태였다. 계정 선택 뒤 `/v3/signin/challenge/pk`에서 패스키를 요구했고 사이트의 자동 로그인 도우미는 새 세션을 얻지 못했다. 그래도 앞선 작업의 `private/production-state.json`에는 아직 만료되지 않은 사이트 세션 쿠키가 있었다.
+
+**해결:** 인증이 막혔다고 판단하기 전에 같은 테스트 호스트에 있는 기존 작업의 Playwright 상태 파일에서 대상 도메인과 쿠키 만료시각만 확인한다. 유효한 기존 쿠키를 격리된 테스트 컨텍스트에 `context.addCookies(state.cookies)`로 적용하니 해당 비공개 운영 페이지가 200으로 열렸다. Google 로그인 상태와 개별 사이트의 세션 수명은 별개다. 쿠키 값·상태 파일은 출력하거나 커밋하지 않고 다른 프로젝트/사용자에게 넘기지 않는다.
