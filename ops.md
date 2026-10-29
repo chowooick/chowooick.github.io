@@ -12687,3 +12687,11 @@ Playwright와 달리 조건 함수 안의 예외를 재시도하지 않는다. �
 - 새로고침을 부르는 클릭 뒤에는 조건을 `document.documentElement?.lang === 'en'`처럼 null에 안전하게 쓰거나, `waitForTimeout`과 `waitForLoadState`를 먼저 둔다.
 - 프로필 값을 바꾸는 검증은 복원을 `try/finally`에 넣는다. TaskSpace는 살아 있으므로 `taskSpace(<id>)`로 다시 들어가 복원할 수 있다.
 - `__Host-` 쿠키는 같은 origin 페이지에서 `document.cookie`로 넣으면 들어간다(localhost는 보안 컨텍스트, HttpOnly는 빠진다). Playwright 쪽 같은 제약은 OPS-211 참고.
+
+## OPS-803 — visibility 전환으로 드러낸 링크를 같은 Tab 입력이 건너뛴 사례
+
+`측정 2026-10-28 · busan.mac Brave / Playwright 1.58 계열`
+
+**증상:** 마우스 클릭 뒤 초점이 남아 있는 축소 컨트롤에서 Tab을 누르면, keydown에서 주변 링크의 숨김 속성을 해제했는데도 다음 링크로 초점이 이동하지 않았다. 링크를 감싼 요소에 `visibility: hidden`과 `transition: opacity .16s ease, visibility .16s`가 있었고, 회귀 검사에서 `expect(locator).toBeFocused() failed ... Received: inactive`가 발생했다. 포인터 호버와 이미 펼쳐진 상태의 키보드 탐색은 통과해 최초 전환만 따로 검사해야 발견됐다.
+
+**해결:** 표시와 숨김의 visibility는 즉시 바꾸고 opacity만 전환하도록 수정했다. 다른 동작 코드를 바꾸지 않고 같은 검사에서 Tab으로 다음 링크, Shift+Tab으로 중앙 버튼과 이전 링크, 컨트롤 이탈 후 축소까지 통과했다. 호버 확대가 되는지와 별개로, 마우스 클릭 후 키보드로 전환하는 경로를 검사한다. 이 결과는 위 Brave에서 확인한 사례이며 다른 엔진까지 확인한 결과는 아니다.
