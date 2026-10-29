@@ -12047,3 +12047,11 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** 운영 DB를 복사한 격리 PocketBase에서 15,809개 글의 전체 페이지를 빠르게 연속 조회하자 목록 API가 중간에 503, 이어진 정상 글 상세가 일시적으로 404를 반환했다. 개별 재조회는 200이었다. 복사본의 `_params.settings`에서 rateLimits가 켜져 있었고 `/api/` 규칙은 10초당 300회였다. 데이터 검증에서는 표시 불가능한 글이 없었다.
 
 **해결:** 운영 제한을 바꾸지 않고 검증 도구의 페이지 조회 간격을 150ms로 뒀다. 5개 지역 661개 API 페이지에서 전체 ID·수량 일치와 중복 없음, 대표 상세 5건, 다른 지역 404 및 비회원 접근 제한을 통과했다. 운영 복사본에서 일시적인 목록/상세 실패가 나면 데이터 누락으로 단정하기 전에 복사된 조회 제한과 검사 속도를 확인한다.
+
+## OPS-738 — Brave의 JavaScript 비활성 컨텍스트에서 클릭 안정성 대기가 멈추면 네이티브 키보드로 폼을 검증한다
+
+`측정 2026-10-29 · Playwright 1.63.0 · Brave · busan.mac`
+
+**증상:** 하나의 headless Brave에 로그인 컨텍스트를 여러 개 둔 검사에서 `javaScriptEnabled:false` 페이지의 일반 제출 버튼에 `locator.click`을 호출하자 `element is not stable` 대기 후 시간 초과했다. 폼 `checkValidity()`는 true이고 버튼은 enabled였지만 POST가 없었다. 독립 컨텍스트의 DOMContentLoaded 직후 클릭은 성공한 경우도 있어 원인을 폼 저장 코드로 단정할 수 없었다.
+
+**해결:** 페이지를 `bringToFront()` 하고 textarea에서 Tab 두 번으로 제출 버튼에 이동한 뒤 Enter로 실제 네이티브 제출했다. 서버의 POST 303과 GET 재진입, 댓글 표시를 확인했다. 삭제 확인 details는 summary Enter로 열고 삭제 버튼에 focus 후 Enter로 제출해 실제 삭제까지 통과했다. JavaScript로 submit을 실행하거나 actionability를 강제로 우회하지 않고 스크립트 없는 일반 양식 동작을 검증할 수 있다.
