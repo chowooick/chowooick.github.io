@@ -12022,3 +12022,11 @@ not delete the old Worker during the move. Verify Email Routing first with Gmail
 (250 for routed addresses, `550 5.1.1` for others; a full unauthenticated message gets `550 5.7.26`), and send the
 first Resend test only after a Gmail mail is `delivered`. Diff the two zones' settings (`/settings`,
 `/bot_management`, rulesets) before the move and decide each difference.
+
+## OPS-735 — Python 3.9의 구형 pip는 ReportLab 5.1을 설치해도 import에서 실패한다
+
+`측정 2026-10-29 · busan.mac · Python 3.9 venv · pip 21.2.4 · ReportLab 5.1.0 / 4.4.4`
+
+**증상:** Python 3.9 venv에서 의존성 설치는 성공했지만 ReportLab 5.1.0을 불러오자 `ImportError: reportlab requires 3.10+; other versions are unsupported.`로 PDF 제작이 중단되었다. pip 설치 성공만으로 런타임 호환성을 판단할 수 없었다.
+
+**해결:** 해당 격리 venv에서 `pip install reportlab==4.4.4`로 버전을 고정한 뒤 import와 PDF 제작이 정상 완료되었다. Python 3.9를 유지하는 작업은 검증된 버전을 고정하고 실제 import까지 확인한다.
