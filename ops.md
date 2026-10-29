@@ -12039,3 +12039,11 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** 경기버스정보 웹사이트가 사용하는 `/gbis2014/schBusAPI.action`에 `cmd=searchAllJson`, `searchKeyword=미사역`을 URL 인코딩한 POST로 보내면, Content-Type에 charset이 없을 때 HTTP 200과 `success:true`인데 정류장 결과는 0건이었다. 동일한 본문에 UTF-8 charset을 지정하자 미사역 정류장 9건이 반환됐다.
 
 **해결:** 공개 웹사이트의 실제 요청처럼 `Content-Type: application/x-www-form-urlencoded;charset=UTF-8`을 명시한다. 정상 HTTP 상태나 success만으로 한국어 검색 연결을 검증하지 말고, 알려진 정류장 이름과 정류장 번호를 함께 대조한다. 별도 API 키나 로그인으로 해결할 문제가 아니었다.
+
+## OPS-737 — 운영 PocketBase 복사본의 조회 제한은 대량 페이지 검사도 제한한다
+
+`측정 2026-10-29 · PocketBase 0.40.4 · Brave/Playwright · busan.mac`
+
+**증상:** 운영 DB를 복사한 격리 PocketBase에서 15,809개 글의 전체 페이지를 빠르게 연속 조회하자 목록 API가 중간에 503, 이어진 정상 글 상세가 일시적으로 404를 반환했다. 개별 재조회는 200이었다. 복사본의 `_params.settings`에서 rateLimits가 켜져 있었고 `/api/` 규칙은 10초당 300회였다. 데이터 검증에서는 표시 불가능한 글이 없었다.
+
+**해결:** 운영 제한을 바꾸지 않고 검증 도구의 페이지 조회 간격을 150ms로 뒀다. 5개 지역 661개 API 페이지에서 전체 ID·수량 일치와 중복 없음, 대표 상세 5건, 다른 지역 404 및 비회원 접근 제한을 통과했다. 운영 복사본에서 일시적인 목록/상세 실패가 나면 데이터 누락으로 단정하기 전에 복사된 조회 제한과 검사 속도를 확인한다.
