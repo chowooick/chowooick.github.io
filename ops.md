@@ -12001,7 +12001,7 @@ addresses.
 - **Gap 1, NS switch → activation:** the pending zone's nameservers answer the zone's raw records, not proxy
   addresses: `dig A @<new ns>` was empty and `AAAA` was `100::`. A resolver that fetched the new delegation in
   those 7 minutes could not reach the site, and macOS kept the empty `A` (curl `Could not resolve host`, then IPv6-only
-  `Couldn't connect`) for more than 5 minutes after activation. Public resolvers were fine in later checks.
+  `Couldn't connect`) at least 4 minutes after activation. Public resolvers were fine in later checks.
 - **Gap 2, deleting the old Worker:** the old zone becomes `moved`, but its nameservers keep answering for resolvers
   that cached the old delegation (`.com` NS TTL 2 days). `wrangler delete` of the old Worker removed its
   custom-domain records there, so the old nameservers answered NOERROR without an address; an ISP resolver cached
