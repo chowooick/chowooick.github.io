@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T17:40:32Z · 소스 커밋 `1a16448` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T17:49:08Z · 소스 커밋 `f1da7f7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21958,4 +21958,12 @@ runtime error.
 **증상:** 목록에 답글 301개인 idx=4793247의 본문 iframe은 `board_reply_list.asp`를 연다. 기본 요청은 HTTP 200이지만 실제 댓글 DOM은 50개뿐이었다. `fl=2`는 100개를 반환했고 여전히 더보기가 남았다. `fl=8`은 301개 전체를 반환했다. `page=`나 `board_reply.asp`만 검사하는 수집기는 조용히 첫 50개로 요약한다.
 
 **해결:** 더보기의 `bbs_bu_more.gif`를 가진 링크는 `javascript:location.replace('board_reply_list.asp?...&fl=3');` 형태다. JavaScript를 실행하지 말고 같은 게시글·같은 출처의 URL만 검증해 따라간다. `fl`은 페이지 번호가 아니라 누적 50개 단위다. 목록 답글 수로 초기 fl을 잡더라도 새 댓글이 늘 수 있으므로 더보기가 없어질 때까지 확인한다. 최종 DOM 하나에서 모든 댓글·대댓글을 파싱하고 완전 수집 여부를 남긴다. 회원 인증은 계속 필요하며 기본 HTTP 200만으로 전체 답글을 읽었다고 판단하지 않는다.
+
+## OPS-733 — Workers fetch의 redirect: error는 Node 검사 후에도 실행 시 실패한다
+
+`측정 2026-10-29 · Wrangler 4.135.0 / Miniflare / Workers compatibility_date 2026-09-18`
+
+**증상:** 공식 사이트의 읽기 전용 조회가 Node fetch에서는 성공하고 Wrangler dry-run도 통과했지만, 같은 fetch 옵션을 Worker에서 실행하면 `Invalid redirect value, must be one of "follow" or "manual" ("error" won't be implemented since it does not make sense at the edge; use "manual" and check the response status code).` 오류로 실패했다. 실제 리디렉션 응답이 없어도 `redirect: "error"` 옵션 자체가 거부됐다.
+
+**해결:** 외부 원문의 자동 리디렉션을 막을 때는 `redirect: "manual"`을 지정하고 3xx 및 기타 비정상 상태를 명시적으로 거부한다. Node 검사와 번들 성공만으로 판단하지 말고 Miniflare/실제 Worker 경로에서 응답을 확인한다. 같은 공식 두 원문을 manual 옵션으로 조회한 Worker 응답은 200으로 확인했다.
 
