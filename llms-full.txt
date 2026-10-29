@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T04:14:04Z · 소스 커밋 `7849141` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T05:04:19Z · 소스 커밋 `59669f1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21786,4 +21786,13 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 **증상:** constructing `new Miniflare({modules:true, scriptPath, bindings, assets})` raises `MiniflareCoreError [ERR_VALIDATION]: Unexpected options passed to new Miniflare() constructor`, with `Unrecognized keys` and a missing `workers` array. Nesting the legacy options under `workers` then reports a missing `workers[0].config`. After converting the V4 options, an assets worker with `run_worker_first:true` answers `Error: Fetch for user worker without having a user worker binding`.
 
 **해결:** the installed package exports `convertV4MiniflareOptions`; pass its result to the Miniflare constructor. For an assets-backed Worker, also set legacy `assets.routerConfig.has_user_worker: true` before conversion. With `assets.binding`, `assetConfig.html_handling: "none"` and `not_found_handling: "none"`, the real Worker, static fetch binding, HTMLRewriter and synthetic `dispatchFetch(..., {cf:...})` hints all passed a Korean Brave integration flow on a loopback-only harness. Check the installed package types rather than assuming the stable V4 constructor API.
+
+
+## OPS-718 — Renewing a local signed site cookie leaves its embedded fake PocketBase token expired; member pages open but the board composer has no member
+
+`측정 2026-10-28 · Node 26.12.1 · busan.mac · local HTTP database fixture / nested PocketBase-shaped pbToken`
+
+**증상:** a long-lived browser fixture renewed the outer signed session's `iat`/`exp` and cookie `expires`, so protected member pages still returned 200. The embedded synthetic `pbToken` kept its old `exp`. The rendered `data-member-id` was empty; Alpine jobs state had `authUser = null`, and tapping 글쓰기 left `panel = ''` with `지금은 글을 올릴 수 없어요. 잠시 후 새로 고침해 주세요.` The same test passed after renewing the embedded fixture token expiry as well: member present, `panel = 'compose'`, empty error. The visible header and most read-only page checks had passed before this correction.
+
+**해결:** generate a fresh local-only fixture session with both expiry layers. For a controlled synthetic token against a local HTTP stand-in, renew its claims before sealing the outer cookie; explicitly restrict cookie domains to localhost/127.0.0.1. Never rewrite a real signed PocketBase JWT: obtain a fresh token from its local test database instead. Assert a non-empty rendered member id or the authenticated board state before testing member mutations; HTTP 200 on the protected shell alone does not prove that the inner member identity is valid.
 
