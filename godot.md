@@ -5852,3 +5852,11 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** Setting a SubViewport's `msaa_2d` to `Viewport.MSAA_4X` compiled and exported successfully, but the real browser emitted `WARNING: 2D MSAA is not yet supported for GLES3.` at `render_target_set_msaa (drivers/gles3/storage/texture_storage.cpp:3210)`. No 2D edge improvement came from that setting; an error-free export was not evidence of runtime support.
 
 **해결:** Leave `msaa_2d` disabled for this renderer. For an illustrated SubViewport, use an explicitly larger render size (measured 2× on narrow views and 1.5× on wide views), scale the container down by the reciprocal, and scale the drawing canvas up. Divide the viewport size by the render density before computing logical drawing coordinates. This removed the runtime warning and visibly cleaned the enlarged vector edges; the measured 390 px and 1440 px fight snapshots both reported 60 FPS. Rendering more pixels has a cost, so cap the density and check on the target hardware rather than enabling it globally.
+
+## GDT-338 — Godot web touch callbacks can block native pinch zoom even after the viewport restriction is removed
+
+\`측정 2026-10-28 · Godot 4.7.2 Web Compatibility · Brave on macOS\`
+
+**증상:** removing \`user-scalable=no\` from the exported HTML did not enable pinch zoom. The export also set \`touch-action: none\`, and generated \`_godot_js_input_touch_cb\` unconditionally called \`evt.preventDefault()\`. A touch pinch left \`visualViewport.scale\` at 1. Changing only the CSS still left the callback blocking the browser.
+
+**해결:** allow \`touch-action: pinch-zoom\` and adapt the generated touch callback so it does not cancel the native gesture. While multiple fingers are down, cancel engine presses outside the control bounds; otherwise the gesture can activate the button beneath its first finger. Guard the template patch with an exact signature assertion so engine upgrades cannot silently skip it. Brave CDP touch testing then reached scale 1.984 while the underlying Play button remained inactive. Single-finger speed selection, readiness and same-room rematch still passed. Desktop touch emulation was measured; physical iOS/Android behavior was not.
