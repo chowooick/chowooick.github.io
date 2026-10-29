@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-29T16:54:25Z · 소스 커밋 `d6137f6` · 이 파일은 자동 생성물이다.
+생성 2026-10-29T17:10:20Z · 소스 커밋 `5c5fce3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -21933,4 +21933,12 @@ responses. With the same provider and local bindings, the authentication prepare
 endpoint then returned HTTP 200 and opened Google's account chooser. Do not infer
 provider downtime from a generic catch response without recording the underlying
 runtime error.
+
+## OPS-730 — macOS Bash 3.2의 빈 옵션 배열은 Android 재빌드를 막고 이전 APK를 남길 수 있다
+
+`측정 2026-10-29 · macOS Bash 3.2.57 / Godot 4.7.2 Android export`
+
+**증상:** `set -u`인 빌드 스크립트가 첫 내보내기에서는 성공했지만, Android 템플릿이 이미 있는 두 번째 실행에서 `first[@]: unbound variable`로 Godot export 전에 멈췄다. 선택적 템플릿 설치 옵션 배열 first가 비어 있었기 때문이다. AAB는 빌드 시작에 삭제돼 없었고 이전 APK는 남아 있어, APK 존재만 확인하면 새 빌드로 오판할 수 있었다.
+
+**해결:** 이 선택적 인자에는 배열 대신 `set --`로 위치 인자를 비우고, 필요할 때만 `set -- --install-android-build-template`를 넣은 뒤 인용한 `"$@"`로 전달했다. 같은 캐시·템플릿이 있는 상태에서 재빌드가 성공했고, 새 AAB와 APK의 패키지·versionCode·서명 검사를 통과했다. 파이프의 조기 종료 영향을 피하려면 aapt2 badging 전체를 변수에 받은 뒤 버전을 검사한다. 완료 판정은 두 산출물의 존재와 기대 versionCode까지 묶는다.
 
