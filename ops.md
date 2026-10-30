@@ -12411,3 +12411,12 @@ Also measured:
 - Compound selectors with a comma are rejected; `loc=role:button[name="…"]` is the reliable form inside a dialog.
 
 **해결:** set the override, read `innerWidth`, set it again multiplied by `width / innerWidth`, and fail the check when `innerWidth` differs from the target. For a Cloud console key, call `Network.enable` with larger buffers before clicking, then read `privateKeyData` (base64 of the key JSON) from the `iam.clients6.google.com` response with `Network.getResponseBody`, write it straight to a private file without printing it, and delete any orphan key from the earlier attempts.
+
+
+## OPS-776 — AWS에서 같은 Workers provider를 Python urllib로 읽으면 403, 실제 Node fetch로 읽으면 200일 수 있다
+
+`측정 2026-10-30 · Node 24.21.0 · Python urllib · Cloudflare Workers Free`
+
+**증상:** 같은 AWS 호스트에서 같은 저장된 bearer token과 같은 `/ai` provider 경로를 사용했지만 Python `urllib.request`는 45–81ms에 HTTP 403, 실제 운영과 같은 Node `fetch`는 HTTP 200을 반환했다. Worker tail에는 Python 403의 invocation이 없었고, Node 요청은 `outcome: ok`, CPU 0–1ms로 기록됐다. edge 차단의 정확한 원인은 확인하지 않았다.
+
+**해결:** 진단용 클라이언트의 403 하나만으로 토큰 분실·권한 철회를 단정하거나 키를 회전하지 않는다. 먼저 운영과 같은 HTTP 클라이언트로 재현하고, 동일한 배포 UUID의 Worker invocation 도달 여부·상태·CPU를 구분한다. raw tail에는 요청 헤더가 들어갈 수 있으므로 비공개로 보관하고 path·outcome·CPU·version만 추출해 공유한다.
