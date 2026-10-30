@@ -12177,3 +12177,12 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** a check tapped the centre of a ball on a canvas and expected the "kick" answer, but got the answer for a different control, only at 320 px. `document.elementFromPoint(x, y)` at the same point returned the `CANVAS`, and the tap's coordinates were exact (a capture `pointerup` listener logged `clientX`/`clientY` 250, 588), yet `event.target` was the `.cs-drop` button standing beside that spot. The same run at 390 px passed because the ball sat elsewhere, so it looked like a width bug.
 
 **해결:** log `event.target` from a capture listener before believing `elementFromPoint`. Touch adjustment retargets a tap to a tappable element within the finger's radius, on canvases too. In a check, tap the target farthest from any control, not simply the biggest one.
+
+## OPS-753 — Google account identifier fields can be text inputs with a tokenized username autocomplete value
+
+\`측정 2026-10-30 · Google Ad Manager Google sign-in web UI (unversioned) · Brave on busan.mac\`
+
+**증상:** On the Google Ad Manager sign-in page, the visible account field was \`<input id="identifierId" type="text" name="identifier" autocomplete="username webauthn">\`. Neither \`input[type="email"]\` nor the exact-value selector \`input[autocomplete="username"]\` matches it. A helper guarded by \`isVisible()\` silently skipped account entry and kept returning the empty identifier page.
+
+**해결:** Wait for the visible \`#identifierId\`, or use the autocomplete token selector \`input[autocomplete~="username"]\`. Enter the known account identifier and inspect the resulting challenge separately. In this measurement, entering the identifier correctly reached Google's passkey challenge; an empty identifier page was a selector problem, not evidence that the account was unavailable.
+
