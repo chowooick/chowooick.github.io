@@ -5997,3 +5997,13 @@ The model was visible again in the native 320 x 780 capture at UI scale 1.3 afte
 **증상:** Godot에서 CallReducer.args를 JSON 배열로 직접 만들 때 Rust의 Identity 인자 자리에 64자리 hex 문자열을 넣으면 `invalid type: string ..., expected a 1-element tuple`로 실패했다. 단순히 오류 알림이 왔는지만 보는 권한 테스트는 이 파싱 오류를 권한 거부로 잘못 통과시킬 수 있었다.
 
 **해결:** 이 raw JSON 클라이언트에서는 reducer 입력을 String으로 받고 서버에서 `Identity::from_hex`로 파싱한 뒤 실제 회원·수신자 권한을 검사했다. 실제 수신자 전달, 다른 회원에게 비노출, 비회원·다른 방·음성 미참여 거부를 다시 확인했다. 실패 테스트는 오류의 유무뿐 아니라 기대한 권한 거부 이유까지 검증한다.
+
+## GDT-354 — Android JNISingleton methods need Object.call when used through a GDScript callback adapter
+
+`측정 2026-10-30 · Godot 4.7.2-stable · Android 35 arm64 emulator · Google Mobile Ads 25.5.0`
+
+**증상:** the Android singleton was retained on the app manager and its initialization signal arrived, but a bound GDScript Callable targeting its Java load method failed before the SDK call:
+Attempt to call function 'JNISingleton::load_rewarded (Callable)' on a null instance.
+A RefCounted SDK mock passed the same adapter tests, so it did not reveal the native bridge failure.
+
+**해결:** point the adapter's Callable at a GDScript Node method, and have that method invoke the retained singleton with Object.call, for example _plugin.call("load_rewarded", unit). Use the same wrapper for show. On the same emulator, the wrapped call loaded Google's test rewarded ad in 3.3 seconds, produced one real SDK impression, and returned to the game with no script error. Keep an Android test-ad smoke check in addition to the SDK mock.
