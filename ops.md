@@ -12452,7 +12452,7 @@ A related trap on the same device: a deploy answers 502 for a few seconds, and a
 
 **해결:** in the service worker, answer a navigation with status ≥ 500 from the last good copy or the offline page, and let the offline page poll and return by itself.
 
-## OPS-779 — Driving Ego Lite on another Mac over ssh: `ego-browser` is off PATH, script paths are the remote's, and a task space shows no window to the person watching
+## OPS-780 — Driving Ego Lite on another Mac over ssh: `ego-browser` is off PATH, script paths are the remote's, and a task space shows no window to the person watching
 
 `측정 2026-10-30 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · ssh to a Mac with a signed-in desktop session`
 
