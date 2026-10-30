@@ -12451,3 +12451,13 @@ Show the screen from the head script rather than from React: it sets an attribut
 A related trap on the same device: a deploy answers 502 for a few seconds, and an installed app has no reload control, so Cloudflare's error page traps the user until the app is reopened.
 
 **해결:** in the service worker, answer a navigation with status ≥ 500 from the last good copy or the offline page, and let the offline page poll and return by itself.
+
+## OPS-779 — Driving Ego Lite on another Mac over ssh: `ego-browser` is off PATH, script paths are the remote's, and a task space shows no window to the person watching
+
+`측정 2026-10-30 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · ssh to a Mac with a signed-in desktop session`
+
+**증상:** `ssh host 'zsh -lc "ego-browser …"'` answered `command not found` on a Mac where Ego Lite was installed and running: onboarding links the command into `~/.local/bin`, which the login shell did not have on PATH. After that was fixed, a person watching the screen could not find a page the agent had handed off: `handOff()` keeps the page inside a task space, and the space appears as neither a window title nor a tab they recognise.
+
+`ego-browser nodejs` reads its script from stdin across ssh and reaches the desktop session's running app, so the browser, its sign-ins and its profiles are the remote Mac's. The script runs on that Mac too: every path in it is a remote path, and `127.0.0.1` is the remote host.
+
+**해결:** run `ssh host 'export PATH="$HOME/.local/bin:$PATH"; ego-browser nodejs' < script.js`. When a person must act in the page, open it as an ordinary tab with `open -a "ego lite" "<url>"`, which landed in the user's own space, and confirm it from `listTaskSpaces()` (`recentTabTitles`). `page.evaluate` has a fixed 15 s limit, which a heavy axe run can pass on a loaded host: retry it after a reload.
