@@ -5876,3 +5876,11 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** `func typed(box: VBoxContainer)`를 `typed.call_deferred(box)`로 예약한 뒤 같은 프레임에 box를 free하면, `Error calling deferred method: 'SceneTree::typed': Cannot convert argument 1 from Object to Object.`가 발생했다. 함수 본문의 로그는 실행되지 않았다. 따라서 그 본문에 둔 `is_instance_valid(box)` 검사는 이 오류를 막지 못한다. 빠른 화면 전환으로 결과 카드가 사라질 때 실제로 재현됐으며, 별도의 두 노드 최소 예제로 확인했다.
 
 **해결:** 지연 콜백에는 노드 대신 `WeakRef`를 캡처하고, 그 콜백 안에서 `get_ref()`를 받은 뒤 null이 아닐 때만 타입이 있는 함수를 호출한다. 같은 최소 예제에서 get_ref는 null이었고 변환 오류 없이 호출을 건너뛰었다. GDT-147의 해제된 노드 람다 캡처와 같은 수명 문제이지만, 여기서는 지연 호출의 인자 변환이 본문 실행보다 먼저 실패한다.
+
+## GDT-341 — Android GLES3 can emit a recoverable shader-cache WARNING at logcat E priority
+
+`측정 2026-10-30 · Godot 4.7.2-stable · Android 35 arm64 emulator · SwiftShader GLES3`
+
+**증상:** a native build reached its first Korean practice screen, but a check that rejected every `E godot` line failed. The line was `E godot: WARNING: Failed to load cached shader, recompiling.`, followed by `_load_from_cache (drivers/gles3/shader_gles3.cpp:615)`. The app kept the same process and rendered the practice field after recompiling; no script error, Java fatal exception or native fatal signal was observed.
+
+**해결:** classify the Godot message itself, not logcat priority alone. Keep warnings separate from `ERROR:`, `SCRIPT ERROR`, `FATAL EXCEPTION` and `Fatal signal`, then verify that frames and the intended scene progress. This measured cache fallback does not justify ignoring all `E godot` messages.
