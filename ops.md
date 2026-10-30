@@ -12341,3 +12341,73 @@ The ID capture bounds each pass; it is not a multi-query database transaction. N
 **증상:** A sentence-audio pipeline used `silenceremove` with an 80 ms leading and 200 ms trailing voiced-duration threshold at -45 dB, reversing the stream for trailing removal. Applied to the isolated English word `who` from en-US-JennyNeural, it produced a 356-byte MP3 instead of usable speech. A successful TTS response and ffmpeg exit did not establish audible content.
 
 **해결:** For short option clips, reduce both voiced-duration thresholds to 10 ms and the silence cutoff to -60 dB before loudness normalization and a 60 ms tail pad. Decode every resulting file and check actual sample duration and peak amplitude. The revised set decoded 445 unique English/Japanese/Spanish clips, all above 150 ms and 0.01 peak amplitude; observed durations were 0.183–1.711 s. Keep full sentence audio as a separate asset instead of overwriting it.
+
+## OPS-770 — A web app manifest behind Cloudflare Access is refused by the CSP until the link asks for credentials; Next.js only sets that on Vercel previews
+
+`측정 2026-10-30 · Next.js 16.4.3 · Cloudflare Access self-hosted app · Ego Lite (Chromium)`
+
+**증상:** every page of an Access-gated app logged a blocked `Manifest` request with `blockedReason: "csp"`, and `Page.getAppManifest` had no data, while the page itself loaded normally. Nothing in the app looked wrong and no test had failed, because a local server has no Access in front of it.
+
+Browsers fetch `<link rel="manifest">` without cookies unless told otherwise. Access answers the cookie-less request with a redirect to the team's login host, which `manifest-src 'self'` refuses. Next.js generates the link from `app/manifest.ts` and adds `crossOrigin="use-credentials"` only when `VERCEL_ENV === "preview"` (`dist/lib/metadata/metadata-elements.js`), so no metadata option reaches it.
+
+**해결:** delete `app/manifest.ts`, serve `public/manifest.webmanifest`, and write `<link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />` in the root layout. `Page.getAppManifest` then returned the manifest with zero errors. Check it through the real sign-in: a fixture server cannot show this.
+
+## OPS-771 — `Cache-Control: no-transform` also turns off Next.js gzip, so OPS-490's beacon fix sends every response uncompressed
+
+`측정 2026-10-30 · Next.js 16.4.3 standalone behind Cloudflare · 170 KB JSON document`
+
+**증상:** a JSON document polled by the browser crossed the network at its full size (170,297 bytes, no `content-encoding`) although both Next.js and Cloudflare normally compress it. A global header rule had added `no-transform` to stop the Web Analytics beacon (OPS-490).
+
+`no-transform` is honoured by both layers: Cloudflare leaves the body alone and the `compression` middleware inside Next.js skips the response too.
+
+**해결:** keep `no-transform` on HTML only, which is the only type the beacon touches, and leave it off JSON routes. The same document then arrived as 19,002 bytes of zstd. A 404 built in `proxy.ts` needs `no-transform` of its own: header rules in `next.config` do not reach it, and the beacon is injected there too, which shows up as a `Script` blocked by CSP on that page only.
+
+## OPS-772 — Nakama `GET /v2/match` answers `{}` when no match is open, so "no `matches` key" means zero, not failure
+
+`측정 2026-10-30 · Nakama behind nginx · five game servers · HTTP 200`
+
+**증상:** a collector counted players as `r.ok && body.matches`, and five idle game servers showed "unknown" with a logged error of `status 200`; one server with an open match looked fine. Protobuf JSON omits an empty list, so an idle server sends `{}`.
+
+**해결:** treat a parsed 200 as success and read `matches ?? []`. Check the same way anywhere a Nakama list is read: an empty repeated field is absent, not `[]`.
+
+## OPS-773 — Play Console service account: releases and vitals work right after the invite, the reports bucket does not; `apps:search` is the real app list
+
+`측정 2026-10-30 · Android Publisher API v3 · Play Developer Reporting API v1beta1 · account with 4 apps`
+
+**증상:** a service account invited with the two read-only account permissions could call `applications/<pkg>/tracks/production/releases` and `apps:search` within a minute, while `storage.objects.list` on `pubsite_prod_<developer id>` answered 403 for the same account. The bucket name was right: Play Console's "copy Cloud Storage URI" returned exactly `gs://pubsite_prod_<developer id>/stats/installs/`.
+
+Other measured behaviour:
+
+- `tracks.releases.list` needs no edit session, so a view-only account can read `RELEASE_LIFECYCLE_STATE_*`. A track with no release answers 204 with an empty body.
+- A package the account does not hold answers 404 `Package not found`. Five packages in a hand-kept list were not on the account; `apps:search` and the console's app list agreed on the real four.
+- Install counts are not in the Reporting API: they exist only as monthly CSVs in the bucket.
+- `crashRateMetricSet:query` for low-traffic apps answers 200 `{}`: no rows, not zero. DAILY freshness ended 8 days back on the same day that HOURLY ended about 2 days back.
+
+**해결:** read the end date from the metric set's `freshnessInfo` instead of guessing, show an empty answer as "too few users", and treat a 403 from the bucket as a pending permission rather than a fault. Use `apps:search` as the authority on which apps exist.
+
+## OPS-774 — AdMob API without a human: production status keeps the refresh token, and the consent can be approved in a signed-in browser
+
+`측정 2026-10-30 · AdMob API v1 · Google Auth Platform · desktop OAuth client · Ego Lite`
+
+**증상:** AdMob has no service accounts, and an OAuth app left in "Testing" loses its refresh token after 7 days, which would stop a collector every week.
+
+Setup that worked in one pass from a signed-in browser: a new Cloud project, enable the API, Auth Platform with external audience, branding with home, privacy and terms links and an authorized domain (the audience page asks for these before it publishes), publish to production, then a desktop client. With `admob.report` the consent screen listed "AdMob 데이터 보기" and needed one click. No unverified-app warning appeared. The loopback redirect needs no listener: the browser shows a connection error, and the `code` is in the tab's URL.
+
+`networkReport:generate` returns one JSON array of `header`, `row`… and `footer`, with earnings in `microsValue` and dates as `YYYYMMDD` in the account's reporting zone.
+
+**해결:** use a project of its own so the consent screen of a production sign-in project is never touched, request `admob.report` rather than `admob.readonly`, use PKCE, and keep the client and refresh token on the host only.
+
+## OPS-775 — Ego Lite testing traps: per-host zoom divides emulated width, `screenshot` crops to the window, Cloud Console key downloads never reach `waitForEvent`
+
+`측정 2026-10-30 · Ego Lite 0.6.2.5 · ego-browser 2.2.0`
+
+**증상:** a page emulated at 1440 px showed its phone layout and passed every overflow check. `innerWidth` was 960: the browser held a 150 % zoom for that host, which divides the width given to `Emulation.setDeviceMetricsOverride`. The override and any check built on it look correct unless `innerWidth` itself is asserted.
+
+Also measured:
+
+- `page.screenshot`, `fullPage` included, crops to the real window (635 px wide here). `Page.captureScreenshot` with `captureBeyondViewport` and a `clip` captures the emulated width. Under zoom, multiply the clip and set `scale` to 1/zoom.
+- `Runtime.exceptionThrown` includes errors thrown by installed extensions, with a `chrome-extension://` URL; they are not the page's.
+- Creating a service-account key in Google Cloud console creates the key, but `page.waitForEvent("download")` timed out and no file appeared; hooking `URL.createObjectURL` caught nothing either. Each attempt leaves an active key whose private half is gone.
+- Compound selectors with a comma are rejected; `loc=role:button[name="…"]` is the reliable form inside a dialog.
+
+**해결:** set the override, read `innerWidth`, set it again multiplied by `width / innerWidth`, and fail the check when `innerWidth` differs from the target. For a Cloud console key, call `Network.enable` with larger buffers before clicking, then read `privateKeyData` (base64 of the key JSON) from the `iam.clients6.google.com` response with `Network.getResponseBody`, write it straight to a private file without printing it, and delete any orphan key from the earlier attempts.
