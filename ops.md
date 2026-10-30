@@ -12213,3 +12213,12 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** `Page.getLayoutMetrics` reported `cssVisualViewport.zoom = 2.5`. A device-metrics override of width 1440 produced `innerWidth = 576`. Compensating the override by that measured zoom produced the intended `innerWidth = 1440`, but `page.screenshot({scale:"css"})` still saved a 576×400 PNG, clipping a 1440×1000 CSS viewport. At 390 CSS px, it saved 156×338 instead of 390×844. A separate `raw:true` capture timed out with `CdpRequestTimeoutError: CDP request timed out: Page.captureScreenshot`. A successful capture call alone did not prove a correctly framed screenshot.
 
 **해결:** Preserve the user's imported zoom. Within the same round, set `Emulation.setDeviceMetricsOverride` width/height to the desired CSS width/height multiplied by the measured zoom and verify `innerWidth`/`innerHeight`. Capture with `Page.captureScreenshot`, `fromSurface:true`, `captureBeyondViewport:true`, and `clip:{x:0,y:0,width:desiredWidth*zoom,height:desiredHeight*zoom,scale:1/zoom}`. This produced exact 1440×1000 and 390×844 PNGs, and visual review confirmed the full intended layouts. Clear the temporary device-metrics override afterward. Re-measure zoom and dimensions; do not assume 2.5 on another profile or version.
+
+
+## OPS-757 — Service-worker navigation timing looked uncompressed although the origin was serving zstd
+
+`측정 2026-10-30 · Ego Lite 0.6.2.5 / Chromium CDP · existing navigation service worker`
+
+**증상:** An authenticated navigation reported 228,748 decoded body bytes and 229,048 transfer bytes for a protected document, suggesting no HTML compression. However, a same-origin fetch reported `Content-Encoding: zstd`, and the origin Caddy configuration already enabled `encode zstd gzip`. Treating the initial navigation timing alone as wire size would have produced a false compression diagnosis.
+
+**해결:** For a controlled network measurement, use target-scoped `Network.setBypassServiceWorker({bypass:true})` and explicitly distinguish HTTP-cache-disabled from HTTP-cache-enabled observations. In the measured page, the bypassed cold observation reported about 47 KB encoded versus 229 KB decoded; compression was working. Preserve the existing browser cookies and caches instead of clearing them, and restore bypass/cache overrides afterward. Record both encoded and decoded sizes, service-worker participation and cache mode; do not equate resource `load` with first-contentful paint or application interactivity.
