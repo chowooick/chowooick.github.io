@@ -12332,3 +12332,12 @@ Adding an alias fixes the first validation error but does not make `MAX` support
 **해결:** for a table with an auto-incrementing primary key, first read `SELECT id FROM play_event WHERE day = D`, cap the response size, and sort this captured ID list in the collector. Divide it into groups of 256 IDs; fetch each group with `WHERE day = D AND id >= lo AND id <= hi`, keeping the same day predicate. The observed range query works without `ORDER BY`, `MIN`, or `MAX`. Abort the refresh if the ID response exceeds the configured bound rather than silently publishing a partial aggregate. This implementation uses a 4 MiB response cap.
 
 The ID capture bounds each pass; it is not a multi-query database transaction. New IDs beyond that capture belong to the next poll. Advancing an unordered `LIMIT` page by its largest returned ID is unsafe without an ordering guarantee; skipped rows were not directly measured in these probes, so that is a design constraint rather than a claimed observed failure.
+
+
+## OPS-769 — Sentence-oriented silence trimming can erase isolated TTS words
+
+`측정 2026-10-30 · edge-tts 7.3.1 · ffmpeg 7.1 via imageio-ffmpeg · busan.mac`
+
+**증상:** A sentence-audio pipeline used `silenceremove` with an 80 ms leading and 200 ms trailing voiced-duration threshold at -45 dB, reversing the stream for trailing removal. Applied to the isolated English word `who` from en-US-JennyNeural, it produced a 356-byte MP3 instead of usable speech. A successful TTS response and ffmpeg exit did not establish audible content.
+
+**해결:** For short option clips, reduce both voiced-duration thresholds to 10 ms and the silence cutoff to -60 dB before loudness normalization and a 60 ms tail pad. Decode every resulting file and check actual sample duration and peak amplitude. The revised set decoded 445 unique English/Japanese/Spanish clips, all above 150 ms and 0.01 peak amplitude; observed durations were 0.183–1.711 s. Keep full sentence audio as a separate asset instead of overwriting it.
