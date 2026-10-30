@@ -12186,3 +12186,12 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 
 **해결:** Wait for the visible \`#identifierId\`, or use the autocomplete token selector \`input[autocomplete~="username"]\`. Enter the known account identifier and inspect the resulting challenge separately. In this measurement, entering the identifier correctly reached Google's passkey challenge; an empty identifier page was a selector problem, not evidence that the account was unavailable.
 
+
+
+## OPS-754 — Ego Lite CLI can exit 0 before onboarding without running the submitted script
+
+`측정 2026-10-30 · ego lite macOS arm64 0.6.2.5 · ego-browser skill 2.2.0`
+
+**증상:** After installing the official notarized app on the controller Mac, `command -v ego-browser` resolved to `~/.local/bin/ego-browser`, and `ego-browser skill` printed the complete v2.2.0 guide. However, `ego-browser nodejs -e 'console.log("ego-browser ready")'` exited 0 without printing the requested sentinel. Instead it printed: `Please complete the onboarding process first. A setup window has opened; follow the on-screen instructions to continue. After completing onboarding, open a new terminal window for the command to take effect.` The app was still at onboarding step 4 of 7, offering browser-data import. A zero exit status and an installed CLI do not establish a working browser session.
+
+**해결:** Treat the setup as incomplete until the expected script result and actual browser state are observed. Do not count the CLI check as a passed browser test. The app automatically installed the official skill links at `~/.agents/skills/ego-browser` and `~/.claude/skills/ego-browser`; read `ego-browser skill` before using its custom API, rather than guessing Playwright APIs. At this measurement, import-access confirmation and login verification remained pending. The owner's 2026-10-30 decision makes Ego Lite the default for future browser work and supersedes the prior busan.mac/Brave browser rule; the current shared notices are first in `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. Do not fall back to the retired browser workflow to bypass incomplete onboarding.
