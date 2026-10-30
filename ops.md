@@ -12222,3 +12222,82 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** An authenticated navigation reported 228,748 decoded body bytes and 229,048 transfer bytes for a protected document, suggesting no HTML compression. However, a same-origin fetch reported `Content-Encoding: zstd`, and the origin Caddy configuration already enabled `encode zstd gzip`. Treating the initial navigation timing alone as wire size would have produced a false compression diagnosis.
 
 **해결:** For a controlled network measurement, use target-scoped `Network.setBypassServiceWorker({bypass:true})` and explicitly distinguish HTTP-cache-disabled from HTTP-cache-enabled observations. In the measured page, the bypassed cold observation reported about 47 KB encoded versus 229 KB decoded; compression was working. Preserve the existing browser cookies and caches instead of clearing them, and restore bypass/cache overrides afterward. Record both encoded and decoded sizes, service-worker participation and cache mode; do not equate resource `load` with first-contentful paint or application interactivity.
+
+## OPS-758 — Uptime Kuma 1.23: an API key for `/metrics` can be made without the UI (bcrypt row in `api_key` + `apiKeysEnabled`); Basic auth, any user name, the key as the password
+
+`측정 2026-10-30 · Uptime Kuma 1.23.16 on misa (Docker) · sqlite3 and node inside the container`
+
+**증상:** a collector on another host needed Kuma's monitor states and response times. `/metrics` answered `401` to a freshly inserted API key, and the only Kuma account's password was not at hand. Kuma's `apiAuth` uses the API-key authorizer **only when the setting `apiKeysEnabled` is true**; otherwise `/metrics` wants the user's password.
+
+**해결:** inside the container, `node -e` with `bcryptjs.hashSync(clear, 10)` and `@louislam/sqlite3`: `insert into api_key (key, name, user_id, created_date, active, expires) values (<hash>, <name>, 1, datetime('now'), 1, NULL)`; the usable key is `uk<id>_<clear>` (write it straight to a 0600 file). Then `insert into setting (key, value, type) values ('apiKeysEnabled', 'true', 'general')` (the settings cache refreshes within about a minute; no restart). `curl -u "anything:uk<id>_<clear>" https://uptime.<domain>/metrics` answered 200 with `monitor_status{monitor_name=…}` (1 up, 0 down, 2 pending, 3 maintenance) and `monitor_response_time`. From the Kuma host itself add `--resolve uptime.<domain>:443:127.0.0.1` (OPS-421). Note for the record: Kuma runs on misa (`uptime.mnori.com`, unproxied A record), not on nj2 as a brief of the same day said.
+
+## OPS-759 — MNORI's Nakama stacks bind the console to 127.0.0.1; from another container only the client API through the game's nginx works (`/nakama/` or `/v2/`), and "players now" is the match list under a device-auth probe account
+
+`측정 2026-10-30 · Nakama 3.37 containers on nj1 (battlemarble, cardbattle, farm, kids, legend, monsterworld) · docker run --network <stack>_backend curl`
+
+**증상:** `http://<nakama container>:7351/v2/console/authenticate` from a container on the stack's backend network gave connection refused while `:7350/healthcheck` answered 200. `/nakama/data/config.yml` has `console: address: 127.0.0.1`. The console user is the game's name (`--console.username battlemarble`), not `admin`.
+
+**해결:** read the stack's command line for `--socket.server_key=` (it is the key every game client ships), then through the public hostname: bm/cardbattle/farm/kids proxy `/nakama/` → `nakama:7350`, mw and legend proxy `/v2/`, `/ws` and `/healthcheck` at the root (legend's web container has no `/nakama/`). `POST …/v2/account/authenticate/device?create=true&username=<probe>` with Basic `<server_key>:` and `{"id":"<fixed id>"}` gives a 2-hour session; `GET …/v2/match?limit=100&authoritative=true` lists matches with `size`. Lobby sessions are not visible this way; the console's `/v2/console/status` would be, and only from inside the container.
+
+## OPS-760 — Inside a Dokploy-run container on nj1 `/etc/hosts` maps `dokploy.mnori.com` to 127.0.0.1: probe the panel at `http://dokploy:3000` on dokploy-network
+
+`측정 2026-10-30 · Dokploy v0.30.8 on nj1 · node 24 fetch inside a raw-compose container`
+
+**증상:** `fetch("https://dokploy.mnori.com/")` from a collector container failed with `ECONNREFUSED` every minute while `play.mnori.com` and every other proxied host answered. `getent hosts dokploy.mnori.com` inside the container printed `127.0.0.1 localhost dokploy.mnori.com`.
+
+**해결:** on `dokploy-network` the panel is the Swarm service `dokploy` (`getent hosts dokploy` → 10.0.1.5); `http://dokploy:3000/` answers the login page and `/api/*` takes `x-api-key`. A public-path check of the panel has to come from outside Docker (Uptime Kuma on misa does not monitor it).
+
+## OPS-761 — Cloudflare Access for one hostname in one call: self-hosted app with inline `policies` and `allowed_idps`, verified in Next 16.4 `proxy.ts` with jose; a service-token policy (`decision: non_identity`) lets a headless check through, and that JWT carries `common_name`, not `email`
+
+`측정 2026-10-30 · Cloudflare Zero Trust free (team autumn-wildflower-f124) · API token in ~/.config/cloudflare/mnori.env · Next.js 16.4.3 · jose 6.2.14`
+
+**증상:** `dashboard.mnori.com` had to admit one Google account. The stored API token's scopes were unknown (`/user/tokens/verify` returns `status: active` and no scope list).
+
+**사실:**
+- The token can create and delete Access apps, policies and service tokens and zone DNS records (measured by a create-then-delete of a throwaway app and a TXT record). A proxied CNAME to the nj1 tunnel (`<id>.cfargotunnel.com`) overrides the unproxied wildcard for that name.
+- `POST /accounts/<id>/access/apps {"type":"self_hosted","domain":…,"allowed_idps":[<google idp id>],"auto_redirect_to_identity":true,"app_launcher_visible":false,"session_duration":"168h","policies":[{"name":…,"decision":"allow","include":[{"email":{"email":…}}]}]}` returned the app with `aud`. Unauthenticated requests then 302 to `<team>.cloudflareaccess.com/cdn-cgi/access/login/<host>`.
+- In the app, `proxy.ts` (the renamed middleware; Node runtime) verifies `Cf-Access-Jwt-Assertion` with `jwtVerify(token, createRemoteJWKSet("https://<team>/cdn-cgi/access/certs"), { issuer: "https://<team>", audience: aud, algorithms: ["RS256"] })` and compares `payload.email`; a forged header still gets the edge's 302 and a bad token a 404. `vitest` can exercise it with `generateKeyPair("RS256")`, `SignJWT`, and `vi.stubGlobal("fetch", …)` serving the JWK.
+- For a headless live check: `POST access/service_tokens {"name","duration":"8760h"}` (the secret is returned once), then `POST access/apps/<app>/policies {"decision":"non_identity","include":[{"service_token":{"token_id":<id>}}],"precedence":2}`. `curl -H CF-Access-Client-Id -H CF-Access-Client-Secret` reached the origin with a JWT whose claims are `common_name: <client id>` and no `email`; the app has to accept that name explicitly. Delete the policy and the token when the check is over.
+- A signed-out Google profile cannot pass the IdP step: both `~/kc-test/profile` and a copy of a profile that had used Play Console the day before landed on `accounts.google.com/v3/signin/identifier` (the Google session, not the Cloudflare one, had expired).
+
+## OPS-762 — Next 16.4 / eslint-config-next 16.4 lint with the React Compiler rules: setState inside an effect body, `Date.now()` in render and reassigning a closure variable while rendering are errors; the fixes that passed
+
+`측정 2026-10-30 · next 16.4.3 · eslint-config-next 16.4.3 · react 19.3.1`
+
+**증상:** `eslint .` failed with `react-hooks/set-state-in-effect` ("Calling setState synchronously within an effect"), `react-hooks/immutability` ("Cannot reassign variable after render completes", a `let lastDay` updated inside `.map`), and "Cannot call impure function during render" for `Date.now()` in a `useMemo`.
+
+**해결:** a ticking clock, the browser time zone, `navigator.onLine` and a localStorage theme preference as `useSyncExternalStore` stores (server snapshot `null`/default, so hydration matches); a dialog that must reset its query on open is remounted with `key` instead of reset in an effect; a list merged from props and live data becomes a `useMemo`; "loading" is derived (`loaded.key !== wantedKey`) rather than set in the effect that fetches; grouping headers are precomputed into the array before `.map`. `@next/next/no-css-tags` fires on a `<link rel=stylesheet>` to a stylesheet in `/public` (Pretendard's 92-range subset CSS); keep the tag and disable the rule on that line.
+
+Two more things found the same day: `notFound()` thrown by a page under an `async` root layout (`force-dynamic`, awaiting a database read) ships status **200** — the shell has already streamed — and `dynamicParams = false` with `generateStaticParams` did not change that under `force-dynamic`; answering the 404 from `proxy.ts` for ids outside the registry did. And in ko-KR, `Intl.DateTimeFormat` with `weekday: "short"` prints `(토)` in Node and `토` in Chromium, which is a hydration error #418 on the first day header; assemble the label from `formatToParts`.
+
+## OPS-763 — npm 11 (node 26.8+) skips postinstall scripts of new dependencies until they are approved: esbuild installs without its binary; `npm install-scripts approve esbuild unrs-resolver`, or `--ignore-scripts` then `npm rebuild esbuild` in a Dockerfile
+
+`측정 2026-10-30 · node 26.8.2 (developer Mac) and 26.12.1 (busan.mac) · npm bundled · esbuild 0.28.2`
+
+**증상:** `npm install` printed `2 packages have install scripts not yet covered by allowScripts: esbuild@0.28.2 (postinstall: node install.js), unrs-resolver@1.12.2` and `require("esbuild")` then failed for want of the platform binary.
+
+**해결:** `npm install-scripts ls` shows the queue, `npm install-scripts approve <pkg>` records the approval in `package.json`'s `allowScripts` (commit it). In an image built on node 24 (no such gate) `npm ci --ignore-scripts && npm rebuild esbuild` is the portable form.
+
+## OPS-764 — GitLab.com Free: project access tokens over the API need a JSON body (`glab api --input -`); `-f 'scopes[]=read_api'` is a 400. `glab auth status -t` prints the live OAuth token, which is not a PAT and expires in two hours
+
+`측정 2026-10-30 · gitlab.com Free · glab 1.x signed in through the browser (OAuth)`
+
+**증상:** a collector needed read-only access to 15 private repositories. `GET /personal_access_tokens/self` with glab's token returned nulls (it is an OAuth access token, not a PAT, and `glab config get token` prints nothing because the token is in the keychain). `POST /projects/:id/access_tokens` with `-f name=… -f 'scopes[]=read_api' -f access_level=20` was `HTTP 400`.
+
+**해결:** `echo '{"name":"…","scopes":["read_api"],"access_level":20,"expires_at":"2027-10-29"}' | glab api -X POST 'projects/<ns>%2F<repo>/access_tokens' -H 'Content-Type: application/json' --input -` returns `{ "token": "glpat-…", … }` once; write it to a 0600 file in the same process, never to the terminal (15 of 15 repositories succeeded; expiry up to a year is accepted). Read with the `PRIVATE-TOKEN` header. Do not `awk` or `grep` the output of `glab auth status -t`: field 4 of its "Token" line is the secret.
+
+## OPS-765 — `docker compose config -q` refuses a compose whose `env_file` is missing, and a Postgres role without CREATE on the database cannot run `CREATE SCHEMA IF NOT EXISTS` even for a schema it owns
+
+`측정 2026-10-30 · docker compose v2 on nj1 (Docker 29.9) · PostgreSQL 18.6`
+
+**증상:** a deploy script validated a raw compose with `docker compose config -q` before handing it to Dokploy and stopped with `env file …/.env not found` — Dokploy writes `.env` beside its own copy, the release directory has none. Separately, a collector running as role `dash` (owner of schema `dash`, `SELECT` on `public`) died at start with `permission denied for database mnori` on `CREATE SCHEMA IF NOT EXISTS dash`: the privilege check happens before the existence check.
+
+**해결:** `touch deploy/.env` (mode 600) before `config`; create the schema once as the superuser (`CREATE SCHEMA dash AUTHORIZATION dash; GRANT USAGE ON SCHEMA public TO dash; GRANT SELECT ON ALL TABLES IN SCHEMA public TO dash; ALTER DEFAULT PRIVILEGES FOR ROLE mnori IN SCHEMA public GRANT SELECT ON TABLES TO dash`) and keep only `SET search_path` plus `CREATE TABLE IF NOT EXISTS` in the app's migration.
+
+## OPS-766 — Browser-testing a Next standalone build on busan.mac: copy `.next/static` and `public/` into `.next/standalone` or every stylesheet 404s as `text/plain`; free the port with `lsof -ti :<port> | xargs kill`; keep `rsync --delete` away from the test host's output folders
+
+`측정 2026-10-30 · Next.js 16.4.3 standalone · busan.mac (node 26.12, headless Brave 156) · Playwright 1.64 + axe 4.14`
+
+**증상:** `node .next/standalone/server.js` served pages whose CSS came back 404 ("Refused to apply style … MIME type ('text/plain')"), a second run tested the previous build because the earlier server still held the port, and each `rsync -az --delete` of the project deleted the screenshots and `results.json` made on the test host.
+
+**해결:** `qa/serve.sh`: `rm -rf .next/standalone/.next/static .next/standalone/public; cp -R .next/static .next/standalone/.next/static; cp -R public .next/standalone/public; lsof -ti :$port | xargs kill; wait for the port; start with the fixture env`. Exclude `qa/output` from the sync. Feed the app a real board copied from production (`select value from dash.kv where key='board'`) through a `DASH_FIXTURE_FILE` env so the test host needs no database.
