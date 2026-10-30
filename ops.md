@@ -12421,7 +12421,6 @@ Also measured:
 
 **해결:** 진단용 클라이언트의 403 하나만으로 토큰 분실·권한 철회를 단정하거나 키를 회전하지 않는다. 먼저 운영과 같은 HTTP 클라이언트로 재현하고, 동일한 배포 UUID의 Worker invocation 도달 여부·상태·CPU를 구분한다. raw tail에는 요청 헤더가 들어갈 수 있으므로 비공개로 보관하고 path·outcome·CPU·version만 추출해 공유한다.
 
-<<<<<<< Updated upstream
 ## OPS-777 — Next standalone rewrites its process title and working directory; verify a QA server by saved PID, cwd and listening socket
 
 `측정 2026-10-30 · Next.js 16.4.3 standalone · macOS busan.mac`
@@ -12429,7 +12428,6 @@ Also measured:
 **증상:** an isolated fixture server was started with an absolute `node <worktree>/.next/standalone/server.js` path and its PID saved. A later safety guard searched `ps -p <pid> -o command=` for that path and refused to stop it: the live command was `next-server (v16.4.3)`, not the launch command. `lsof -a -p <pid> -d cwd -Fn` showed `<worktree>/.next/standalone` although the launcher supplied the worktree root as cwd. Also, `lsof -ti :<port>` returned both the browser connection and the server PID.
 
 **해결:** keep the PID from this task's launcher; verify both its exact isolated cwd and membership in `lsof -tiTCP:<port> -sTCP:LISTEN` before sending SIGTERM to that one PID. Do not kill every PID returned by an unfiltered port query, or rely on the original command text surviving in a Node server's process title.
-=======
 ## OPS-779 — Play `tracks.releases.list` has its own unpublished quota: about 35 calls in under an hour answered 403 "Listing releases quota exceeded"
 
 `측정 2026-10-30 · Android Publisher API v3 · one service account, 4 apps`
@@ -12453,4 +12451,3 @@ Show the screen from the head script rather than from React: it sets an attribut
 A related trap on the same device: a deploy answers 502 for a few seconds, and an installed app has no reload control, so Cloudflare's error page traps the user until the app is reopened.
 
 **해결:** in the service worker, answer a navigation with status ≥ 500 from the last good copy or the offline page, and let the offline page poll and return by itself.
->>>>>>> Stashed changes
