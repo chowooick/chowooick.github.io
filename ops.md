@@ -12310,3 +12310,25 @@ Two more things found the same day: `notFound()` thrown by a page under an `asyn
 **증상:** A new aggregate view copied an existing profile collection's list/view rule. The source included a private-header condition and an administrator condition, but also a row-owner condition using `member`. The view had no `member` field, so startup migration failed with `listRule: Invalid rule. Raw error: invalid left operand "member" - unknown field "member"` and the analogous `viewRule` error. A synthetic fixture that contained only the private/admin conditions had passed and missed the production rule shape. PocketBase retried and was briefly unavailable. Removing the failed migration file and restarting restored the existing service; the pre-migration SQLite backup passed integrity checks and the auth collection rows were unchanged.
 
 **해결:** Do not transfer a complete row-scoped rule to a differently shaped view. Construct the intended aggregate boundary explicitly: retain the verified private-header condition, then require the intended auth collection and its administrator flag, without copying profile ownership predicates. Add the ownership expression to the real PocketBase fixture before testing the migration; administrator access with the private boundary must return the aggregate, while member, anonymous and administrator-without-private-boundary requests return no rows. The corrected migration applied successfully, computed the complete 8,557-row inventory and preserved auth collection material. Keep a tested rollback path and a WAL-safe backup before a startup migration; rule validation can prevent the server from starting.
+
+## OPS-768 — SpacetimeDB 2.8 SQL accepts LIMIT but rejects ORDER BY and MIN/MAX; page an event table by a captured ID list and bounded ranges
+
+`측정 2026-10-30 · SpacetimeDB 2.8.0 · self-hosted HTTP SQL endpoint and spacetime CLI · read-only owner queries`
+
+**증상:** a small polling collector needed bounded batches from a private event table without changing its module or schema. PostgreSQL-style pagination and aggregate probes did not have the same support:
+
+| Query | Measured result |
+| --- | --- |
+| `SELECT id, at FROM play_event WHERE day >= 20755 ORDER BY id LIMIT 1` | HTTP 400; `Error: Unsupported: SELECT id, at FROM play_event WHERE day >= 20755 ORDER BY id LIMIT 1` |
+| The same query with `ORDER BY id` removed | Success; one row. `LIMIT` itself is supported. |
+| `SELECT MAX(id) FROM play_event` | HTTP 400; `Error: Aggregate expressions must have column aliases` |
+| `SELECT MAX(id) AS last_id FROM play_event` | HTTP 400; `Error: Unsupported aggregate function: MAX(id)` |
+| `SELECT MIN(id) AS first_id, MAX(id) AS last_id FROM play_event WHERE day >= 20720` | HTTP 400; `Error: Unsupported projection expression: MIN(id)` |
+| `SELECT COUNT(*) AS event_count FROM play_event` | Success; one count row. |
+| `SELECT id, day, at FROM play_event WHERE day >= 20720 AND id >= 1 AND id <= 256` | Success; the bounded range returned rows. |
+
+Adding an alias fixes the first validation error but does not make `MAX` supported. Do not infer broader aggregate or ordering support from a successful `COUNT(*)` or `LIMIT` probe.
+
+**해결:** for a table with an auto-incrementing primary key, first read `SELECT id FROM play_event WHERE day = D`, cap the response size, and sort this captured ID list in the collector. Divide it into groups of 256 IDs; fetch each group with `WHERE day = D AND id >= lo AND id <= hi`, keeping the same day predicate. The observed range query works without `ORDER BY`, `MIN`, or `MAX`. Abort the refresh if the ID response exceeds the configured bound rather than silently publishing a partial aggregate. This implementation uses a 4 MiB response cap.
+
+The ID capture bounds each pass; it is not a multi-query database transaction. New IDs beyond that capture belong to the next poll. Advancing an unordered `LIMIT` page by its largest returned ID is unsafe without an ordering guarantee; skipped rows were not directly measured in these probes, so that is a design constraint rather than a claimed observed failure.
