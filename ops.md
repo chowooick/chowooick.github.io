@@ -12147,3 +12147,16 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** `softwareupdate --list` offered the label `macOS 27.2-26B123` (U+00A0 between the product name and version). Passing `macOS 27.2-26B123` with an ASCII space to `--download` printed `No such update` and `No updates are available.` Reusing the exact label, including U+00A0, started the download and reported progress. The unsuccessful command's exit marker was 0, so exit status alone was misleading.
 
 **해결:** Preserve the exact label returned by `softwareupdate --list`; do not retype or normalize its whitespace. Inspect the download result/progress rather than treating exit 0 as proof that an update was downloaded. Download success does not prove installation or a successful restart.
+
+
+---
+
+## OPS-750 — BetterDisplay Software Audio rejects 8-channel HDMI; stereo virtual format activates the session
+
+`측정 2026-10-29 · BetterDisplay 5.2.1 · macOS 27.2 · Apple M1 Max`
+
+**증상:** TOSHIBA-TV HDMI 기본 출력에서 BetterDisplay의 Software Audio 컨트롤러를 추가해도 `지원되지 않는 오디오 형식입니다. 오디오 MIDI 설정에서 출력을 확인한 다음 오디오 세션을 재시작하세요.`라고 표시됐다. Core Audio의 출력 스트림 virtual format은 48 kHz, 8채널, 32-bit float였다. 5.1.1에는 Software Audio 컨트롤러가 없었으며 `get -volume`은 `Failed.`였다.
+
+**해결:** 5.2.1에서 디스플레이의 Device Control에 Software Audio를 추가하고, 해당 출력이 제공하는 available virtual formats 중 48 kHz, 2채널, 32-bit float를 선택해 `kAudioStreamPropertyVirtualFormat`으로 설정했다(OSStatus 0). Software Audio 설정에서 오디오 세션을 재시작하고 System Audio Recording Only 권한이 켜져 있는 것을 확인하자 `소프트웨어 오디오가 활성 상태입니다.`로 바뀌었다. CLI의 `get -name=TOSHIBA-TV -volume`은 `1.0`, `-mute`는 `off`를 반환했다. 기본 볼륨 키 처리와 현재 오디오 장치 이름에 맞춘 키보드 대상 설정을 유지한다. 메뉴의 볼륨 표시가 ‘확장되었을 때’이면 ‘표시’로 바꿔야 첫 화면에 나온다(`menuLevelVolume=less`). 스테레오 변경은 다채널 출력을 줄이므로 오디오 형식을 먼저 확인한다. 이 측정은 설정·세션 상태 확인이며 실제 스피커 음압 또는 청취 결과를 검증한 기록은 아니다.
+
+참조: https://betterdisplay.pro/guide/interface-reference/settings/displays/display/device-control/software-audio/
