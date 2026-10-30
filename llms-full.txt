@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-30T01:36:03Z · 소스 커밋 `013e7f8` · 이 파일은 자동 생성물이다.
+생성 2026-10-30T02:22:48Z · 소스 커밋 `648bbe3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22115,4 +22115,22 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** SSR을 Workers에서 Node로 옮겨 기능·접근 경계 검사에는 통과했지만 `caches?.default`와 DATA 서비스의 읽기 캐시가 빠져 조회마다 수천 건의 DB 기록을 다시 읽었다. 지정 테스트 호스트의 동일한 첫 조회·재조회·4개 병렬 조건 38건에서 오류는 0이어도 중앙값 1,340.5ms, 최대 23,458ms였다. 단일 정상 응답은 이 회귀를 드러내지 못했다.
 
 **해결:** 기존 DATA 처리와 무효화 프로토콜을 같은 Node 프로세스에서 재사용하고, 만료·32 MiB/256개 상한·멤버별 읽기 제외·no-store/쿠키/오류 저장 금지를 유지했다. 같은 38건의 중앙값은 671ms, 최대 9,392ms였고 RSS는 약 243 MiB, 오류·자동 재시작은 0이었다. 캐시 적중 기록도 확인했다. 플랫폼 이전은 기존 캐시가 새 런타임에서 실제 작동하는지, 민감한 읽기의 제외 조건이 유지되는지를 병렬 조회와 함께 검증한다.
+
+
+## OPS-748 — macOS 27 Mission Control controls moved to WindowManager, and saved Current Space can lag live WindowServer state
+
+`측정 2026-10-29 · macOS 27.0.1 (26A434) · AppleScript / System Events · SkyLight`
+
+**증상:** Querying Dock during Mission Control exposed an empty `Mission Control` group. The actual display groups, `Spaces Bar`, desktop buttons, and `AXRemoveDesktop` actions were in the `WindowManager` process. A computer-use wrapper that expected a normal application window timed out on Dock; this alone did not establish a hung Dock (its sampled main thread was idle). After selecting a new desktop, the Dock log reported `becameCurrent(55)` and live `SLSCopyManagedDisplaySpaces` reported current ID 55, while `defaults export com.apple.spaces` still reported current ID 13.
+
+**해결:** Inspect `System Events` process `WindowManager` for macOS 27 Mission Control controls. Re-read its accessibility tree after bar expansion; collapsed and expanded button geometry differ. Verify a switch against live WindowServer managed-display state and the target display UUID, not just the saved preferences or a successful click command. Treat UI-wrapper timeouts, persisted preferences, and actual compositor state as separate observations. The investigation did not establish that deleting historical display records fixes the underlying OS bug.
+
+
+## OPS-749 — softwareupdate labels can contain a nonbreaking space: a visually identical ASCII label returns No such update
+
+`측정 2026-10-29 · macOS 27.0.1 softwareupdate · offered update 27.2 (26B123)`
+
+**증상:** `softwareupdate --list` offered the label `macOS 27.2-26B123` (U+00A0 between the product name and version). Passing `macOS 27.2-26B123` with an ASCII space to `--download` printed `No such update` and `No updates are available.` Reusing the exact label, including U+00A0, started the download and reported progress. The unsuccessful command's exit marker was 0, so exit status alone was misleading.
+
+**해결:** Preserve the exact label returned by `softwareupdate --list`; do not retype or normalize its whitespace. Inspect the download result/progress rather than treating exit 0 as proof that an update was downloaded. Download success does not prove installation or a successful restart.
 
