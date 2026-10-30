@@ -12160,3 +12160,20 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **해결:** 5.2.1에서 디스플레이의 Device Control에 Software Audio를 추가하고, 해당 출력이 제공하는 available virtual formats 중 48 kHz, 2채널, 32-bit float를 선택해 `kAudioStreamPropertyVirtualFormat`으로 설정했다(OSStatus 0). Software Audio 설정에서 오디오 세션을 재시작하고 System Audio Recording Only 권한이 켜져 있는 것을 확인하자 `소프트웨어 오디오가 활성 상태입니다.`로 바뀌었다. CLI의 `get -name=TOSHIBA-TV -volume`은 `1.0`, `-mute`는 `off`를 반환했다. 기본 볼륨 키 처리와 현재 오디오 장치 이름에 맞춘 키보드 대상 설정을 유지한다. 메뉴의 볼륨 표시가 ‘확장되었을 때’이면 ‘표시’로 바꿔야 첫 화면에 나온다(`menuLevelVolume=less`). 스테레오 변경은 다채널 출력을 줄이므로 오디오 형식을 먼저 확인한다. 이 측정은 설정·세션 상태 확인이며 실제 스피커 음압 또는 청취 결과를 검증한 기록은 아니다.
 
 참조: https://betterdisplay.pro/guide/interface-reference/settings/displays/display/device-control/software-audio/
+
+
+## OPS-751 — Chrome on Android sends `deviceorientation` only when the phone moves, while `devicemotion` keeps coming at 60 Hz; a still phone looks like a dead sensor
+
+`측정 2026-10-30 · Pixel 7 Pro (Android 17) · Chrome 156.0.8078.47 · installed WebAPK, standalone`
+
+**증상:** with the phone propped still, a listener added to a live page received 0 `deviceorientation` and 171 `devicemotion` events in 3 s. That reads as "orientation is blocked", and `typeof DeviceOrientationEvent.requestPermission` being `"function"` (OPS-662) strengthens the false lead. No permission was involved: `navigator.vibrate([900,100,900,100,900])` during the same listen, which shakes the phone slightly, gave 43 `deviceorientation` events in 4 s (`beta` 69.1, `gamma` 2 to 2.1) and 83 `deviceorientationabsolute`. `devicemotion` at rest read `accelerationIncludingGravity` `(-0.1, 9.1, 3.5)`, `interval` 16.
+
+**해결:** to test whether a phone on a desk delivers orientation at all, make it move: `navigator.vibrate` from the page is enough, no hand needed. Do not treat silence as a failure, and do not rely on one first event after adding a listener. A page that needs the current pose while the phone is still has to take it from `devicemotion`. Over CDP on a phone, take the page with `url().includes(host)`: a WebAPK opened from a shortcut carries a fragment (`https://mnori.com/#services`), so an exact URL match finds nothing.
+
+## OPS-752 — Chromium's touch adjustment sends a tap to a nearby button even when `elementFromPoint` says the canvas
+
+`측정 2026-10-30 · Brave 1.98 / Chromium 156 · Playwright isMobile + hasTouch at 320 × 640`
+
+**증상:** a check tapped the centre of a ball on a canvas and expected the "kick" answer, but got the answer for a different control, only at 320 px. `document.elementFromPoint(x, y)` at the same point returned the `CANVAS`, and the tap's coordinates were exact (a capture `pointerup` listener logged `clientX`/`clientY` 250, 588), yet `event.target` was the `.cs-drop` button standing beside that spot. The same run at 390 px passed because the ball sat elsewhere, so it looked like a width bug.
+
+**해결:** log `event.target` from a capture listener before believing `elementFromPoint`. Touch adjustment retargets a tap to a tappable element within the finger's radius, on canvases too. In a check, tap the target farthest from any control, not simply the biggest one.
