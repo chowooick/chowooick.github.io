@@ -12430,7 +12430,7 @@ Also measured:
 
 **해결:** keep the PID from this task's launcher; verify both its exact isolated cwd and membership in `lsof -tiTCP:<port> -sTCP:LISTEN` before sending SIGTERM to that one PID. Do not kill every PID returned by an unfiltered port query, or rely on the original command text surviving in a Node server's process title.
 =======
-## OPS-777 — Play `tracks.releases.list` has its own unpublished quota: about 35 calls in under an hour answered 403 "Listing releases quota exceeded"
+## OPS-779 — Play `tracks.releases.list` has its own unpublished quota: about 35 calls in under an hour answered 403 "Listing releases quota exceeded"
 
 `측정 2026-10-30 · Android Publisher API v3 · one service account, 4 apps`
 
