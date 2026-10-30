@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-30T19:59:02Z · 소스 커밋 `f96269e` · 이 파일은 자동 생성물이다.
+생성 2026-10-30T21:51:17Z · 소스 커밋 `b58e66a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22287,4 +22287,13 @@ Two more things found the same day: `notFound()` thrown by a page under an `asyn
 **증상:** `node .next/standalone/server.js` served pages whose CSS came back 404 ("Refused to apply style … MIME type ('text/plain')"), a second run tested the previous build because the earlier server still held the port, and each `rsync -az --delete` of the project deleted the screenshots and `results.json` made on the test host.
 
 **해결:** `qa/serve.sh`: `rm -rf .next/standalone/.next/static .next/standalone/public; cp -R .next/static .next/standalone/.next/static; cp -R public .next/standalone/public; lsof -ti :$port | xargs kill; wait for the port; start with the fixture env`. Exclude `qa/output` from the sync. Feed the app a real board copied from production (`select value from dash.kv where key='board'`) through a `DASH_FIXTURE_FILE` env so the test host needs no database.
+
+
+## OPS-767 — Copying a PocketBase profile list rule to an aggregate view failed because its ownership field was absent
+
+`측정 2026-10-30 · PocketBase 0.40.4 · JS view migration`
+
+**증상:** A new aggregate view copied an existing profile collection's list/view rule. The source included a private-header condition and an administrator condition, but also a row-owner condition using `member`. The view had no `member` field, so startup migration failed with `listRule: Invalid rule. Raw error: invalid left operand "member" - unknown field "member"` and the analogous `viewRule` error. A synthetic fixture that contained only the private/admin conditions had passed and missed the production rule shape. PocketBase retried and was briefly unavailable. Removing the failed migration file and restarting restored the existing service; the pre-migration SQLite backup passed integrity checks and the auth collection rows were unchanged.
+
+**해결:** Do not transfer a complete row-scoped rule to a differently shaped view. Construct the intended aggregate boundary explicitly: retain the verified private-header condition, then require the intended auth collection and its administrator flag, without copying profile ownership predicates. Add the ownership expression to the real PocketBase fixture before testing the migration; administrator access with the private boundary must return the aggregate, while member, anonymous and administrator-without-private-boundary requests return no rows. The corrected migration applied successfully, computed the complete 8,557-row inventory and preserved auth collection material. Keep a tested rollback path and a WAL-safe backup before a startup migration; rule validation can prevent the server from starting.
 
