@@ -12089,3 +12089,11 @@ first Resend test only after a Gmail mail is `delivered`. Diff the two zones' se
 **증상:** SSR 사이트에서 1102가 한 번 발생했다. 같은 시각 메일은 다른 Cloudflare 계정의 D1 rows_read 77% 경고였다. 계정·DB 목록과 GraphQL을 대조하니 경고 DB는 3,935,887/5,000,000행으로 미초과였고 사이트 계정·SQL DB와 달랐다. 사이트 계정의 Free CPU 한도는 요청당 10ms였으나, `wrangler tail`에서 정상 HTTP 200 요청도 CPU 19~382ms를 사용했다. 오류 집계는 `exceededResources`, CPU 30.838ms·wall 100.375ms였다. 사이트의 retained invocation logs가 꺼져 있어 과거 Ray의 정확한 경로는 복원할 수 없었다.
 
 **해결:** OPS-131의 정상 응답 관측을 CPU 한도 보장으로 해석하지 않는다. 계정·버전·실측 CPU·outcome을 함께 확인하고, 최초·재조회 측정 누락이나 상한 대비 여유 부족을 배포 후 자원 검사에서 실패시킨다. 이전 버전의 측정값은 새 버전 검증에 재사용하지 않는다. 사이트의 invocation logs를 유지하고 URL query를 가린다. 원시 tail에는 요청 헤더가 있으므로 비공개로 보관하고 CPU·경로·버전·상태만 공유한다. Workers 요금제는 계정 단위이므로, 다른 계정의 D1 경고를 이유로 잘못된 계정을 변경하지 않는다.
+
+## OPS-743 — execFileSync의 stdio inherit는 input의 SSH 배포 본문을 전달하지 않는다
+
+`측정 2026-10-30 UTC · Node 26.12.1 · OpenSSH · busan.mac`
+
+**증상:** `execFileSync('ssh', [host, 'bash', '-s'], {stdio:'inherit', input:script})`는 파일 전송 뒤 종료 코드 0을 반환했지만 원격 release 디렉터리와 실행 서비스가 없었다. stdin을 상속하면 input 본문이 파이프로 전달되지 않아 원격 bash가 빈 입력으로 정상 종료했다. 호출 성공만으로 설치 완료를 기록하면 거짓 성공이 된다.
+
+**해결:** 명령 본문을 보내는 호출은 `stdio:['pipe','inherit','inherit']`로 stdin만 명시적으로 파이프한다. 지정 테스트 호스트에서 자식 프로세스가 받은 여러 줄 입력을 파일로 확인하는 회귀 검사를 통과시켰다. 원격 current 링크가 배포 커밋 경로인지와 서비스 활성 상태도 읽어 확인하고, 실제 운영 응답·릴리스 검증까지 마치기 전에는 완료로 보고하지 않는다.
