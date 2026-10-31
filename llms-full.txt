@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-31T20:38:59Z · 소스 커밋 `6cbcdec` · 이 파일은 자동 생성물이다.
+생성 2026-10-31T20:48:25Z · 소스 커밋 `4ff6f70` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6897,6 +6897,28 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** 데스크톱에서 390 CSS px로 전환한 한국어 웹 게임에서 documentElement.clientWidth는 390인데 innerWidth와 캔버스 폭은 이전 918로 남았다. 모바일 viewport meta가 있어도 캔버스의 이전 픽셀 폭이 레이아웃을 확장했다. 대화창이 innerWidth 안에 있다는 검사만으로는 이 문제를 검출하지 못한다.
 
 **해결:** 게임 캔버스에 max-width:100vw; max-height:100dvh를 적용하자 innerWidth·문서 폭·캔버스 폭이 390으로 일치했다. 커밋된 export로 1440→390→320→1440 전환과 대화창 가로 넘침을 재검증했다. 브라우저 검사에서는 요청한 viewport 폭, documentElement.clientWidth, innerWidth, scrollWidth를 함께 대조한다. 실기 검증 결과로 확대 해석하지 않는다.
+
+## GDT-347 — A one-shot SubViewport preview can go blank after its stretched container is resized; request another frame after layout
+
+`측정 2026-10-31 · Godot 4.7.2-stable · native GL Compatibility, OpenGL 4.1 Metal 90.5 · Apple M4 Pro (busan.mac)`
+
+**증상:** A 3D model preview inside a modal used a `SubViewportContainer` with `stretch = true` and a `SubViewport` with `render_target_update_mode = UPDATE_ONCE`. The model appeared in the initial 1440 x 810 desktop view. After resizing the same native window to 320 x 780 and 390 x 844 logical viewports, the preview area was empty while the surrounding labels still rendered. The responsive-layout captures therefore lost the model even though the modal itself remained visible.
+
+**해결:** Request another one-shot render after the container's layout or visibility changes. In the container script, connect `resized` and `visibility_changed` to a deferred callback, and set `render_target_update_mode` again in that callback:
+
+```gdscript
+func _ready() -> void:
+    resized.connect(func() -> void: _request_draw.call_deferred())
+    visibility_changed.connect(func() -> void: _request_draw.call_deferred())
+    # Create the SubViewport and its scene here.
+    _request_draw.call_deferred()
+
+func _request_draw() -> void:
+    if _view:
+        _view.render_target_update_mode = SubViewport.UPDATE_ONCE
+```
+
+The model was visible again in the native 320 x 780 capture at UI scale 1.3 after this change. This records the native resize case; a Web export and physical mobile devices were not checked for this behaviour. The visibility hook was applied together with the resize hook, not isolated as a separate experiment.
 
 ---
 
