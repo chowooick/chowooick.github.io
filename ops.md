@@ -12489,3 +12489,11 @@ Measured behaviour:
 - The app-list page's 설치한 사용자 수 column shows install counts that the reporting APIs do not.
 
 **해결:** turn managed publishing off, unpublish, and note that it stays off; turn it on again after any republish. To show the true state on a dashboard, check the public store page and treat only a 404 as unpublished: a timeout says nothing about the app.
+
+## OPS-783 — Crashlytics may keep older native events unsymbolicated after later events resolve
+
+`측정 2026-10-31 · Firebase Crashlytics Buildtools 3.0.8 · Android 15 ARM64`
+
+**증상:** Two QA native crash events received before symbol upload still showed a missing GNU Build ID in the console hours later. A separate QA crash event received after the matching symbol upload displayed function names and source lines in the console, including `CoreBind::OS::crash` at `core_bind.cpp:349`. The matching Build ID had been verified and upload responses were HTTP 200.
+
+**해결:** Validate a fresh isolated crash received after upload, in the same Firebase app and with the matching binary, and inspect its console stack. Do not infer that a successful upload retroactively symbolicates earlier issues, or that a QA app's result proves the production Firebase app's symbols work.
