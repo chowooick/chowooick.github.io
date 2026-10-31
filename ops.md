@@ -12565,3 +12565,19 @@ A four-line reproduction on the designated test host printed Node `v26.12.1`, th
 **증상:** 격리된 합성 배포 어댑터가 `git clone --bare --no-local`과 후보 bundle의 `git fetch`를 마친 뒤 파일을 복사하고 SHA-256을 확인했다. 이어 `fs.promises.rm(temp, {recursive:true, force:true})`가 `ENOTEMPTY: directory not empty, rmdir '/tmp/mnori-local-release-…/git/objects/pack'`로 실패해 프로세스가 1로 종료됐다. 별도 합성 회귀 테스트에서도 같은 오류를 재현했다. 따라서 비정상 종료만 보고 외부 효과가 없었다고 판단할 수 없다. 원래 산출물은 후보 bundle과 해시가 일치했고, 원장은 결과 불명(uncertain)으로 남아 있었다.
 
 **해결:** 임시 저장소의 모든 Git 명령에 `-c gc.auto=0 -c maintenance.auto=false`를 적용하고, 삭제에는 `maxRetries:5, retryDelay:100`을 지정했다. 그 뒤 어댑터 회귀 테스트와 새 합성 티켓의 전체 처리 흐름이 통과했다. 백그라운드 maintenance와 삭제의 경쟁은 가능 원인이며 직접 증명한 인과로 기록하지 않는다. 기존 uncertain 작업은 자동 재시도하거나 성공으로 바꾸지 않고, 산출물·후보 해시·원장 상태를 대조한 감사 증거를 보존했다. 실제 배포에는 외부 상태 대조 후 복구를 승인하는 별도 경로가 필요하다.
+
+## OPS-790 — containerd image store의 image ID와 OCI config digest는 다를 수 있다
+
+`측정 2026-10-31 · Docker Engine 29.9.0 / API 1.56`
+
+**증상:** Apple container에서 저장한 OCI archive를 docker image load한 뒤, 아카이브의 image config digest를 docker image inspect .Id와 대조하면 불일치했다. 운영 Engine의 .Id는 OCI index digest였고 config digest는 다른 값이었다.
+
+**해결:** 검증된 archive의 index → linux/amd64 manifest → config를 각각 기록한다. 이 환경에서 실제 .Id는 index digest와 일치했고 RootFS.Layers는 config.rootfs.diff_ids, revision label은 소스 SHA와 모두 일치했다. archive SHA-256을 유지하고 digest의 역할을 구분해 검사한다. Docker의 모든 저장소 방식에서 동일한 .Id 표현이라고 일반화하지 않는다.
+
+## OPS-791 — Swarm 서비스 inspect 해시 비교는 insertDefaults 옵션을 맞춰야 한다
+
+`측정 2026-10-31 · Docker Engine 29.9.0 / API 1.56`
+
+**증상:** 서비스 Version.Index와 실제 설정을 바꾸지 않았는데 docker service inspect와 GET /services/{id}의 Spec 해시가 달랐다. CLI는 RestartPolicy(any·5초·0회), StopGracePeriod(10초), Update/Rollback Monitor(5초), 빈 DNSConfig 기본값을 채웠지만 기본 API 응답에는 해당 값이 없었다.
+
+**해결:** GET /services/{id}?insertDefaults=true로 조회하자 CLI Spec 해시와 정확히 일치했다. 출시 전·후·복구 조회에 같은 옵션을 사용하고 Version.Index의 CAS 검사는 유지한다. 설정 차이로 오인해 덮어쓰거나 동시 변경 검사를 생략하지 않는다.
