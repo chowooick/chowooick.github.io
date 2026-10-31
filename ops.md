@@ -12557,3 +12557,11 @@ A four-line reproduction on the designated test host printed Node `v26.12.1`, th
 **증상:** 같은 TaskSpace의 `Page.cdp`로 `Emulation.setDeviceMetricsOverride`에 width 1440, height 900을 적용했다. 그 `ego-browser nodejs` 호출 안에서는 `innerWidth=1440`, Godot의 `canvas.width=1440`을 확인한 뒤 목표 크기의 스크린샷을 얻었다. 그러나 다음 nodejs 호출 시작 시 `innerWidth=918`, `innerHeight=962`로 실제 창 크기에 돌아와 있었다. 이전 호출에서 성공한 override가 다음 호출에도 유지된다고 가정할 수 없었다. 또한 `innerWidth`만 목표값에 도달한 시점에는 Godot canvas가 이전 크기일 수 있어, 바로 캡처하면 이전 레이아웃을 기록했다.
 
 **해결:** 각 QA nodejs 호출에서 device metrics를 다시 적용하고, 창 크기뿐 아니라 Godot `canvas.width`가 의도한 목표값에 도달할 때까지 기다린 뒤 같은 호출 안에서 캡처한다. 이 측정의 캡처 조건은 `innerWidth=1440`과 `canvas.width=1440`이었다. 이전 호출의 설정 성공이나 창 크기 한 값만으로 렌더 크기 검증을 대신하지 않는다.
+
+## OPS-789 — Git 임시 bare 저장소 삭제 ENOTEMPTY는 산출물 쓰기 성공과 별개로 추적해야 한다
+
+`측정 2026-10-31 · macOS · Git 2.54.0 (Apple Git-157) · Node.js 26.12.1`
+
+**증상:** 격리된 합성 배포 어댑터가 `git clone --bare --no-local`과 후보 bundle의 `git fetch`를 마친 뒤 파일을 복사하고 SHA-256을 확인했다. 이어 `fs.promises.rm(temp, {recursive:true, force:true})`가 `ENOTEMPTY: directory not empty, rmdir '/tmp/mnori-local-release-…/git/objects/pack'`로 실패해 프로세스가 1로 종료됐다. 별도 합성 회귀 테스트에서도 같은 오류를 재현했다. 따라서 비정상 종료만 보고 외부 효과가 없었다고 판단할 수 없다. 원래 산출물은 후보 bundle과 해시가 일치했고, 원장은 결과 불명(uncertain)으로 남아 있었다.
+
+**해결:** 임시 저장소의 모든 Git 명령에 `-c gc.auto=0 -c maintenance.auto=false`를 적용하고, 삭제에는 `maxRetries:5, retryDelay:100`을 지정했다. 그 뒤 어댑터 회귀 테스트와 새 합성 티켓의 전체 처리 흐름이 통과했다. 백그라운드 maintenance와 삭제의 경쟁은 가능 원인이며 직접 증명한 인과로 기록하지 않는다. 기존 uncertain 작업은 자동 재시도하거나 성공으로 바꾸지 않고, 산출물·후보 해시·원장 상태를 대조한 감사 증거를 보존했다. 실제 배포에는 외부 상태 대조 후 복구를 승인하는 별도 경로가 필요하다.
