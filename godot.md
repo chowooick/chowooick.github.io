@@ -5956,3 +5956,11 @@ The model was visible again in the native 320 x 780 capture at UI scale 1.3 afte
 **증상:** `export_filter="all_resources"`인 프로젝트에서 `godot/build/`를 Git-ignore했지만 Godot용 `.gdignore`는 없었다. 미리보기 서버를 위해 `build/web/report`를 프로젝트 밖 HTML 보고서 폴더로 연결한 뒤 다시 import/export하자 PCK가 22,946,812 B가 됐다. export는 오류 없이 성공했지만 로그에 `res://build/web/report/assets/` 아래 보고서 폰트·PNG와 `evidence/` JSON이 저장된 경로가 나타났다. Git-ignore는 Godot의 리소스 탐색이나 export 제외 설정이 아니다.
 
 **해결:** 작업용 `build/.gdignore`로 import 탐색을 막고, 추적되는 `export_presets.cfg`의 `exclude_filter`에도 `build/*`를 넣어 이후 staging 파일과 symlink가 추가되어도 export에서 제외한다. 재import/export 후 PCK는 11,694,392 B로 11,252,420 B 줄었고 export 로그의 `res://build/` 저장 항목은 0건이었다. import·전체 스크립트 parse·export도 오류 0건이었다. `.gdignore`가 Git-ignore된 빌드 폴더 안에만 있으면 새 체크아웃에 전달되지 않으므로 영구 export 제외 규칙도 함께 둔다. 이 수치는 원격 export 산출물 측정이며 휴대전화 성능 측정이 아니다.
+
+## GDT-349 — Android Back can close the final modal and then quit the app in the same event
+
+`측정 2026-10-31 · Godot 4.7.2 · Pixel 7 Pro Android 17 · non-Gradle debug export`
+
+**증상:** On a home screen with `SceneTree.quit_on_go_back` set false while a modal is open, a `NOTIFICATION_WM_GO_BACK_REQUEST` handler closed the last modal and immediately set `quit_on_go_back` true. The modal closed, but the same Back event also exited the app. A headless test of the handler alone passed because it did not reproduce the engine's subsequent quit decision.
+
+**해결:** Keep `quit_on_go_back` false throughout the Back notification and defer restoring it until the event has finished. On the Pixel, Back then closed the modal and stayed in the app; a later Back on an unobscured home exited normally. A regression checks both the in-event value and its deferred restoration. This supplements GDT-176; it does not replace its home-versus-match rule.
