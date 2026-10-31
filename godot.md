@@ -5902,3 +5902,11 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** Unzipping `android_source.zip` manually to apply app Gradle plugins left `android/build/` visible to Godot. The import scanned its generated assets and created `.webp.import` files in Android resource folders. Gradle then failed with `Resource and asset merger: The file name must end with .xml or .png`; a concurrent web export also saw generated GDScript paths under `res://android/build/assetPackInstallTime/src/main/assets/`.
 
 **해결:** Create `android/build/.gdignore` before the first Godot import, including when the build directory already exists. Remove only the task-owned generated `.import` files/editor index, then import again. Serialize Godot exports sharing one project directory. Declare Google Services/Crashlytics in the root app `plugins` block: applying a separate script with its own buildscript classpath produced `Plugin with id 'com.google.gms.google-services' not found.`
+
+## GDT-344 — Godot Android release templates built from source omit Swappy unless its archives are installed
+
+`측정 2026-10-31 · Godot 4.7.2 stable · Android NDK 29`
+
+**증상:** A clean `template_release` Android build logged `Swappy Frame Pacing not detected!` and its library lacked `SwappyVk_queuePresent`; the official 4.7.2 Android release library contains that symbol. Godot's source build has `swappy` off by default and the separately downloaded archives are absent from a clean source checkout. Enabling `DEBUG_ENABLED` globally as a workaround for release GDScript errors also makes `OS.is_debug_build()` return true, which can change application behavior.
+
+**해결:** In an isolated source checkout run `python3 misc/scripts/install_swappy_android.py`, with a task-specific `TMPDIR`, then build each ABI with `swappy=yes`; verify the resulting library contains the Swappy symbols. Keep release diagnostics narrowly scoped when production code branches on `OS.is_debug_build()`. Generate matching unstripped symbols and verify their GNU Build IDs against the stripped shipped libraries.
