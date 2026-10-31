@@ -5967,7 +5967,7 @@ The model was visible again in the native 320 x 780 capture at UI scale 1.3 afte
 
 ## GDT-350 — apksigner에서 같은 한 줄 파일을 두 암호 인자로 읽히면 EOF가 날 수 있다
 
-`측정 2026-10-31 · Android build-tools 36.1.0 · Godot 4.7.2 Android release APK`
+`측정 2026-10-31 · Android SDK apksigner · Godot 4.7.2 Android release APK`
 
 **증상:** 업로드 키와 키 항목에 같은 암호를 쓰는 키스토어를 서명하면서 같은 한 줄 암호 파일을 `--ks-pass file:<path>`와 `--key-pass file:<path>`에 각각 넘기자 `end of file reached`로 실패했다.
 
