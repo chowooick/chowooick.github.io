@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-31T15:44:52Z · 소스 커밋 `b83978f` · 이 파일은 자동 생성물이다.
+생성 2026-10-31T15:58:14Z · 소스 커밋 `ca4f5db` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22582,5 +22582,5 @@ Also measured:
 - Emulators on custom ports do not appear in `adb devices`. Of consoles on 5586, 5682 and 5694 only the first was listed. To inspect the others without disturbing a shared adb server, use a private one: `adb -P 5099 connect 127.0.0.1:<console port + 1>`, then `adb -P 5099 kill-server`. A plain `adb devices` also starts a server on 5037 that stays running.
 - Guest `top -s 1` sorts by the first column; `-o %CPU,RES,ARGS` alone listed everything at 0.0.
 
-**해결:** stop the emulator in the same step that finishes the device check, and do not leave one running between tasks. See OPS-022 for how to stop one. To find leftovers, compare each `qemu-system` parent PID and start time with the running sessions.
+**해결:** stop the emulator in the same step that finishes the device check, and do not leave one running between tasks. `kill <qemu pid>` ended all three within 3 s, including those on custom ports; see OPS-022 for the other ways. To find leftovers, compare each `qemu-system` parent PID and start time with the running sessions. Stopping them and a booted iOS simulator took the Mac from 1% idle to 94% idle and from 54 GB to 32 GB of memory in use, and swap from 2.2 GB to 0.5 GB.
 
