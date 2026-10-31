@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-31T00:41:50Z · 소스 커밋 `7f96c68` · 이 파일은 자동 생성물이다.
+생성 2026-10-31T01:31:18Z · 소스 커밋 `e6d4447` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22466,7 +22466,9 @@ Also measured:
 
 The collector treated any non-200 as "no release", so the app was written down as having no version and a false timeline event went out.
 
-**해결:** treat only 204 and 404 as an empty track; anything else keeps the last known value and fails the run visibly. Run at most hourly, skip a run that a restart would repeat by checking the age of the last row, and ask only the track that held a release last time. Do not probe the endpoint by hand while diagnosing it: the probes spend the same quota. How long the block lasts was not measured.
+**해결:** treat only 204 and 404 as an empty track; anything else keeps the last known value and fails the run visibly. Run at most hourly, skip a run that a restart would repeat by checking the age of the last row, and ask only the track that held a release last time. Do not probe the endpoint by hand while diagnosing it: the probes spend the same quota.
+
+Duration, measured the same day: the last good collector run began at 22:52:45 UTC, the runs at 22:54:37 and 22:57:41 and a manual probe at 22:56:12 were refused, nothing called the method after that, and the next call at 00:41:50 answered 200 for all four apps. The block therefore lasts under 1 h 47 min and clears inside the same day, well before midnight Pacific. Hourly runs have stayed inside the limit since.
 
 ## OPS-778 — Full-screen install on an Access-gated PWA works on a real Pixel: 8.5 s from the sheet to the app in front, and the app inherits the Access session
 
@@ -22500,4 +22502,21 @@ A related trap on the same device: a deploy answers 502 for a few seconds, and a
 **증상:** An upload to one Firebase app returned HTTP 200 and logged `Crashlytics symbol file uploaded successfully; deleting local file:` for each generated file. Reusing that cache for a second app provided no symbols. A Gradle symbol task invoked outside Godot also defaulted the package to `com.godot.game` and failed with `No matching client found for package name 'com.godot.game'`.
 
 **해결:** Copy generated symbols to a separate cache before uploading to multiple app IDs, or regenerate per app. Verify one HTTP 200 receipt per library per app and verify ELF GNU Build IDs against the shipped libraries. Supply `-Pexport_package_name=<package>` when invoking the app's Gradle symbol task directly. Do not export/build the same Godot Android template while symbol generation/upload is running: export cleans its build directory. A task success alone is not proof that the console has readable frames.
+
+## OPS-782 — Unpublishing from Play Console is blocked by managed publishing, and managed publishing cannot go back on afterwards
+
+`측정 2026-10-30 · Play Console web · Android Publisher API v3 · Reporting API v1beta1 · 4 apps on one organisation account`
+
+**증상:** on one app the 「출시 안됨」 radio under 고급 설정 → 앱 이용 가능 여부 and the 게시 취소 button were disabled, with no message. Another app on the same account unpublished normally. The difference was managed publishing, set on 게시 개요: on for the blocked app, off for the other.
+
+Measured behaviour:
+
+- Turning managed publishing off takes effect immediately with no confirmation dialog, and enables the radio. Check first that nothing is waiting: 앱 대시보드 said 게시되지 않은 변경사항이 없습니다.
+- Turning it back on after unpublishing is refused: 앱이 게시 취소된 경우에는 관리형 게시를 사용 설정할 수 없습니다.
+- An app that has only ever been on internal testing refuses it too: 현재는 관리형 게시를 사용 설정할 수 없습니다, with no reason given. So it cannot serve as a technical gate before a first public release.
+- The dialog says an unpublish usually takes up to an hour. `play.google.com/store/apps/details?id=<pkg>` answered 404 for both apps within 7 minutes, and Play Console's app list showed 출시 안됨.
+- After unpublishing, `tracks.releases.list` still reported the production release as live, so release state alone cannot tell an unpublished app from a public one. `apps:search` still lists it.
+- The app-list page's 설치한 사용자 수 column shows install counts that the reporting APIs do not.
+
+**해결:** turn managed publishing off, unpublish, and note that it stays off; turn it on again after any republish. To show the true state on a dashboard, check the public store page and treat only a 404 as unpublished: a timeout says nothing about the app.
 
