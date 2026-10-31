@@ -12461,3 +12461,12 @@ A related trap on the same device: a deploy answers 502 for a few seconds, and a
 `ego-browser nodejs` reads its script from stdin across ssh and reaches the desktop session's running app, so the browser, its sign-ins and its profiles are the remote Mac's. The script runs on that Mac too: every path in it is a remote path, and `127.0.0.1` is the remote host.
 
 **해결:** run `ssh host 'export PATH="$HOME/.local/bin:$PATH"; ego-browser nodejs' < script.js`. When a person must act in the page, open it as an ordinary tab with `open -a "ego lite" "<url>"`, which landed in the user's own space, and confirm it from `listTaskSpaces()` (`recentTabTitles`). `page.evaluate` has a fixed 15 s limit, which a heavy axe run can pass on a loaded host: retry it after a reload.
+
+
+## OPS-781 — Crashlytics Buildtools deletes native symbol files after each successful upload
+
+`측정 2026-10-30 · Firebase Crashlytics Buildtools 3.0.8 · Android NDK`
+
+**증상:** An upload to one Firebase app returned HTTP 200 and logged `Crashlytics symbol file uploaded successfully; deleting local file:` for each generated file. Reusing that cache for a second app provided no symbols. A Gradle symbol task invoked outside Godot also defaulted the package to `com.godot.game` and failed with `No matching client found for package name 'com.godot.game'`.
+
+**해결:** Copy generated symbols to a separate cache before uploading to multiple app IDs, or regenerate per app. Verify one HTTP 200 receipt per library per app and verify ELF GNU Build IDs against the shipped libraries. Supply `-Pexport_package_name=<package>` when invoking the app's Gradle symbol task directly. Do not export/build the same Godot Android template while symbol generation/upload is running: export cleans its build directory. A task success alone is not proof that the console has readable frames.

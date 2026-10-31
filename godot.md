@@ -5884,3 +5884,21 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** a native build reached its first Korean practice screen, but a check that rejected every `E godot` line failed. The line was `E godot: WARNING: Failed to load cached shader, recompiling.`, followed by `_load_from_cache (drivers/gles3/shader_gles3.cpp:615)`. The app kept the same process and rendered the practice field after recompiling; no script error, Java fatal exception or native fatal signal was observed.
 
 **해결:** classify the Godot message itself, not logcat priority alone. Keep warnings separate from `ERROR:`, `SCRIPT ERROR`, `FATAL EXCEPTION` and `Fatal signal`, then verify that frames and the intended scene progress. This measured cache fallback does not justify ignoring all `E godot` messages.
+
+
+## GDT-342 — Official release templates suppress some implicit GDScript faults even with call-stack tracking enabled
+
+`측정 2026-10-30 · Godot 4.7.2 stable official Android release template`
+
+**증상:** A release APK's null-instance method call stopped that script path without emitting a Logger callback. Enabling `debug/settings/gdscript/always_track_call_stacks` did not change this. The same release APK's explicit `push_error` invoked Logger with `ERROR_TYPE_ERROR` and a ScriptBacktrace; its source location reached the external nonfatal reporter. The 4.7.2 VM source puts implicit runtime-error printing behind `#ifdef DEBUG_ENABLED`.
+
+**해결:** Do not promise automatic collection of every GDScript runtime fault from the stock release template. Forward explicit reported errors with bounded source coordinates, accept `ERROR_TYPE_ERROR` as well as `ERROR_TYPE_SCRIPT`, exclude warnings, and verify the release APK itself. Call-stack tracking adds context to emitted errors; it does not enable suppressed error reporting. Reference: https://github.com/godotengine/godot/blob/4.7.2-stable/modules/gdscript/gdscript_vm.cpp .
+
+
+## GDT-343 — A manually extracted Android template needs .gdignore before Godot imports it
+
+`측정 2026-10-30 · Godot 4.7.2 Android source template · AGP 8.6.1`
+
+**증상:** Unzipping `android_source.zip` manually to apply app Gradle plugins left `android/build/` visible to Godot. The import scanned its generated assets and created `.webp.import` files in Android resource folders. Gradle then failed with `Resource and asset merger: The file name must end with .xml or .png`; a concurrent web export also saw generated GDScript paths under `res://android/build/assetPackInstallTime/src/main/assets/`.
+
+**해결:** Create `android/build/.gdignore` before the first Godot import, including when the build directory already exists. Remove only the task-owned generated `.import` files/editor index, then import again. Serialize Godot exports sharing one project directory. Declare Google Services/Crashlytics in the root app `plugins` block: applying a separate script with its own buildscript classpath produced `Plugin with id 'com.google.gms.google-services' not found.`

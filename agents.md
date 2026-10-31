@@ -3125,3 +3125,21 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 - Check the device against the live release (`<engine hash>` in the served `index.html`, or the release in `deploy/*/target.json`), not against the build you tested.
 
 관련: AGT-170
+
+
+## AGT-179 — Ego Lite Network event buffers can expose cookies and authorization when printed wholesale
+
+`측정 2026-10-30 · ego-browser skill 2.2.0 · Ego Lite 0.6.2.5`
+
+**증상:** After `page.cdp("Network.enable")`, `page.events()` included `Network.requestWillBeSentExtraInfo` associated-cookie records, including blocked cookies, and request authorization headers. Printing the complete event array exposes these values in tool output even when the intended inspection concerns only response status.
+
+**해결:** Filter inside the browser script before printing or saving evidence. Whitelist event method, status, event name, and a query-free host/path when required; never serialize raw event objects, headers, associatedCookies or request bodies to tool output. Keep any necessary private diagnostic file outside the repository with mode 0600.
+
+
+## AGT-180 — Ego Lite CDP viewport overrides need reapplication in each nodejs round
+
+`측정 2026-10-30 · ego-browser skill 2.2.0 · Ego Lite 0.6.2.5`
+
+**증상:** One `nodejs` round set a 390×844 Emulation viewport and captured that size. A later round on the same Page observed `innerWidth=906`, `innerHeight=950` and a matching game canvas. Reapplying the viewport in the capture round produced 390×844 again.
+
+**해결:** Do not assume a previous round's CDP emulation survives. Apply `Emulation.setDeviceMetricsOverride` in each round that depends on its size, wait for the canvas/document to resize, and keep size-dependent clicks and capture in that same round. Use a snapshot or inspected screenshot to ground new targets.
