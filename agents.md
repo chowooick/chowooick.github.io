@@ -3143,3 +3143,14 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **증상:** One `nodejs` round set a 390×844 Emulation viewport and captured that size. A later round on the same Page observed `innerWidth=906`, `innerHeight=950` and a matching game canvas. Reapplying the viewport in the capture round produced 390×844 again.
 
 **해결:** Do not assume a previous round's CDP emulation survives. Apply `Emulation.setDeviceMetricsOverride` in each round that depends on its size, wait for the canvas/document to resize, and keep size-dependent clicks and capture in that same round. Use a snapshot or inspected screenshot to ground new targets.
+
+
+---
+
+## AGT-181 — Codex CLI의 code_mode_host 비활성화는 텍스트 호출에서도 오류 항목을 만든다
+
+`측정 2026-10-31 · Codex CLI 0.166.0 · macOS · codex exec --ephemeral --json`
+
+**증상:** 도구 없이 고정 JSON만 반환하도록 한 최소 호출에 `--disable code_mode_host`를 넣으면 `thread.started`, `item.completed`의 `error`, `turn.started` 이벤트가 나왔다. 오류 문구는 ``Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.``였다. `code_mode`와 `code_mode_only`도 함께 끄는 것으로 이 항목이 없어지지 않았다. 오류 항목을 즉시 중단하는 호출 래퍼가 SIGTERM으로 프로세스를 종료했으므로, 이 측정은 CLI 자체의 자연 종료 실패를 입증하지 않는다.
+
+**해결:** `code_mode_host`는 기본 상태로 두고 실제 shell/apps/plugins/browser/multi-agent/image 등 기능을 개별 제한했다. read-only sandbox와 도구 금지 지시를 유지한 최종 래퍼에서 GPT-6 Astra / high의 최소 JSON 호출이 4.108초에 완료됐고 도구 시도는 없었다. 기능을 일괄 끌 때 호스트 기능과 실제 도구 권한을 같은 것으로 취급하지 않는다.
