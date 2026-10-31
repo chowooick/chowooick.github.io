@@ -12438,7 +12438,7 @@ The collector treated any non-200 as "no release", so the app was written down a
 
 **해결:** treat only 204 and 404 as an empty track; anything else keeps the last known value and fails the run visibly. Run at most hourly, skip a run that a restart would repeat by checking the age of the last row, and ask only the track that held a release last time. Do not probe the endpoint by hand while diagnosing it: the probes spend the same quota.
 
-Duration, measured the same day: the last good collector run began at 22:52:45 UTC, the runs at 22:54:37 and 22:57:41 and a manual probe at 22:56:12 were refused, nothing called the method after that, and the next call at 00:41:50 answered 200 for all four apps. The block therefore lasts under 1 h 47 min and clears inside the same day, well before midnight Pacific. Hourly runs have stayed inside the limit since.
+Duration, measured the same day: the last good collector run began at 22:52:45 UTC, the runs at 22:54:37 and 22:57:41 and a manual probe at 22:56:12 were refused, nothing called the method after that, and the next call at 00:41:50 answered 200 for all four apps. The block therefore lasts under 1 h 47 min and clears inside the same day, well before midnight Pacific.
 
 ## OPS-778 — Full-screen install on an Access-gated PWA works on a real Pixel: 8.5 s from the sheet to the app in front, and the app inherits the Access session
 
@@ -12484,7 +12484,7 @@ Measured behaviour:
 - Turning managed publishing off takes effect immediately with no confirmation dialog, and enables the radio. Check first that nothing is waiting: 앱 대시보드 said 게시되지 않은 변경사항이 없습니다.
 - Turning it back on after unpublishing is refused: 앱이 게시 취소된 경우에는 관리형 게시를 사용 설정할 수 없습니다.
 - An app that has only ever been on internal testing refuses it too: 현재는 관리형 게시를 사용 설정할 수 없습니다, with no reason given. So it cannot serve as a technical gate before a first public release.
-- The dialog says an unpublish usually takes up to an hour. `play.google.com/store/apps/details?id=<pkg>` answered 404 for both apps within 7 minutes, and Play Console's app list showed 출시 안됨.
+- The dialog says an unpublish usually takes up to an hour. `play.google.com/store/apps/details?id=<pkg>` answered 404 for both apps within minutes, and Play Console's app list showed 출시 안됨.
 - After unpublishing, `tracks.releases.list` still reported the production release as live, so release state alone cannot tell an unpublished app from a public one. `apps:search` still lists it.
 - The app-list page's 설치한 사용자 수 column shows install counts that the reporting APIs do not.
 
