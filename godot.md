@@ -5910,3 +5910,11 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** A clean `template_release` Android build logged `Swappy Frame Pacing not detected!` and its library lacked `SwappyVk_queuePresent`; the official 4.7.2 Android release library contains that symbol. Godot's source build has `swappy` off by default and the separately downloaded archives are absent from a clean source checkout. Enabling `DEBUG_ENABLED` globally as a workaround for release GDScript errors also makes `OS.is_debug_build()` return true, which can change application behavior.
 
 **해결:** In an isolated source checkout run `python3 misc/scripts/install_swappy_android.py`, with a task-specific `TMPDIR`, then build each ABI with `swappy=yes`; verify the resulting library contains the Swappy symbols. Keep release diagnostics narrowly scoped when production code branches on `OS.is_debug_build()`. Generate matching unstripped symbols and verify their GNU Build IDs against the stripped shipped libraries.
+
+## GDT-345 — Godot release VM computes several GDScript error flags but does not emit them to Logger
+
+`측정 2026-10-31 · Godot 4.7.2 stable Android release VM · Android 15 ARM64`
+
+**증상:** In an isolated release APK, invalid dynamic key reads/writes, out-of-range typed array reads/writes, null property reads/writes and incompatible dynamic operators produced no Logger report, even with call-stack tracking enabled. The VM already obtains `valid`, `oob`, or `Callable::CallError` flags on several of these paths, but their error reporting is guarded by `DEBUG_ENABLED`.
+
+**해결:** A narrowly modified release VM can log a fixed category and source coordinates after those existing flags indicate failure, preserving the original release flow and keeping `OS.is_debug_build()` false. A comparison produced 0/7 forwarded errors before and 7/7 after, with no reports for corresponding valid operations; a packed-array bounds write and invalid `abs` call were also reported. Confirm behavior and performance with a release build and avoid claiming complete coverage: optimized opcodes without a usable failure signal remain outside these checks. Do not forward operand values or keys.
