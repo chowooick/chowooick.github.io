@@ -12523,3 +12523,17 @@ Also measured:
 - `DISTINCT ON (host) … ORDER BY host, at DESC` in a psql check returned an old row because `to_char(at, …) AS at` made `ORDER BY` sort the formatted text. Name the alias differently.
 
 **해결:** one script printing `key=value` lines, one key that can run only that script, a list of servers in code so a silent server shows as unknown rather than vanishing, and no alert on load for a test machine, whose load is its job.
+
+## OPS-786 — A headless Android emulator left running a Godot game takes 3–4 host cores and its qemu process grows far past `-memory`
+
+`측정 2026-10-31 · Android emulator with -no-window -gpu swiftshader_indirect -cores 2 -memory 1536/2048 · Godot release APK · android-35 arm64 · Mac mini M4 Pro 12 cores 64 GB`
+
+**증상:** a shared test Mac sat at 99% CPU with a load of about 35 for days. Three `qemu-system-aarch64-headless` processes used 1,028% of the 1,200% available, while inside each guest the load average was only 1.2–1.9. All three had been started detached (parent PID 1) by agent sessions whose turns had already finished, 15–43 hours earlier, and each still had the game in the foreground.
+
+- `-gpu swiftshader_indirect` renders on the CPU, and a Godot game redraws without pause, so the emulator never idles. Inside the guest the game showed 98.6% on one thread. `sample <qemu pid> 1` on the host showed `marl::Scheduler::Worker::spinForWork()` in `libvk_swiftshader.dylib`. `-cores 2` does not cap this: the renderer's workers are host threads outside the guest's cores.
+- Host memory grew with uptime and ignored `-memory`. `top -o mem` gave 26 GB after 43 h (`-memory 2048`), 12 GB after 28 h (`-memory 1536`) and 12 GB after 15 h (`-memory 2048`), about 0.4–0.8 GB per hour. The game in the guest was only 545 MB, so the growth is on the host side.
+- `ps` RSS hides this: the 26 GB process showed 5.6 GB of RSS, and 20 GB of it was compressed. Read the `MEM` and `CMPRS` columns of `top -l 1 -o mem -stats pid,command,mem,cmprs`. Whole-machine `vm_stat` showed 57 GiB of pages held in 13 GiB of compressor, and other long-running services on the machine were pushed into it: a VM host process had 6.3 GB of 8.9 GB compressed and an idle `llama-server` 8.25 GB of 8.27 GB.
+- Emulators on custom ports do not appear in `adb devices`. Of consoles on 5586, 5682 and 5694 only the first was listed. To inspect the others without disturbing a shared adb server, use a private one: `adb -P 5099 connect 127.0.0.1:<console port + 1>`, then `adb -P 5099 kill-server`. A plain `adb devices` also starts a server on 5037 that stays running.
+- Guest `top -s 1` sorts by the first column; `-o %CPU,RES,ARGS` alone listed everything at 0.0.
+
+**해결:** stop the emulator in the same step that finishes the device check, and do not leave one running between tasks. See OPS-022 for how to stop one. To find leftovers, compare each `qemu-system` parent PID and start time with the running sessions.
