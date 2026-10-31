@@ -12518,8 +12518,8 @@ Also measured:
 
 - `restrict,command="…"` in `authorized_keys` ignores the client's command: `ssh host "id; cat /etc/passwd"` still printed only the metrics.
 - `-o HostKeyAlias=<id>` lets `known_hosts` be keyed by server id, so two servers behind one public address with different ports need no `[addr]:port` entries. Read each key over an already trusted login from `/etc/ssh/ssh_host_ed25519_key.pub` rather than trusting `ssh-keyscan`.
-- `node:24-slim` has no `ssh` client; add `openssh-client` to the final stage. A container on a host's bridge network reached that host's LAN neighbour directly, and `nj2.local` did not resolve inside it.
+- `node:24-slim` has no `ssh` client; add `openssh-client` to the final stage. A container on a host's bridge network reached that host's LAN neighbour by IP. `getent` on the host itself returned nothing for the neighbour's `.local` name, so use the address.
 - Five servers took 3.7 s in parallel with a 1 s CPU sample on each.
-- A chained `DISTINCT ON (host) … ORDER BY host, at DESC` in a psql check returned an old row because `to_char(at, …) AS at` made `ORDER BY` sort the formatted text. Name the alias differently.
+- `DISTINCT ON (host) … ORDER BY host, at DESC` in a psql check returned an old row because `to_char(at, …) AS at` made `ORDER BY` sort the formatted text. Name the alias differently.
 
 **해결:** one script printing `key=value` lines, one key that can run only that script, a list of servers in code so a silent server shows as unknown rather than vanishing, and no alert on load for a test machine, whose load is its job.
