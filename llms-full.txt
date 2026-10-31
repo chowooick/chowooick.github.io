@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-30T23:32:02Z · 소스 커밋 `be39c81` · 이 파일은 자동 생성물이다.
+생성 2026-10-31T00:41:50Z · 소스 커밋 `7f96c68` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6856,6 +6856,24 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 
 **해결:** classify the Godot message itself, not logcat priority alone. Keep warnings separate from `ERROR:`, `SCRIPT ERROR`, `FATAL EXCEPTION` and `Fatal signal`, then verify that frames and the intended scene progress. This measured cache fallback does not justify ignoring all `E godot` messages.
 
+
+## GDT-342 — Official release templates suppress some implicit GDScript faults even with call-stack tracking enabled
+
+`측정 2026-10-30 · Godot 4.7.2 stable official Android release template`
+
+**증상:** A release APK's null-instance method call stopped that script path without emitting a Logger callback. Enabling `debug/settings/gdscript/always_track_call_stacks` did not change this. The same release APK's explicit `push_error` invoked Logger with `ERROR_TYPE_ERROR` and a ScriptBacktrace; its source location reached the external nonfatal reporter. The 4.7.2 VM source puts implicit runtime-error printing behind `#ifdef DEBUG_ENABLED`.
+
+**해결:** Do not promise automatic collection of every GDScript runtime fault from the stock release template. Forward explicit reported errors with bounded source coordinates, accept `ERROR_TYPE_ERROR` as well as `ERROR_TYPE_SCRIPT`, exclude warnings, and verify the release APK itself. Call-stack tracking adds context to emitted errors; it does not enable suppressed error reporting. Reference: https://github.com/godotengine/godot/blob/4.7.2-stable/modules/gdscript/gdscript_vm.cpp .
+
+
+## GDT-343 — A manually extracted Android template needs .gdignore before Godot imports it
+
+`측정 2026-10-30 · Godot 4.7.2 Android source template · AGP 8.6.1`
+
+**증상:** Unzipping `android_source.zip` manually to apply app Gradle plugins left `android/build/` visible to Godot. The import scanned its generated assets and created `.webp.import` files in Android resource folders. Gradle then failed with `Resource and asset merger: The file name must end with .xml or .png`; a concurrent web export also saw generated GDScript paths under `res://android/build/assetPackInstallTime/src/main/assets/`.
+
+**해결:** Create `android/build/.gdignore` before the first Godot import, including when the build directory already exists. Remove only the task-owned generated `.import` files/editor index, then import again. Serialize Godot exports sharing one project directory. Declare Google Services/Crashlytics in the root app `plugins` block: applying a separate script with its own buildscript classpath produced `Plugin with id 'com.google.gms.google-services' not found.`
+
 ---
 
 <!-- source: agents.md -->
@@ -9987,6 +10005,24 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 - Check the device against the live release (`<engine hash>` in the served `index.html`, or the release in `deploy/*/target.json`), not against the build you tested.
 
 관련: AGT-170
+
+
+## AGT-179 — Ego Lite Network event buffers can expose cookies and authorization when printed wholesale
+
+`측정 2026-10-30 · ego-browser skill 2.2.0 · Ego Lite 0.6.2.5`
+
+**증상:** After `page.cdp("Network.enable")`, `page.events()` included `Network.requestWillBeSentExtraInfo` associated-cookie records, including blocked cookies, and request authorization headers. Printing the complete event array exposes these values in tool output even when the intended inspection concerns only response status.
+
+**해결:** Filter inside the browser script before printing or saving evidence. Whitelist event method, status, event name, and a query-free host/path when required; never serialize raw event objects, headers, associatedCookies or request bodies to tool output. Keep any necessary private diagnostic file outside the repository with mode 0600.
+
+
+## AGT-180 — Ego Lite CDP viewport overrides need reapplication in each nodejs round
+
+`측정 2026-10-30 · ego-browser skill 2.2.0 · Ego Lite 0.6.2.5`
+
+**증상:** One `nodejs` round set a 390×844 Emulation viewport and captured that size. A later round on the same Page observed `innerWidth=906`, `innerHeight=950` and a matching game canvas. Reapplying the viewport in the capture round produced 390×844 again.
+
+**해결:** Do not assume a previous round's CDP emulation survives. Apply `Emulation.setDeviceMetricsOverride` in each round that depends on its size, wait for the canvas/document to resize, and keep size-dependent clicks and capture in that same round. Use a snapshot or inspected screenshot to ground new targets.
 
 ---
 
@@ -22455,4 +22491,13 @@ A related trap on the same device: a deploy answers 502 for a few seconds, and a
 `ego-browser nodejs` reads its script from stdin across ssh and reaches the desktop session's running app, so the browser, its sign-ins and its profiles are the remote Mac's. The script runs on that Mac too: every path in it is a remote path, and `127.0.0.1` is the remote host.
 
 **해결:** run `ssh host 'export PATH="$HOME/.local/bin:$PATH"; ego-browser nodejs' < script.js`. When a person must act in the page, open it as an ordinary tab with `open -a "ego lite" "<url>"`, which landed in the user's own space, and confirm it from `listTaskSpaces()` (`recentTabTitles`). `page.evaluate` has a fixed 15 s limit, which a heavy axe run can pass on a loaded host: retry it after a reload.
+
+
+## OPS-781 — Crashlytics Buildtools deletes native symbol files after each successful upload
+
+`측정 2026-10-30 · Firebase Crashlytics Buildtools 3.0.8 · Android NDK`
+
+**증상:** An upload to one Firebase app returned HTTP 200 and logged `Crashlytics symbol file uploaded successfully; deleting local file:` for each generated file. Reusing that cache for a second app provided no symbols. A Gradle symbol task invoked outside Godot also defaulted the package to `com.godot.game` and failed with `No matching client found for package name 'com.godot.game'`.
+
+**해결:** Copy generated symbols to a separate cache before uploading to multiple app IDs, or regenerate per app. Verify one HTTP 200 receipt per library per app and verify ELF GNU Build IDs against the shipped libraries. Supply `-Pexport_package_name=<package>` when invoking the app's Gradle symbol task directly. Do not export/build the same Godot Android template while symbol generation/upload is running: export cleans its build directory. A task success alone is not proof that the console has readable frames.
 
