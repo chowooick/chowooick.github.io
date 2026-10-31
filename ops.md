@@ -12547,3 +12547,13 @@ Also measured:
 A four-line reproduction on the designated test host printed Node `v26.12.1`, the exact exception from `new Response(new ArrayBuffer(0), {status: 204})`, and successful status values from `new Response(null, {status: 204})`, `205`, and `304`.
 
 **해결:** Preserve a null body for statuses 204, 205, and 304 when reconstructing upstream responses; buffer and forward the body for other statuses. Test the actual response wrapper as well as the endpoint: a fixture that returns a ready-made 204 bypasses the failing constructor. The actual-wrapper regression tests passed after the change.
+
+---
+
+## OPS-788 — Ego Lite CDP viewport 설정은 다음 nodejs 호출에서 원래 창 크기로 돌아갈 수 있다
+
+`측정 2026-10-31 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · 원격 TaskSpace 18`
+
+**증상:** 같은 TaskSpace의 `Page.cdp`로 `Emulation.setDeviceMetricsOverride`에 width 1440, height 900을 적용했다. 그 `ego-browser nodejs` 호출 안에서는 `innerWidth=1440`, Godot의 `canvas.width=1440`을 확인한 뒤 목표 크기의 스크린샷을 얻었다. 그러나 다음 nodejs 호출 시작 시 `innerWidth=918`, `innerHeight=962`로 실제 창 크기에 돌아와 있었다. 이전 호출에서 성공한 override가 다음 호출에도 유지된다고 가정할 수 없었다. 또한 `innerWidth`만 목표값에 도달한 시점에는 Godot canvas가 이전 크기일 수 있어, 바로 캡처하면 이전 레이아웃을 기록했다.
+
+**해결:** 각 QA nodejs 호출에서 device metrics를 다시 적용하고, 창 크기뿐 아니라 Godot `canvas.width`가 의도한 목표값에 도달할 때까지 기다린 뒤 같은 호출 안에서 캡처한다. 이 측정의 캡처 조건은 `innerWidth=1440`과 `canvas.width=1440`이었다. 이전 호출의 설정 성공이나 창 크기 한 값만으로 렌더 크기 검증을 대신하지 않는다.
