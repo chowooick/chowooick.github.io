@@ -12497,3 +12497,11 @@ Measured behaviour:
 **증상:** Two QA native crash events received before symbol upload still showed a missing GNU Build ID in the console hours later. A separate QA crash event received after the matching symbol upload displayed function names and source lines in the console, including `CoreBind::OS::crash` at `core_bind.cpp:349`. The matching Build ID had been verified and upload responses were HTTP 200.
 
 **해결:** Validate a fresh isolated crash received after upload, in the same Firebase app and with the matching binary, and inspect its console stack. Do not infer that a successful upload retroactively symbolicates earlier issues, or that a QA app's result proves the production Firebase app's symbols work.
+
+## OPS-784 — Reused SSH multiplexed connections can retain an earlier forwarded agent context
+
+`측정 2026-10-31 · macOS OpenSSH 10.3p1 · agent forwarding through busan.mac`
+
+**증상:** Keys were loaded on the controller, but an onward SSH connection through a reused test-host connection still failed. Adding `-A` to the new invocation did not fix the reused connection. The same onward read succeeded when the outer connection used `-A -o ControlPath=none`. This was not loss of access to the destination.
+
+**해결:** For a task that needs the current forwarded agent, use `ssh -A -o ControlPath=none <test-host> ...` and verify an onward read-only command before changing credentials. Keep private keys on the controller. Do not stop a shared master connection merely to repair the task's transport.
