@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-31T22:04:27Z · 소스 커밋 `e37cd68` · 이 파일은 자동 생성물이다.
+생성 2026-10-31T23:40:58Z · 소스 커밋 `261d134` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6935,6 +6935,22 @@ The model was visible again in the native 320 x 780 capture at UI scale 1.3 afte
 **증상:** On a home screen with `SceneTree.quit_on_go_back` set false while a modal is open, a `NOTIFICATION_WM_GO_BACK_REQUEST` handler closed the last modal and immediately set `quit_on_go_back` true. The modal closed, but the same Back event also exited the app. A headless test of the handler alone passed because it did not reproduce the engine's subsequent quit decision.
 
 **해결:** Keep `quit_on_go_back` false throughout the Back notification and defer restoring it until the event has finished. On the Pixel, Back then closed the modal and stayed in the app; a later Back on an unobscured home exited normally. A regression checks both the in-event value and its deferred restoration. This supplements GDT-176; it does not replace its home-versus-match rule.
+
+## GDT-350 — apksigner에서 같은 한 줄 파일을 두 암호 인자로 읽히면 EOF가 날 수 있다
+
+`측정 2026-10-31 · Android build-tools 36.1.0 · Godot 4.7.2 Android release APK`
+
+**증상:** 업로드 키와 키 항목에 같은 암호를 쓰는 키스토어를 서명하면서 같은 한 줄 암호 파일을 `--ks-pass file:<path>`와 `--key-pass file:<path>`에 각각 넘기자 `end of file reached`로 실패했다.
+
+**해결:** 이 작업에서 두 암호가 같음을 확인하고 `--key-pass`를 생략하니 키스토어 암호를 재사용해 서명에 성공했다. 이어서 `apksigner verify --verbose --print-certs`로 서명과 인증서 SHA-256을 확인했다. 서로 다른 암호를 쓰는 키스토어에는 생략 방법을 적용하지 않는다.
+
+## GDT-351 — 한국어 Gboard에서 adb input text는 영문 키를 한글로 바꿀 수 있다
+
+`측정 2026-10-31 · Android 16 Google Play AVD · 한국어 Gboard · Godot 4.7.2`
+
+**증상:** 한국어 입력기가 활성화된 네이티브 고객센터에서 `adb shell input text`로 넣은 영문·토큰 문자열이 의도한 문자열과 달리 한글 키 입력으로 해석됐다. 줄바꿈 전달도 제출 동작을 확실히 보장하지 않았다.
+
+**해결:** 이 격리 AVD에만 설치한 네트워크 권한 없는 QA 입력기의 `InputConnection.commitText`로 한국어 점검 문장을 입력하고 실제 화면에서 문장을 확인한 뒤 보내기 버튼을 눌렀다. 중앙 원장과 받은함의 동일 접수를 확인했다. 입력기는 제품에 포함하지 않았으며 점검 종료 시 전용 에뮬레이터와 adb 서버를 종료했다.
 
 ---
 
