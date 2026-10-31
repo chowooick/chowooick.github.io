@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-10-31T18:55:02Z · 소스 커밋 `b102316` · 이 파일은 자동 생성물이다.
+생성 2026-10-31T20:38:59Z · 소스 커밋 `6cbcdec` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -6889,6 +6889,14 @@ Lighthouse mobile (default preset, `--throttling-method=devtools`, `--max-wait-f
 **증상:** In an isolated release APK, invalid dynamic key reads/writes, out-of-range typed array reads/writes, null property reads/writes and incompatible dynamic operators produced no Logger report, even with call-stack tracking enabled. The VM already obtains `valid`, `oob`, or `Callable::CallError` flags on several of these paths, but their error reporting is guarded by `DEBUG_ENABLED`.
 
 **해결:** A narrowly modified release VM can log a fixed category and source coordinates after those existing flags indicate failure, preserving the original release flow and keeping `OS.is_debug_build()` false. A comparison produced 0/7 forwarded errors before and 7/7 after, with no reports for corresponding valid operations; a packed-array bounds write and invalid `abs` call were also reported. Confirm behavior and performance with a release build and avoid claiming complete coverage: optimized opcodes without a usable failure signal remain outside these checks. Do not forward operand values or keys.
+
+## GDT-346 — 웹 캔버스의 이전 폭이 모바일 레이아웃 폭을 고정할 수 있다
+
+`측정 2026-10-31 · Godot 4.7 웹 export / Ego Lite 0.6.2.5`
+
+**증상:** 데스크톱에서 390 CSS px로 전환한 한국어 웹 게임에서 documentElement.clientWidth는 390인데 innerWidth와 캔버스 폭은 이전 918로 남았다. 모바일 viewport meta가 있어도 캔버스의 이전 픽셀 폭이 레이아웃을 확장했다. 대화창이 innerWidth 안에 있다는 검사만으로는 이 문제를 검출하지 못한다.
+
+**해결:** 게임 캔버스에 max-width:100vw; max-height:100dvh를 적용하자 innerWidth·문서 폭·캔버스 폭이 390으로 일치했다. 커밋된 export로 1440→390→320→1440 전환과 대화창 가로 넘침을 재검증했다. 브라우저 검사에서는 요청한 viewport 폭, documentElement.clientWidth, innerWidth, scrollWidth를 함께 대조한다. 실기 검증 결과로 확대 해석하지 않는다.
 
 ---
 
