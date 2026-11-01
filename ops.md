@@ -12609,3 +12609,12 @@ When changing this owned LaunchAgent's arguments, immediate bootstrap after boot
 **증상:** 새 전용 standalone에 `spacetime publish --anonymous`로 처음 올린 DB를 다시 게시하자 `403 Forbidden: ... is not authorized to perform action on database ...: update database`가 발생했다. 두 번째 익명 publish의 호출자 Identity도 첫 호출과 달랐다. `--anonymous`를 제거해 공유 CLI 기본 신원으로 호출해도 원래 DB의 소유자가 아니므로 동일하게 거절됐다.
 
 **해결:** 본 작업이 만든 일회용 DB만 새 격리 data-dir에서 시작했다. `POST /v1/identity`의 응답 token을 로그에 출력하지 않고 권한 0600의 개발 전용 cli.toml의 `spacetimedb_token`에 저장하고, 처음부터 `spacetime --config-path <전용 파일> publish ...`로 실행했다. 같은 파일로 생성·재게시가 모두 성공했다. 인증 설정과 DB의 서명 키/data-dir을 함께 유지한다. 기존 운영 DB의 데이터 삭제로 해결하지 않는다.
+
+## OPS-795 — SpacetimeDB --in-memory 재시작에도 control-db의 데이터베이스 이름과 소유자는 남는다
+
+`측정 2026-10-31 · SpacetimeDB CLI/standalone 2.8.0 · busan.mac · 격리 개발 인스턴스`
+
+**증상:** `spacetime start --in-memory --data-dir <전용 경로>`를 종료하고 같은 경로로 다시 시작한 뒤 같은 이름에 익명 publish를 시도했다. 이전 데이터베이스 Identity가 그대로 조회되어 `Pre-publish check failed with status 403 Forbidden`과 `is not authorized to perform action ... update database`가 발생했다. 데이터 경로에는 `control-db`, `program-bytes`, `metadata.toml`이 남아 있었다. `--in-memory`가 서버 메타데이터까지 없애는 옵션은 아니다. 익명 재게시의 소유자 문제는 OPS-584와 같다.
+
+**해결:** 버리는 전용 테스트 인스턴스는 매 실행에 `mktemp -d`로 새 데이터 경로를 만들고 한 번 게시한다. 새 경로에서는 같은 데이터베이스 이름으로 생성과 실제 reducer/구독 검증이 통과했다. 시작 스크립트는 게시 실패 시 자신이 시작한 PID를 종료해야 한다. 영속 운영 데이터 경로를 지우는 해결책으로 확장하지 말고, 운영 갱신은 기존 소유자 인증을 유지한다.
+
