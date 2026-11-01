@@ -6077,3 +6077,28 @@ Godot's web platform listens for keys on the canvas, so any focused page element
 **증상:** 눈송이를 `CPUParticles3D`(`scale_amount_min/max` 0.02~0.045)에 1 m `QuadMesh`와 `BILLBOARD_PARTICLES` 재질로 뿌리자, 화면이 1 m짜리 흰 사각형 420개로 덮였다. `amount`·`lifetime`·중력은 모두 먹었고 크기만 무시됐다. `BILLBOARD_PARTICLES`는 `GPUParticles3D`의 입자 애니메이션 프레임용이고, CPU 입자의 per-instance 스케일은 그 경로에서 버려진다.
 
 **해결:** 재질을 `billboard_mode = BILLBOARD_ENABLED`, `billboard_keep_scale = true`로 두면 `scale_amount`가 그대로 적용돼 2~4 cm 눈송이가 된다(같은 420개, 드로우 콜 변화 없음). 저장할 메시 크기를 줄이는 것으로는 안 된다 — 크기 차이를 `scale_amount`로 주려면 keep_scale이 필요하다.
+
+## GDT-362 — `Label3D`의 기본 폰트에는 한글이 없어 한글 텍스트가 아무것도 그리지 않는다 — `font`에 한글 폰트를 직접 넣어야 한다
+
+`측정 2026-11-01 · Godot 4.7.2 · Web(GL Compatibility) 내보내기`
+
+**증상:** 캐릭터 머리 위 `Label3D`에 `"01"` 같은 숫자는 잘 보이는데 `"나"`를 넣은 두 번째 `Label3D`는
+화면에 아무것도 없다. 오류도 경고도 없다. UI(Control)의 `Label`은 테마 `default_font`로 Pretendard를
+쓰고 있어 한글이 멀쩡하니, 3D 라벨만 빈 것을 눈치채기 어렵다.
+
+**해결:** `Label3D`는 테마를 쓰지 않고 자기 `font` 속성(비어 있으면 엔진 기본 폰트)을 쓴다. 기본 폰트에
+한글 글리프가 없어 조용히 빈 메시가 된다. `label.font = load("res://assets/pretendard.otf")`처럼 한글
+글리프가 있는 `Font`를 직접 지정하면 바로 보인다. 숫자·영문만 보이고 한글만 사라지는 3D 라벨은 이 원인이다.
+
+## GDT-363 — Web 내보내기는 캔버스를 기기 픽셀로 그려 DPR 2 폰에서 UI가 절반 크기가 된다 — `Window.content_scale_factor = devicePixelRatio`로 UI만 키운다
+
+`측정 2026-11-01 · Godot 4.7.2 Web · Ego Lite(Chromium 156) 844×390 DPR 2 에뮬레이션`
+
+**증상:** `window/stretch/mode="disabled"`, `canvas_resize_policy=2`인 Web 빌드를 844×390 CSS px·DPR 2
+폰 가로에서 열면 Godot 뷰포트는 1688×780 기기 픽셀이 되고, 1440×900 데스크톱 기준으로 둔 HUD 글자가
+CSS 기준 6–7 px로 읽을 수 없다. 3D는 선명하니 해상도 문제로 보이지 않는다.
+
+**해결:** 시작 시 한 번 `get_window().content_scale_factor = JavaScriptBridge.eval("window.devicePixelRatio || 1")`
+(1.0–3.0으로 clamp). CanvasItem(UI·터치 조작)만 배율이 붙고 3D 렌더 해상도는 그대로다.
+`get_viewport().get_visible_rect().size`와 터치 이벤트 좌표도 배율이 적용된 단위로 바뀌므로 기존
+레이아웃 코드를 고칠 필요가 없었다. 같은 빌드를 1440×900 DPR 1에서 열면 배율 1로 그대로 동작한다.
