@@ -12695,3 +12695,19 @@ Playwright와 달리 조건 함수 안의 예외를 재시도하지 않는다. �
 **증상:** 마우스 클릭 뒤 초점이 남아 있는 축소 컨트롤에서 Tab을 누르면, keydown에서 주변 링크의 숨김 속성을 해제했는데도 다음 링크로 초점이 이동하지 않았다. 링크를 감싼 요소에 `visibility: hidden`과 `transition: opacity .16s ease, visibility .16s`가 있었고, 회귀 검사에서 `expect(locator).toBeFocused() failed ... Received: inactive`가 발생했다. 포인터 호버와 이미 펼쳐진 상태의 키보드 탐색은 통과해 최초 전환만 따로 검사해야 발견됐다.
 
 **해결:** 표시와 숨김의 visibility는 즉시 바꾸고 opacity만 전환하도록 수정했다. 다른 동작 코드를 바꾸지 않고 같은 검사에서 Tab으로 다음 링크, Shift+Tab으로 중앙 버튼과 이전 링크, 컨트롤 이탈 후 축소까지 통과했다. 호버 확대가 되는지와 별개로, 마우스 클릭 후 키보드로 전환하는 경로를 검사한다. 이 결과는 위 Brave에서 확인한 사례이며 다른 엔진까지 확인한 결과는 아니다.
+
+## OPS-804 — SpacetimeDB 2.8 HTTP `/sql`: an `Identity` comes back as `["0x…"]` and a `Timestamp` as `[micros]`, a hex literal filters by identity, and a module named `gen` does not compile on edition 2024
+
+`측정 2026-11-01 · SpacetimeDB 2.8.0 standalone on busan.mac · Rust module (edition 2024, Rust 1.97.1) · POST /v1/database/<db>/sql with a minted token`
+
+**증상:** a smoke test read rows over `POST /v1/database/<db>/sql` and mapped them by `schema.elements[i].name.some` (OPS-607). A reader written for the websocket JSON shape of OPS-134 (`{"__identity__": "…"}`, `{"__timestamp_micros_since_unix_epoch__": n}`) crashed with `list indices must be integers`: over HTTP SQL an `Identity` column is a **one-element array** `["0xc200…"]` and a `Timestamp` is `[1793521903789501]` (micros since the Unix epoch). `Identity::ZERO` is `["0x0"]`. Separately, a shared crate declared `pub mod gen;` for its generator and failed with `expected identifier, found reserved keyword gen` — the same keyword that breaks `ctx.rng().gen()` (OPS-598) is also refused as a module name.
+
+**사실:**
+- The HTTP SQL response is `[{"schema": {"elements": [{"name": {"some": "<col>"}, …}]}, "rows": [[…], …]}]`, one object per statement, rows positional. Products with one field (`Identity`, `ConnectionId`, `Timestamp`, `TimeDuration`) are printed as a one-element array of that field, not as an object.
+- `WHERE owner = 0xc200…` (the full 64-hex identity as a hex literal, no quotes) filters an `Identity` column; `:sender` is for subscriptions, not for the SQL endpoint.
+- Each HTTP SQL query connects as the token's identity and runs `client_connected` / `client_disconnected` (OPS-594), so a module that derives `online` from presence shows the caller online inside its own query and offline from any other identity's query.
+- `pub mod r#gen;` compiles; paths are then `crate::r#gen::…` and `other_crate::r#gen::…`, and `use other_crate::r#gen::{self as generator, …}` gives a usable alias (`gen` itself cannot be an alias either). The file can stay `gen.rs`.
+
+**해결:** decode HTTP SQL rows with a helper that unwraps one-element arrays into the scalar when the column is an identity or a time, and keep the websocket decoder separate. Filter by identity with a hex literal. Do not name a Rust module, alias or method `gen` on edition 2024; `r#gen` or another name.
+
+관련: OPS-134, OPS-594, OPS-598, OPS-607
