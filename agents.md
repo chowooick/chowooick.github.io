@@ -3220,3 +3220,13 @@ Measured while rendering the same file locally instead:
 - `ego-browser nodejs`는 환경 변수를 받지 않으므로 주소는 스크립트 앞에 `printf 'const A="...";\n'`로 붙여 표준 입력으로 넘긴다.
 
 **해결:** 위 구성으로 2인 데스크톱 + 폰 1인의 14개 검사(한 달 진행, 서버 값, 기부 전파, 인사, 새로고침 복원, 390×844 넘침, 런타임 오류 0건)가 실제 빌드에서 통과했다. 서버 인스턴스를 새로 띄우면 저장된 토큰이 거절되므로(OPS-640) 재실행은 같은 서버에 새 데이터베이스 이름을 쓴다.
+
+## AGT-188 — ego-browser로 Godot 웹 캔버스를 봇 조작할 때 마우스 이벤트를 8 Hz로 보내면 `Input.dispatchMouseEvent`가 타임아웃되고 게임 fps가 4로 떨어진다
+
+`측정 2026-11-01 · busan.mac (load 6–19, 다른 세션과 공유) · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 Web (Snow Pop)`
+
+**증상:** 게임이 노출한 `window.cjState`를 120 ms마다 읽고 매 루프 `page.mouse.move()`로 조준을 갱신하며 `keyboard.down/up`으로 WASD를 바꿨다. 첫 실행은 끝까지 갔지만 게임 fps가 30에서 4–6으로 떨어졌고, 두 번째 실행은 `CdpRequestTimeoutError: CDP request timed out: Input.dispatchMouseEvent`로 Node 프로세스가 종료됐다. 그 사이 이미 찍은 스크린샷은 남았지만 끝에 쓰는 JSON은 없었다. 원인은 wasm 메인 스레드가 바쁜 동안 입력 디스패치의 응답이 늦어지는 것이고, 호스트 부하가 높을수록 자주 난다.
+
+**해결:** ① 루프 간격을 160 ms 이상으로 두고, 마우스는 목표가 25 px 넘게 움직였을 때만 `move()`한다. ② 누르고 있을 키는 매 루프 토글하지 말고 한 번 `keyboard.down("KeyK")`으로 잡아 둔다(Godot physical keycode는 `KeyW`·`KeyJ` 같은 코드 이름으로 들어간다). ③ `mouse.down()`을 한 번 걸어 두면 Godot의 `Input.is_mouse_button_pressed`가 계속 참이라 연사 조준에 쓸 수 있다. ④ 결과 JSON은 끝이 아니라 단계마다 써서 타임아웃 뒤에도 남긴다. 이렇게 바꾼 3회차는 17초 플레이와 사건별 스크린샷 4장을 남기고 정상 종료했고, 입력 없이 잰 rAF fps는 타이틀·플레이 모두 30이었다.
+
+관련: AGT-180, AGT-183, GDT-355

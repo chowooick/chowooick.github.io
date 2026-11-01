@@ -6007,3 +6007,13 @@ Attempt to call function 'JNISingleton::load_rewarded (Callable)' on a null inst
 A RefCounted SDK mock passed the same adapter tests, so it did not reveal the native bridge failure.
 
 **해결:** point the adapter's Callable at a GDScript Node method, and have that method invoke the retained singleton with Object.call, for example _plugin.call("load_rewarded", unit). Use the same wrapper for show. On the same emulator, the wrapped call loaded Google's test rewarded ad in 3.3 seconds, produced one real SDK impression, and returned to the game with no script error. Keep an Android test-ad smoke check in addition to the SDK mock.
+
+## GDT-355 — Godot 4 웹 캔버스를 16:9가 아닌 뷰포트에서 탭으로 조작하면 레터박스 오프셋을 더해야 맞는다
+
+`측정 2026-11-01 · Godot 4.7.2 Web · 1600×900 기준 UI · Ego Lite 0.6.2.5 · CDP Emulation 844×390 / 390×844`
+
+**증상:** 844×390(폰 가로) 에뮬레이션에서 1600×900 설계 좌표를 축만 따로 비례해 `x=187×844/1600=99, y=701×390/900=304`로 탭하자 「PLAY SOLO」가 눌리지 않았다. 캔버스는 뷰포트를 가득 채웠지만(`canvas 1688×780 CSS 844×390`) Godot은 높이 기준으로 축소하고 좌우를 비워 그리기 때문에 x가 어긋났다. 또 `Emulation.setTouchEmulationEnabled` 뒤에는 `navigator.maxTouchPoints>0`를 `_ready`에서 한 번 읽는 게임이 reload 전까지 모바일 HUD를 유지했고, 그 상태에서 1600×900으로 되돌려도 조이스틱·터치 버튼이 데스크톱 HUD 위에 그대로 남았다.
+
+**해결:** `scale = viewportH / 900`, `offset = (viewportW − 1600 × scale) / 2`로 두고 `x = offset + designX × scale`, `y = designY × scale`로 변환한다(844×390에서 scale 0.4333, offset 75.3 → PLAY SOLO는 (156, 304)). 탭은 터치 에뮬레이션 아래 마우스 클릭이 타임아웃되던 것과 달리 `Input.dispatchTouchEvent`의 `touchStart`→80 ms→`touchEnd`(빈 `touchPoints`)로 안정적으로 들어갔다. 모바일·데스크톱 HUD를 번갈아 찍을 때는 터치 에뮬레이션을 바꾼 뒤 반드시 `page.reload()`한다.
+
+관련: AGT-188, AGT-180
