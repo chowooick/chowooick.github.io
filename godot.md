@@ -6212,3 +6212,11 @@ CSS 기준 6–7 px로 읽을 수 없다. 3D는 선명하니 해상도 문제로
 **증상:** `var sent=link.call_reducer(...)` started an HTTP call, the script played a 0.6 s animation, then ran `await sent`. The network returned first, so the coroutine had already completed. The caller never resumed: no error, no log, input stayed locked and the round froze. It only hid on a slow network where the call outlasted the animation.
 
 **해결:** do not keep a coroutine in a variable to await later. Wrap it and poll a flag: `func send(): sending=true; await call(); sending=false`, call `send()` without await, then `while sending: await get_tree().process_frame`.
+
+## GDT-375 — 플랫포머 난이도는 헤드리스 봇 + `Engine.time_scale=4`로 잰다: 8회 병렬 실행이 벽시계 2분이고, 결과가 "어디가 벽인가"를 숫자로 준다
+
+`측정 2026-11-01 · Godot 4.7.2 `--headless` · M4 Pro · 물리 60 tick · 3D CharacterBody3D 등반 게임`
+
+**증상:** "스테이지가 올라가도 어려워지는 느낌이 없다"는 평가를 받았는데, 구간 수치를 바꿀 때마다 사람이 끝까지 플레이할 수 없었다. 자동 플레이(앞으로 걷기+점프 반복)는 40초 동안 바닥을 못 벗어났다.
+
+**해결:** 입력 대신 월드 좌표 이동 벡터와 1회성 점프 플래그를 받는 `bot_active` 분기를 캐릭터에 두고, 봇은 물리 프레임마다 "발 높이보다 0.3~1.8 m 높고 수평 5 m 안의 서 있을 수 있는 발판" 중 최고점을 고른다. 떨어질 때는 아래 25 m 안의 발판을 향해 조향한다. 구간 진입 시각·낙하(최고점 대비 10 m 하락)·터진 발판 수를 세어 `JSON.stringify`로 한 줄 출력한다. `Engine.time_scale = 4`면 물리 tick이 프레임당 4배 돌아 게임 60초가 벽시계 15초이고, 헤드리스 8개를 `&`로 띄워 `wait`하면 구간별 중앙값·범위가 2분 안에 나온다. 세 가지 함정: ① 오프라인 시계를 `Time.get_ticks_msec()`로 만들면 발판은 벽시계로, 캐릭터는 배속으로 움직여 어긋난다 — `_process(delta)` 누적으로 바꾼다. ② 반응이 완벽한 봇에게 "타이밍형" 장애물(흔들림·주기적으로 작아지는 발판)은 비용이 0이라, 그 구간은 사람이 재야 한다. ③ 발판이 구간 바닥에서 3 m에 걸쳐 생겨나면 바닥·체크포인트 높이에는 설 수 있는 발판이 없어 점프(정점 2.2 m)로 닿지 않는다 — 생성 띠를 구간 바닥 3 m 아래에서 시작한다. 봇이 이것을 10초 만에 찾았다.
