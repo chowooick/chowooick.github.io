@@ -12925,3 +12925,11 @@ wasm 빌드와 호스트 테스트 양쪽에 적용된다. 리터럴을 둘로 �
 2. 스크립트 안에서는 매 라운드마다 `fs.writeFile(result.json)`으로 중간 결과를 저장해, 중간에 죽어도 그때까지의
    수치는 남게 한다. `task.finish({keep: []})`에 못 닿으면 작업 공간이 남으므로, 다음 실행 전에
    `listTaskSpaces()`로 같은 이름을 찾아 `finish`한다.
+
+## OPS-825 — a fresh copy of a Wrangler project answers 500 `D1_ERROR: no such table` under `astro dev` until every D1 binding is migrated with `--local`
+
+`측정 2026-11-01 · astro dev 7 + Cloudflare adapter, wrangler from a clean `npm ci`, macOS`
+
+**증상:** a new dated folder (rsync of the working tree, `npm ci`, `.dev.vars` copied from another folder) started `astro dev` cleanly, but the first request to a page that reads a D1 binding returned HTTP 500 with `D1_ERROR: no such table: region_visibility: SQLITE_ERROR`. The page's code was unchanged and worked in the folders of other sessions. The new folder had no `.wrangler/state/v3/d1`: miniflare creates the local D1 databases empty, and `.wrangler` is not part of an rsync or a git checkout. Copying the other session's `.wrangler` would also copy its rows and its open SQLite files.
+
+**해결:** stop the dev server, then in the new folder run `npx wrangler d1 migrations apply <BINDING> --local` once for each `d1_databases` binding in `wrangler.jsonc` (kyomincenter: `MEMBERS`, `COUPONS`, `ANALYTICS`, `LAUNCH`; `BETA` had nothing to apply). The command reads each binding's `migrations_dir` and writes only `.wrangler/state`. Start `astro dev` afterwards; the same URL answered 200. Put the five calls in a small script file and run it over ssh: a loop with `$db` inside a quoted `zsh -lc "…"` string broke on `=: not found` because the `==` in an `echo` was expanded by zsh.
