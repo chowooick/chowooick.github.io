@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T03:29:35Z · 소스 커밋 `78cb0b6` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T03:51:37Z · 소스 커밋 `7cda9d7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22797,4 +22797,12 @@ When changing this owned LaunchAgent's arguments, immediate bootstrap after boot
 **증상:** scratch 이미지의 `container build --platform linux/amd64 --output type=oci,dest=...`가 BuildKit 단계를 마친 뒤 `NSCocoaErrorDomain Code=4`, `format.oci.tar doesn’t exist`로 실패했고 출력 파일이 없었다.
 
 **해결:** 같은 소스를 `container build --platform linux/amd64 --tag <image> .`로 빌드한 뒤 `container image save --platform linux/amd64 -o <archive> <image>`로 저장하자 OCI 파일이 생성됐다. Skopeo의 명시적 linux/amd64 변환과 archive 무결성 검증까지 통과했다. 직접 exporter 실패를 모든 버전으로 일반화하지 않는다.
+
+## OPS-798 — 공유 Apple builder 대신 잡별 BuildKit VM과 Unix 소켓으로 amd64 빌드 격리
+
+`측정 2026-10-31 · Apple Container 1.6.1 · buildctl 0.34.1 · Next.js 16.3.2`
+
+**증상:** 기존 공유 builder(2 CPU·2 GiB)의 amd64 Next 빌드가 컴파일 시작 뒤 진행 출력을 내지 않았고, 상태 조회용 exec도 `guest did not dial back for stderr ... within 30s`로 실패했다. 작업 취소 뒤 공유 builder 안에 컴파일 프로세스가 남지 않은 것은 확인했다. 메모리 부족 자체를 측정해 확정한 것은 아니다.
+
+**해결:** 기존 공유 builder는 재시작하지 않고 잡 전용 VM을 `container run --platform linux/amd64 --rosetta --cpus 4 --memory 8G --cap-add ALL --publish-socket <host.sock>:/run/buildkit/buildkitd.sock moby/buildkit@<pinned-index-digest>`로 만들었다. `buildctl --addr unix://<host.sock> build --frontend dockerfile.v0 ... --output type=oci,dest=<tar>,name=<image>`로 같은 소스의 컴파일 7.4초·타입 검사 5.4초·265페이지 생성·OCI 출력 및 변환 후 무결성 검증까지 통과했다. 시험 VM은 종료·삭제했다. 루트 파일시스템의 임시 캐시만 사용해 외부 캐시 볼륨이 없어도 실행되게 하고, 잡 ID별 VM·소켓만 정리한다. ALL 권한은 이 전용 Linux VM 내부의 rootful BuildKit 중첩 실행용이며 운영 VM에 적용하지 않는다.
 
