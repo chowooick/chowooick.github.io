@@ -5989,3 +5989,11 @@ The model was visible again in the native 320 x 780 capture at UI scale 1.3 afte
 **증상:** WAV 음악을 `stop()`하고 씬을 `queue_free()`한 뒤 `await process_frame` 두 번 후 종료한 테스트는 모든 assertion을 통과해도 `WARNING: 2 ObjectDB instances were leaked at exit`, `ERROR: 1 resources still in use at exit`를 출력했다. `--verbose`의 남은 객체는 `AudioStreamWAV`와 `AudioStreamPlaybackWAV`였다.
 
 **해결:** 씬을 해제한 뒤 `await create_timer(0.3).timeout`으로 실제 시간을 기다리자 같은 테스트에서 경고가 사라졌다. 빠른 headless 프레임 두 번은 오디오 스레드의 해제 시간을 보장하지 않는다. 정상 플레이의 누수로 단정하기 전에 verbose의 실제 객체 종류를 확인한다.
+
+## GDT-353 — SpacetimeDB raw JSON reducer의 Identity 인자에 hex 문자열을 바로 넣으면 거절된다
+
+`측정 2026-10-31 · SpacetimeDB 2.13.0 · Godot 4.7.2 WebSocketPeer · v1.json.spacetimedb`
+
+**증상:** Godot에서 CallReducer.args를 JSON 배열로 직접 만들 때 Rust의 Identity 인자 자리에 64자리 hex 문자열을 넣으면 `invalid type: string ..., expected a 1-element tuple`로 실패했다. 단순히 오류 알림이 왔는지만 보는 권한 테스트는 이 파싱 오류를 권한 거부로 잘못 통과시킬 수 있었다.
+
+**해결:** 이 raw JSON 클라이언트에서는 reducer 입력을 String으로 받고 서버에서 `Identity::from_hex`로 파싱한 뒤 실제 회원·수신자 권한을 검사했다. 실제 수신자 전달, 다른 회원에게 비노출, 비회원·다른 방·음성 미참여 거부를 다시 확인했다. 실패 테스트는 오류의 유무뿐 아니라 기대한 권한 거부 이유까지 검증한다.
