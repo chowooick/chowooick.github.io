@@ -3369,3 +3369,19 @@ A recorder installed in the page (`visibilitychange`, `PerformanceObserver` for 
 The frame rate is also capped by the tab, not by the content. At 1600×900 a page that only clears a WebGL 2 canvas got 6–23 fps, an empty page 41 fps, and the game 21–23 fps both at 753 draw calls and at 361, on hardware Metal (`ANGLE Metal Renderer: Apple M4 Pro`).
 
 **해결:** do not judge rendering cost from an fps number in a task space. Compare builds by alternating them in the same tab, and read counters that ignore host load: Godot `Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME`, `RENDER_TOTAL_OBJECTS_IN_FRAME`, `RENDER_TOTAL_PRIMITIVES_IN_FRAME`. Before calling a gap a hitch, record `visibilitychange` and `longtask` alongside it. A real hitch has a long task; a tab flip does not. Absolute frame rate has to come from a real device. Related: OPS-819.
+
+## AGT-202 — Haiku sub-agents: a fixed prompt cost dominates small batches, so batch 100 items per agent (about 250k tokens each, 33 agents ≈ 8.0M)
+
+`측정 2026-11-01 · Claude Code subagent, Haiku 5.5 · 2026-11-01 prompt 26k characters with 21 examples`
+
+**증상:** a 10-item Haiku sub-agent used 88,210 tokens and a 40-item one 133,367 tokens. Each agent first reads the same ~26k-character
+prompt, so a small batch looked ~8× more expensive per item than the estimate from the per-item output.
+
+**측정:** fitting the two runs gives about 73k fixed tokens per agent plus about 1.5k per item. A 100-item agent (written as two
+`Write` calls of 50 items each, to stay within output limits) used 218k–285k tokens across 33 batches, about 8.0M in total for the
+generation step. 14 of the first 16 agents finished without a hard error; the rest stopped when the parent session was compacted and
+had to be restarted. Restart only the agents whose output file is missing; a file that parses is not redone.
+
+**해결:** when the per-item work is short and the prompt is long, batch by 100 rather than 10, and budget the fixed cost per agent
+before estimating a total. A session compaction stops running background agents without a completion record, so check which
+`out-*.json` files exist and parse before relaunching. Related: AGT-200.

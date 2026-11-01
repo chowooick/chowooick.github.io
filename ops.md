@@ -13001,3 +13001,16 @@ The site kept serving the previous release (`/srv/kyomincenter/current` unchange
 
 **해결:** `sudo rm -rf` the partial release, then delete releases beyond the newest 10 (never the one `current` points to; the owner chose 10 on
 2026-11-02). Disk went from 100% to 51%. Watch `df -h /` on the server before a deploy; keep a retention rule rather than relying on a manual prune.
+
+## OPS-830 — A ChatGPT Plus/Pro login on the same Mac can be a different paid account from the one the site uses, so a CLI call spends the wrong quota
+
+`측정 2026-11-01 · Codex CLI (`~/.codex/auth.json`), macOS 27.2`
+
+**증상:** a batch job called the ChatGPT backend through the CLI's stored login and spent the Pro account's limits, while the site's own model
+relay ran on a different (Go) account. The job never checked which account it used.
+
+**측정:** the account email and plan are in the JWT claims of the stored login (decode the payload only, never print the token); the
+relay account is a separate login. The two differed on the same Mac.
+
+**해결:** before any batch against a subscription-backed API, decode the stored token's claims and confirm the plan and email match the
+account the job should spend. If they differ, stop and ask the owner, or switch to a pay-per-token key. Do not print tokens.
