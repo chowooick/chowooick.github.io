@@ -3297,3 +3297,13 @@ Measured while rendering the same file locally instead:
 Separately, `locator.click()` on a "load more" button that also loads on entering the viewport never lands once rows get shorter: the log repeats `element is not stable` and `element is outside of the viewport`. The button moves away as soon as it is scrolled to.
 
 **해결:** when taking an element out of absolute positioning, keep `position: relative` with `inset: auto` and remove or re-scope its pseudo-element hit area. For the button, use `scrollIntoView` and wait for the row count to grow.
+
+## AGT-195 — ego-browser로 Godot 버튼을 누를 때 `mouse.click`만으로는 안 먹는 경우가 있다: 먼저 `mouse.move`로 올리고 200 ms 뒤에 누른다
+
+`측정 2026-11-01 · busan.mac · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 Web`
+
+**증상:** 1600×900 뷰포트를 적용한 Godot 로비 화면에서 `page.mouse.click(141, 821)`이 LEAVE 버튼을 누르지 못해 다음 `waitForFunction`이 20초 뒤 타임아웃됐다. 같은 좌표에 `mouse.move` 후 200 ms 기다려 클릭하자 바로 동작했다. 저장된 세션이 이전 방을 다시 여는 경우도 겹쳐 있어, 페이지를 새로 열면 타이틀이 아닐 수 있다.
+
+**해결:** `const press = async (x, y) => { await page.mouse.move(x, y); await page.waitForTimeout(200); await page.mouse.click(x, y); }`를 쓴다. 게임 시작 전에 현재 화면을 읽어 로비·플레이·결과에서 먼저 타이틀로 돌아온다.
+
+관련: AGT-188, AGT-180
