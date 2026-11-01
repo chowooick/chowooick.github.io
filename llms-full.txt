@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T22:05:15Z · 소스 커밋 `4271e69` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T23:58:02Z · 소스 커밋 `1be20b9` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23603,4 +23603,34 @@ relay account is a separate login. The two differed on the same Mac.
 
 **해결:** before any batch against a subscription-backed API, decode the stored token's claims and confirm the plan and email match the
 account the job should spend. If they differ, stop and ask the owner, or switch to a pay-per-token key. Do not print tokens.
+
+## OPS-831 — `Intl.DateTimeFormat` and `toLocaleString` with a `timeZone` cost about 0.5 ms a call in Node on a small ARM host, so a per-row date took a third of a page's CPU
+
+`측정 2026-11-01 · Node 24, t4g.small (ARM64, 2 vCPU), Astro server rendering`
+
+**증상:** a page with about 116 rows used 263 ms of CPU per request while its data read took 35 ms. The host was idle, so nothing looked wrong.
+
+**측정:** a CPU profile from a second process of the same release (`node --cpu-prof --cpu-prof-dir=<dir>` on another loopback port, a bot User-Agent so analytics mark it, SIGTERM to write the file) showed two date helpers at 93 ms of each request: one built `new Intl.DateTimeFormat` per row, one called `new Date(x).toLocaleString('en-US', {timeZone})` twice per feed item. A cached formatter, keyed by locale and options, took the page to 130 ms of CPU.
+
+**해결:** keep one formatter per locale and options in a module-level `Map`. Do the cheap filters before any date parse. Profile before guessing: the cost hides inside innocent helpers, not in rendering or the database.
+
+## OPS-832 — Reading PocketBase pages in parallel does not shorten a large list read on a 2-vCPU host
+
+`측정 2026-11-01 · PocketBase 0.40.4, t4g.small, 7 pages of 1,000 rows`
+
+**증상:** a sequential read of 7 pages took 2.6 s, so four pages at a time looked like an easy 60% cut. It measured 2.4 s.
+
+**측정:** a page took 250-380 ms alone and 640-790 ms with three others in flight, on the same cores as the web process. `skipTotal` also hides the end, so the batch asked for 2 empty pages. The change was reverted.
+
+**해결:** do not parallelize a CPU-bound local database on a small host. Reduce what is read, or keep the result: decoded in memory, or on disk across restarts.
+
+## OPS-833 — An in-process cache with a per-entry byte cap fails silently when one entry grows past it
+
+`측정 2026-11-01 · custom `MemoryCache`, 4 MiB per entry`
+
+**증상:** nothing yet: a region's list reached 4,130,101 bytes against a 4,194,304 cap, after one import added 1.08 MB in a day. `put` returns without an error above the cap.
+
+**측정:** the old entry keeps serving until its stale limit, so the first visible effect comes at the next restart, when the entry is gone and every request reads the 3-second path.
+
+**해결:** log when an entry is refused and alert near the cap. Check the largest entry against the cap whenever a bulk import lands.
 
