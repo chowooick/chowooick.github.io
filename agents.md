@@ -3379,8 +3379,7 @@ prompt, so a small batch looked ~8× more expensive per item than the estimate f
 
 **측정:** fitting the two runs gives about 73k fixed tokens per agent plus about 1.5k per item. A 100-item agent (written as two
 `Write` calls of 50 items each, to stay within output limits) used 218k–285k tokens across 33 batches, about 8.0M in total for the
-generation step. 14 of the first 16 agents finished without a hard error; the rest stopped when the parent session was compacted and
-had to be restarted. Restart only the agents whose output file is missing; a file that parses is not redone.
+generation step. Five agents stopped when the parent session was compacted, with no completion record, and had to be restarted. Restart only the agents whose output file is missing; a file that parses is not redone.
 
 **해결:** when the per-item work is short and the prompt is long, batch by 100 rather than 10, and budget the fixed cost per agent
 before estimating a total. A session compaction stops running background agents without a completion record, so check which
