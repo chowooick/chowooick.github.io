@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T09:10:20Z · 소스 커밋 `0bcdb7a` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T09:13:22Z · 소스 커밋 `89956b6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7019,6 +7019,27 @@ print(2 in a, " ", a.has(2), " ", 2 == 2.0, " ", typeof(a[2]))   # false false t
 **증상:** code written to silence an unused-variable or unused-parameter warning with `_ = value` (as in Go or Python) fails to parse: `SCRIPT ERROR: Parse Error: Expected statement, found "_" instead.` One such line in a class also surfaces as `Could not resolve class "X", because of a parser error` in every script that depends on it, far from the line.
 
 **해결:** call the function without assigning (`_burst(o)`), use the value, or rename the parameter with a leading underscore (`_land_hard`), which GDScript already exempts from the unused warning.
+
+
+## GDT-359 — Clicking a DOM button over a Godot web canvas takes the keyboard away from the game: WASD stops and Space presses the button
+
+`측정 2026-11-01 · Godot 4.7.2 Web · Ego Lite 0.6.2.5 · a real pointer click, not a scripted call`
+
+**증상:** a player clicked an HTML "voice" button floating over the canvas. The character then ignored W, A, S and D (`z` stayed at -3.92 through a held S key), and `document.activeElement` was the button, so Space, the fire key, re-activated the button. No error is printed. Earlier voice QA called the feature from script and never clicked, so it passed.
+
+Godot's web platform listens for keys on the canvas, so any focused page element swallows them.
+
+**해결:** stop the press from moving focus at all: `panel.addEventListener("mousedown", e => e.preventDefault())` on the overlay. The click still fires and Tab users keep normal focus. Measured after the fix: `activeElement` stayed `canvas` and S moved the character to `z` 3.92. Test any DOM overlay with a real click followed by a real key press.
+
+## GDT-360 — Numbers relayed through `JSON.parse_string` reach a SpacetimeDB reducer as `1.0` and an integer argument is rejected
+
+`측정 2026-11-01 · Godot 4.7.2 · SpacetimeDB 2.13.0 · v1.json.spacetimedb`
+
+**증상:** a browser script passed `[1, "...", ...]` to Godot, which parsed it and forwarded the array to `call_server`. The reducer call failed with `invalid arguments for reducer submit_feedback: [0]: invalid type: floating point \`1.0\`, expected u32`. Direct GDScript calls with `int` values worked, so the automated clients passed while the real browser path stored nothing.
+
+`JSON.parse_string` makes every number a float (GDT-356), and `JSON.stringify` writes that float as `1.0`.
+
+**해결:** convert before sending: `args.map(func(a): return int(a) if a is float and a == floorf(a) else a)`. Test the browser route end to end and read the row back; a client notice is easy to miss.
 
 ---
 
@@ -23105,4 +23126,17 @@ WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 �
 Comparing names alone would have hidden regressions. Two tests that failed on both sides failed at different lines.
 
 **해결:** compare the first `>` source line of each failure on both runs, and treat a failure at `page.goto`, `beforeEach` or `afterEach` as unknown, not as a baseline failure. Restart the server and rerun the unknown tests in a small batch (28 tests, 3.2 minutes here). Run one dev server at a time on the host.
+
+
+## OPS-811 — SpacetimeDB module update over HTTP keeps rows when tables are only added; JSON columns need serde defaults, and HTTP-only callers leave the scheduler idle
+
+`측정 2026-11-01 · SpacetimeDB 2.13.0 standalone · local rehearsal, then Dokploy on nj2`
+
+**증상:** a module stored game state as JSON in a string column and needed two new private tables plus new JSON fields, on a database that must keep its volume. The question was whether `PUT /v1/database/<name>?host_type=Wasm` would keep existing rows.
+
+Measured on a temporary database: publishing the old module, creating a row and publishing the new module returned 200 twice and kept the row. The two new tables were empty and queryable, then production took the same update with no clear. Tables stayed `Private`; anonymous `/sql` reads of private tables returned HTTP 400.
+
+JSON stored in a string column is outside schema migration, so a new field without a serde default fails at the next parse, inside the scheduled reducer. A rehearsal driven only by HTTP reducer calls also proves nothing about the scheduler when the module skips sessions with nobody online: each HTTP call connects and disconnects, so `tick` stayed at 0 here.
+
+**해결:** add `#[serde(default)]` to new JSON fields with a unit test that loads an old row, rehearse the update with old module then new module, and confirm ticking with a real WebSocket client after release. The database owner token can remove test rows from private tables with `DELETE FROM <table> WHERE ...` through `/sql`.
 
