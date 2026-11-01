@@ -12880,7 +12880,7 @@ Measured with the same clients: local p50 11.9 → 0.40 ms, p95 22.4 → 1.9 ms.
 
 관련: OPS-340, OPS-700
 
-## OPS-820 — macOS `xargs -I` refuses a command longer than 255 bytes: "command line cannot be assembled, too long"
+## OPS-822 — macOS `xargs -I` refuses a command longer than 255 bytes: "command line cannot be assembled, too long"
 
 `측정 2026-11-01 · macOS 26.6 (BSD xargs)`
 

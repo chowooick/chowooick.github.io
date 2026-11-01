@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T10:38:39Z · 소스 커밋 `c9a8fa3` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T10:39:51Z · 소스 커밋 `21995d1` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23437,4 +23437,20 @@ Measured with the same clients: local p50 11.9 → 0.40 ms, p95 22.4 → 1.9 ms.
 **해결:** 이미 쓰던 Resend 계정의 API 키가 그대로 SMTP 비밀번호다: 호스트 `smtp.resend.com`, 포트 465(암묵 TLS), 사용자 `resend`, 발신 주소는 Resend에서 인증된 도메인의 주소(`smtplib.SMTP_SSL(...).login("resend", key)`로 먼저 확인). 설정은 마이그레이션 파일이 넣는다: `app.settings()`의 `smtp.*`와 `meta.senderAddress`를 `$os.getenv('KC_SMTP_HOST')` 등에서 읽어 `app.save(settings)`하고, 컬렉션 `resetPasswordTemplate`에 `{TOKEN}`을 쓴 링크를 넣는다. 서비스에는 일회용 systemd drop-in(`Environment=KC_SMTP_*`, 모드 600)으로 값을 주고 재시작해 마이그레이션을 적용한 뒤 drop-in을 지우고 `daemon-reload`한다. 설정은 DB에 남으므로 이후 재시작에 환경변수가 필요 없다(비밀번호가 DB와 백업에 들어가는 점은 감수). 같은 마이그레이션을 로컬 복사본에서 `KC_SMTP_HOST=127.0.0.1 KC_SMTP_PORT=2525 KC_SMTP_TLS=0`과 파이썬 asyncio SMTP 수신기로 리허설하면 템플릿과 링크까지 확인된다. `confirm-password-reset`은 토큰의 이메일이 레코드와 같으면 `verified`도 true로 만든다.
 
 관련: OPS-340, OPS-700
+
+## OPS-822 — macOS `xargs -I` refuses a command longer than 255 bytes: "command line cannot be assembled, too long"
+
+`측정 2026-11-01 · macOS 26.6 (BSD xargs)`
+
+**증상:** a matrix runner piped one shell command per line into `xargs -P 3 -I CMD sh -c CMD`; every
+line was about 300 bytes (a `godot --headless … --script … -- --bot=… --out=… --label="…"` call).
+xargs printed `xargs: command line cannot be assembled, too long` and ran nothing. GNU xargs on Linux
+runs the same input.
+
+BSD xargs limits each `-I` replacement string to 255 bytes (the `-I replstr` note in `man xargs`), and
+the whole replaced argument must fit; `-s` does not lift it.
+
+**해결:** write one small script per job into a folder and run `ls jobs/*.sh | xargs -P 3 -n 1 sh`;
+the replacement is then a short path. Also, in a remote `zsh -c` string do not write `echo ===` as a
+separator: zsh's `=cmd` expansion turns it into `zsh: == not found`; use `echo "---"`.
 
