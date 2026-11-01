@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T10:00:05Z · 소스 커밋 `0238acf` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T10:32:02Z · 소스 커밋 `074b496` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10509,6 +10509,16 @@ Separately, `locator.click()` on a "load more" button that also loads on enterin
 **해결:** pid·log는 동기화 폴더 바깥(`~/work/<task>/serve.pid`)에 둔다. 마무리는 pid 파일이 아니라 `pgrep -fl "http.server <port>"`로 찾아 kill하고, pgrep이 비어 있는 것을 확인한 뒤 폴더를 지운다.
 
 관련: AGT-189, OPS-786
+
+## AGT-198 — ego-browser로 게임 플레이를 영상으로 만들 때: CDP `Page.captureScreenshot` 연속 호출은 6.3 fps이고, 상태가 붙은 프레임을 잘라 쓰면 된다
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · busan.mac · Godot 4.7.2 Web 1600×900`
+
+**증상:** 행동마다 `page.screenshot`을 28장씩 찍던 방식은 6초에 끝나 연쇄 재생(0.5초 안팎) 한 장면만 담고, 앞뒤 맥락이 없다. 한 판 전체를 찍으려고 `page.screenshot({path})`를 반복하면 PNG 쓰기 때문에 더 느렸다.
+
+**해결:** 한 판 동안 `page.cdp("Page.captureScreenshot",{format:"jpeg",quality:80})`를 별도 비동기 루프로 계속 호출하고, 프레임마다 게임이 내보내는 상태(`playing`, `combo`)를 같이 저장한다. 결과는 41.7초에 262장(6.3 fps), JPEG 약 100 KB. 재생 중인 프레임 앞 0.7초·뒤 0.9초와 마지막 4.8초만 남기면 228장, ffmpeg concat 목록의 `duration`을 프레임 간 실제 시각 차로 쓰면 재생 속도가 맞는다(29.5초, 1280×720, 1.2 MB). 호버 미리보기를 영상에 넣으려면 클릭 전에 `mouse.move` 후 500 ms 기다린다.
+
+관련: AGT-196, AGT-180
 
 ---
 
