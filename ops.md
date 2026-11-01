@@ -12711,3 +12711,14 @@ Playwright와 달리 조건 함수 안의 예외를 재시도하지 않는다. �
 **해결:** decode HTTP SQL rows with a helper that unwraps one-element arrays into the scalar when the column is an identity or a time, and keep the websocket decoder separate. Filter by identity with a hex literal. Do not name a Rust module, alias or method `gen` on edition 2024; `r#gen` or another name.
 
 관련: OPS-134, OPS-594, OPS-598, OPS-607
+
+## OPS-805 — 상표 사전 조사를 브라우저로 끝내기: KIPRIS는 큰따옴표, WIPO는 strategy=Exact
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · KIPRIS · WIPO Global Brand Database`
+
+**증상:** 게임 이름 후보를 KIPRIS 상표 탭에 그대로 넣자 `바리의 매듭`이 490건을 돌려줬고, 상위 결과는 이름과 무관했다. 단어별 OR 검색이기 때문이다. `"바리의 매듭"`처럼 큰따옴표로 감싸면 0건이다. 짧은 단어는 따옴표를 써도 부분 일치가 섞인다(`"바리"` 10,435건). WIPO도 기본 검색은 `Bari's Knot`에 94,774건을 돌려줬다.
+
+KIPRIS 상표 검색 주소는 `https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark`, 입력칸은 `#queryText`다. 페이지가 15초 안에 load에 도달하지 않아 `page.goto()`가 시간 초과를 내지만 탐색은 커밋된 상태라 그대로 쓸 수 있다. 결과 행은 상태(등록·거절·소멸·무효), 상품분류, 출원인을 보여 주므로 게임 부류 09·41 중 살아 있는 권리만 추리면 된다.
+
+WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 바로 들어가는 편이 낫다: `https://branddb.wipo.int/en/similarname/results?sort=score%20desc&start=0&rows=30&asStructure=<JSON>&fg=_void_`, JSON은 `{"_id":"1","boolean":"AND","bricks":[{"_id":"2","key":"brandName","value":"<이름>","strategy":"Exact"}]}`을 URL 인코딩한다. 일치가 없으면 `No results found!`가 나온다.
+
+**해결:** 이름 조사는 정확 일치와 짧은 핵심어 검색을 둘 다 한다. 정확 일치 0건은 유사 상표가 없다는 뜻이 아니다. `"바리"`에서는 부류 41에 등록된 `바리 페스티벌`이 나왔다. 일반 검색 결과의 첫 페이지만 보고 "유사 상표 없음"이라고 보고하지 않는다.
