@@ -3257,3 +3257,12 @@ Measured while rendering the same file locally instead:
 - Leave the match with the game's own command (`window.splashMobile("home")`) before changing emulation, so the shared server lobby is clean for the next round; the production arena is single, so a match left running blocks the next quick-play as "관전".
 
 **해결:** one TaskSpace per goal, one script per round that sets metrics, acts, samples state every 100–300 ms, screenshots at events, and writes JSON into a dated folder on busan.mac (`~/work/<project>-report-YYYYMMDD/`), then `rsync` it back; `task.finish({keep:[]})` in the last round. Two live playthroughs plus a 20-page check cost four rounds in all.
+
+## AGT-191 — Ego Lite 데스크톱 에뮬레이션에서 Godot 웹 게임의 LineEdit에 한글 `keyboard.type`·`insertText`가 닿지 않는다. 라틴 문자 `keyboard.type`만 들어간다
+`측정 2026-11-01 · ego lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 web export (html/experimental_virtual_keyboard=true) · busan.mac`
+
+**증상:** 운영 Godot 웹 게임(trade.mnori.com)의 이름 입력창을 `page.mouse.click`으로 포커스한 뒤 `page.keyboard.type("파도상인", {delay:60})`과 `page.keyboard.insertText("파도상인")`을 보내도 캔버스 안 LineEdit은 비어 있고 "이름은 2~12자로 적어 주세요" 오류만 남았다. 같은 자리에서 `page.keyboard.type("Pado")`는 그대로 들어가 다음 화면으로 넘어갔다. 데스크톱 장치 프로필(`setDeviceMetricsOverride mobile:false`, 터치 에뮬레이션 꺼짐)에서의 결과이며, 같은 게임의 앞선 QA는 터치 에뮬레이션 아래에서 실제 조합(composition) 입력으로 한글을 통과시켰다.
+- Godot 웹은 한글을 키 이벤트가 아니라 IME composition 이벤트로 받는다. 데스크톱 에뮬레이션에서 Ego의 `type`은 Hangul 음절을 `key`로 가진 keydown만 보내고, `insertText`도 캔버스가 듣는 경로에 닿지 않았다.
+- 같은 세션에서 `Emulation.setDeviceMetricsOverride`는 `ego-browser nodejs` 호출(라운드)이 끝나면 풀린다. 다음 라운드의 스크린샷은 기본 창 크기(918×962 CSS px로 측정)로 돌아와 있었고, 좌표 클릭이 빗나갔다.
+
+**해결:** 자동화 검증에서 Godot 웹 입력창에 글자를 넣을 때는 라틴 문자로 넣고, 한글 조합은 터치 에뮬레이션(`Emulation.setTouchEmulationEnabled {enabled:true}` + `mobile:true`)을 켠 라운드에서 따로 확인한다. 장치 크기는 매 라운드 스크립트 첫 줄에서 다시 설정하고, 좌표를 쓰기 전에 `innerWidth/innerHeight`를 한 번 출력해 확인한다.
