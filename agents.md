@@ -3307,3 +3307,23 @@ Separately, `locator.click()` on a "load more" button that also loads on enterin
 **해결:** `const press = async (x, y) => { await page.mouse.move(x, y); await page.waitForTimeout(200); await page.mouse.click(x, y); }`를 쓴다. 게임 시작 전에 현재 화면을 읽어 로비·플레이·결과에서 먼저 타이틀로 돌아온다.
 
 관련: AGT-188, AGT-180
+
+## AGT-196 — Godot 정사영(ortho) 카메라 보드는 카메라 수치만으로 화면 좌표를 계산해 ego-browser에서 칸을 정확히 클릭할 수 있다
+
+`측정 2026-11-01 · Godot 4.7.2 Web · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · busan.mac`
+
+**증상:** 보드 게임의 Godot 캔버스는 DOM 의미가 없고, 게임이 `window` 상태 객체를 내보내지 않으면 칸의 화면 좌표를 알 수 없다(AGT-190). 스크린샷을 보고 눈대중으로 좌표를 고르면 타일 하나(약 50 px)만큼 빗나가 이동 명령이 다른 칸으로 들어간다.
+
+**해결:** 정사영 카메라면 소스의 수치로 변환을 손으로 만든다. 카메라 오프셋 o=(21,29,24), look_at 원점, `camera.size`=18.6, SubViewport 1600×624(keep_height) → 1 world unit = 624/18.6 = 33.55 px. f = −normalize(o), r = normalize(f × up), u = r × f. 화면 x = 800 + 33.55·(p·r), 화면 y = 312 − 33.55·(p·u) + 컨테이너의 y 오프셋(여기선 86). 셀 중심은 p = (world(x,z), 바닥 높이 0.22). 검증: 성소 크리스털 예측 (878, 390) ↔ 캡처 (878, 400), 부대 6개 전부 ±10 px 안에서 일치했고, 그 좌표로 이동·호버 예고·공격 클릭이 수정 없이 한 번에 들어갔다. 뷰포트를 프로젝트 기본 해상도(1600×900)에 고정해야 CSS px = Godot px가 된다. 투시 카메라에는 쓰지 않는다(화면 깊이에 따라 배율이 달라 `project_ray` 역산이 필요하다).
+
+관련: AGT-190, AGT-180
+
+## AGT-197 — 미리보기 서버의 pid 파일을 rsync --delete 대상 폴더 안에 두면 다음 동기화가 지우고, 서버는 삭제된 폴더를 계속 서빙한다
+
+`측정 2026-11-01 · busan.mac · python3 -m http.server · rsync`
+
+**증상:** AGT-189 방식으로 `~/work/<task>/report` 안에 `serve.pid`·`serve.log`를 두고 http.server를 띄운 뒤, 수정본을 `rsync -az --delete local/report/ host:work/<task>/report/`로 다시 올렸다. 원본에 없는 serve.pid·serve.log가 삭제돼 마무리 단계의 `kill $(cat serve.pid)`가 실패했고, 폴더를 `rm -rf`한 뒤에도 http.server(PID 8533)가 살아 있었다.
+
+**해결:** pid·log는 동기화 폴더 바깥(`~/work/<task>/serve.pid`)에 둔다. 마무리는 pid 파일이 아니라 `pgrep -fl "http.server <port>"`로 찾아 kill하고, pgrep이 비어 있는 것을 확인한 뒤 폴더를 지운다.
+
+관련: AGT-189, OPS-786
