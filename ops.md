@@ -12722,3 +12722,30 @@ KIPRIS 상표 검색 주소는 `https://www.kipris.or.kr/khome/search/searchResu
 WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 바로 들어가는 편이 낫다: `https://branddb.wipo.int/en/similarname/results?sort=score%20desc&start=0&rows=30&asStructure=<JSON>&fg=_void_`, JSON은 `{"_id":"1","boolean":"AND","bricks":[{"_id":"2","key":"brandName","value":"<이름>","strategy":"Exact"}]}`을 URL 인코딩한다. 일치가 없으면 `No results found!`가 나온다.
 
 **해결:** 이름 조사는 정확 일치와 짧은 핵심어 검색을 둘 다 한다. 정확 일치 0건은 유사 상표가 없다는 뜻이 아니다. `"바리"`에서는 부류 41에 등록된 `바리 페스티벌`이 나왔다. 일반 검색 결과의 첫 페이지만 보고 "유사 상표 없음"이라고 보고하지 않는다.
+
+## OPS-806 — SpacetimeDB 2.13: 새 표를 더한 뒤에는 옛 모듈 publish가 400으로 거절된다. 시작할 때 모듈을 올리는 컨테이너는 이미지 롤백으로 되돌릴 수 없다
+
+`측정 2026-11-01 · SpacetimeDB 2.13.0 standalone · HTTP publish `PUT /v1/database/<name>` · Rust 모듈 · busan.mac 리허설과 운영 nj2 배포`
+
+**증상:** 컨테이너가 시작할 때 wasm 해시를 비교해 `PUT /v1/database/<name>`으로 모듈을 올리는 구성에서, 공개 표 하나를 더한 뒤 옛 wasm을 다시 올리면 응답이 이렇게 온다.
+
+```
+400 Failed to create or update the database: Migration plan contains a client-breaking change which is disallowed under current policy
+```
+
+- 표를 더하는 방향은 쿼리 옵션 없이 `PUT`만으로 통과한다. 응답은 200, `"op":"updated"`이고, 기존 행은 그대로다(리허설: 플레이어 3명의 모든 열 일치, 운영: heir 16 · citizen 16 · chronicle 2 · festival 1행 일치). 재시작 후에도 새 표의 행이 남는다.
+- 새 표를 모르는 옛 클라이언트는 구독과 reducer가 그대로 동작한다.
+- 반대 방향은 위 400이다. 시작 스크립트가 HTTP 오류로 종료하면, 옛 이미지로 롤백한 컨테이너는 같은 오류로 다시 죽는다. 표를 더한 배포는 이미지 롤백으로 되돌릴 수 없다.
+- 같은 값을 비교할 때 `Timestamp`는 초기 구독에서 `{"__timestamp_micros_since_unix_epoch__":0}`, 트랜잭션 갱신에서 `[0]`으로 온다. 행을 그대로 비교하면 값이 같아도 다르다고 나온다.
+
+**해결:** 스키마를 바꾸는 배포 전에, 운영의 standalone 플래그와 같은 HTTP publish로 임시 data-dir에서 옛 모듈 → 데이터 → 정지 → 새 모듈 순서를 리허설한다. 되돌려야 하면 옛 이미지가 아니라 새 표를 유지한 wasm을 담은 새 이미지로 간다.
+
+## OPS-807 — 이미 있는 저장소 안에서 `glab repo create`가 `Exit status 128`로 끝나도 GitLab 프로젝트는 만들어져 있다. remote는 손으로 붙인다
+
+`측정 2026-11-01 · glab 1.82.0 (b932a8d8) · gitlab.com · remote 없는 로컬 저장소`
+
+**증상:** remote가 없는 저장소에서 `glab repo create chowooick/papa --private --defaultBranch main --description ...`를 실행하자 빈 줄 뒤에 `Exit status 128.`만 나왔다. `git remote -v`도 비어 있어 실패처럼 보인다.
+
+- `glab api "projects/chowooick%2Fpapa"`로 보면 프로젝트가 `private`, 기본 브랜치 `main`으로 만들어져 있다. 다시 만들려 하면 안 된다.
+
+**해결:** 종료 코드 대신 `glab api`로 프로젝트 유무를 확인하고, `git remote add origin git@gitlab.com:<owner>/<name>.git` 뒤 `git push -u origin main`을 한다.

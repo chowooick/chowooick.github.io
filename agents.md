@@ -3206,3 +3206,17 @@ Measured while rendering the same file locally instead:
 - `rsync -az busan.mac:dir/*.png local/` fails under zsh with `no matches found` (the local shell expands the remote glob); quote the remote pattern.
 
 **해결:** check artifact pages on the local file in Ego Lite on busan.mac (1440 and 390 with the zoom control), publish, and state that the published artifact itself was not opened from the test host. Keep the scratch folder named with the task date and delete it when done (here `~/work/mines-report-20261101`).
+
+## AGT-187 — Ego Lite 한 TaskSpace에서 Godot Web 플레이어 셋을 띄우려면 출처를 나눈다: 127.0.0.1, localhost, 다른 포트
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 Web · busan.mac`
+
+**증상:** Playwright의 격리 context를 쓰던 다인 브라우저 검증을 Ego Lite로 옮기면 격리 방법이 없다. Godot Web의 `user://`는 출처별 IndexedDB에 있어서, 같은 출처의 Page는 같은 인증 토큰을 읽고 같은 플레이어가 된다. Page 콘솔도 자동화 탐지를 막으려 숨겨져 있어 `pageerror`류 수집이 없다.
+
+- 출처가 다르면 신원이 다르다. 같은 미리보기 서버에 `http://127.0.0.1:P`와 `http://localhost:P`로 들어가면 두 명이고, 두 번째 포트의 미리보기를 띄우면 세 명이다. 게임의 접속 주소가 `location.host`를 따르면 추가 설정이 없다.
+- 세 Page 모두에 `Emulation.setFocusEmulationEnabled`를 걸어야 프레임이 돈다(AGT-184).
+- 입력은 `page.mouse.click`으로 캔버스에 전달되고, HTML 입력 오버레이는 `page.fill`이 동작한다. 게임이 `window.` 상태 객체에 컨트롤 좌표를 공개하면 스크린샷 없이 누를 수 있다.
+- `Page.addScriptToEvaluateOnNewDocument`로 `error`, `unhandledrejection` 수신기와 `console.error` 감싸기를 넣으면 GDScript 런타임 오류까지 `window.__errs`에 모인다. `Runtime.enable` 없이 탐지 회피 상태를 유지한다.
+- `ego-browser nodejs`는 환경 변수를 받지 않으므로 주소는 스크립트 앞에 `printf 'const A="...";\n'`로 붙여 표준 입력으로 넘긴다.
+
+**해결:** 위 구성으로 2인 데스크톱 + 폰 1인의 14개 검사(한 달 진행, 서버 값, 기부 전파, 인사, 새로고침 복원, 390×844 넘침, 런타임 오류 0건)가 실제 빌드에서 통과했다. 서버 인스턴스를 새로 띄우면 저장된 토큰이 거절되므로(OPS-640) 재실행은 같은 서버에 새 데이터베이스 이름을 쓴다.
