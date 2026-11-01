@@ -12775,3 +12775,16 @@ WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 �
 Comparing names alone would have hidden regressions. Two tests that failed on both sides failed at different lines.
 
 **해결:** compare the first `>` source line of each failure on both runs, and treat a failure at `page.goto`, `beforeEach` or `afterEach` as unknown, not as a baseline failure. Restart the server and rerun the unknown tests in a small batch (28 tests, 3.2 minutes here). Run one dev server at a time on the host.
+
+
+## OPS-811 — SpacetimeDB module update over HTTP keeps rows when tables are only added; JSON columns need serde defaults, and HTTP-only callers leave the scheduler idle
+
+`측정 2026-11-01 · SpacetimeDB 2.13.0 standalone · local rehearsal, then Dokploy on nj2`
+
+**증상:** a module stored game state as JSON in a string column and needed two new private tables plus new JSON fields, on a database that must keep its volume. The question was whether `PUT /v1/database/<name>?host_type=Wasm` would keep existing rows.
+
+Measured on a temporary database: publishing the old module, creating a row and publishing the new module returned 200 twice and kept the row. The two new tables were empty and queryable, then production took the same update with no clear. Tables stayed `Private`; anonymous `/sql` reads of private tables returned HTTP 400.
+
+JSON stored in a string column is outside schema migration, so a new field without a serde default fails at the next parse, inside the scheduled reducer. A rehearsal driven only by HTTP reducer calls also proves nothing about the scheduler when the module skips sessions with nobody online: each HTTP call connects and disconnects, so `tick` stayed at 0 here.
+
+**해결:** add `#[serde(default)]` to new JSON fields with a unit test that loads an old row, rehearse the update with old module then new module, and confirm ticking with a real WebSocket client after release. The database owner token can remove test rows from private tables with `DELETE FROM <table> WHERE ...` through `/sql`.

@@ -6048,3 +6048,24 @@ print(2 in a, " ", a.has(2), " ", 2 == 2.0, " ", typeof(a[2]))   # false false t
 **증상:** code written to silence an unused-variable or unused-parameter warning with `_ = value` (as in Go or Python) fails to parse: `SCRIPT ERROR: Parse Error: Expected statement, found "_" instead.` One such line in a class also surfaces as `Could not resolve class "X", because of a parser error` in every script that depends on it, far from the line.
 
 **해결:** call the function without assigning (`_burst(o)`), use the value, or rename the parameter with a leading underscore (`_land_hard`), which GDScript already exempts from the unused warning.
+
+
+## GDT-359 — Clicking a DOM button over a Godot web canvas takes the keyboard away from the game: WASD stops and Space presses the button
+
+`측정 2026-11-01 · Godot 4.7.2 Web · Ego Lite 0.6.2.5 · a real pointer click, not a scripted call`
+
+**증상:** a player clicked an HTML "voice" button floating over the canvas. The character then ignored W, A, S and D (`z` stayed at -3.92 through a held S key), and `document.activeElement` was the button, so Space, the fire key, re-activated the button. No error is printed. Earlier voice QA called the feature from script and never clicked, so it passed.
+
+Godot's web platform listens for keys on the canvas, so any focused page element swallows them.
+
+**해결:** stop the press from moving focus at all: `panel.addEventListener("mousedown", e => e.preventDefault())` on the overlay. The click still fires and Tab users keep normal focus. Measured after the fix: `activeElement` stayed `canvas` and S moved the character to `z` 3.92. Test any DOM overlay with a real click followed by a real key press.
+
+## GDT-360 — Numbers relayed through `JSON.parse_string` reach a SpacetimeDB reducer as `1.0` and an integer argument is rejected
+
+`측정 2026-11-01 · Godot 4.7.2 · SpacetimeDB 2.13.0 · v1.json.spacetimedb`
+
+**증상:** a browser script passed `[1, "...", ...]` to Godot, which parsed it and forwarded the array to `call_server`. The reducer call failed with `invalid arguments for reducer submit_feedback: [0]: invalid type: floating point \`1.0\`, expected u32`. Direct GDScript calls with `int` values worked, so the automated clients passed while the real browser path stored nothing.
+
+`JSON.parse_string` makes every number a float (GDT-356), and `JSON.stringify` writes that float as `1.0`.
+
+**해결:** convert before sending: `args.map(func(a): return int(a) if a is float and a == floorf(a) else a)`. Test the browser route end to end and read the row back; a client notice is easy to miss.
