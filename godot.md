@@ -6171,3 +6171,36 @@ CSS 기준 6–7 px로 읽을 수 없다. 3D는 선명하니 해상도 문제로
 - 엔진 스크립트보다 먼저 `Object.defineProperty(window,'devicePixelRatio',{get:()=>ratio})`로 `Math.min(실제값,2)`를 돌려준다. `DisplayServer.screen_get_scale()`과 터치 좌표가 같은 값을 따르므로 좌표 보정이 필요 없다. 캔버스 822×1588, 글자 선명도는 눈으로 차이가 없었다. 홈 35→60fps.
 - 점은 코드로 만든 32px 원 텍스처 하나를 `draw_texture_rect`로 찍고, 대시와 선은 `PackedVector2Array`에 모아 `draw_multiline(points,color,width,true)` 한 번으로 보낸다. 그리기 호출 545→204, 화면 32→55fps.
 - 재는 값은 상태 객체에 `Performance` 모니터를 내보내 실기기에서 읽는다. `TIME_PROCESS`보다 그리기 호출 수가 원인을 바로 가리켰다.
+
+## GDT-371 — Godot 4 GL Compatibility web export: `INSTANCE_CUSTOM` is readable only in `vertex()`; using it in `fragment()` fails the shader with "Unknown identifier" and the MultiMesh draws nothing
+
+`측정 2026-11-01 · Godot 4.7.2 web export (GL Compatibility) · Ego Lite 0.6.2.5 (Chromium) · splash`
+
+**증상:** a `MultiMesh` with `use_custom_data = true` fed per-instance spawn time and velocity through `set_instance_custom_data(i, Color(t, vx, vz, vy))` so a vertex shader could animate droplets and fade wet marks with no CPU per frame. The droplet shader (custom data read in `vertex()`) worked; the wet-mark shader read `INSTANCE_CUSTOM.r` in `fragment()` for the alpha fade and failed with `SHADER ERROR: Unknown identifier in expression: 'INSTANCE_CUSTOM'` on the page's error hook, drawing nothing and compiling at the first blast instead of at load.
+
+- Read the custom data in `vertex()` and pass what the fragment needs through a `varying`.
+- Do not key the animation on `TIME`: it counts from engine start while the script's own clock starts later, so spawn times drift by the startup gap. Drive a `now` uniform from the script every frame (`material.set_shader_parameter("now", time)`) and store the script's `time` in the custom data.
+- Spawn one instance of each effect under the loading screen; otherwise the shader compiles at the first use, which measured as a 130–145 ms frame mid-match.
+
+**해결:** `varying float fade; void vertex(){ fade = 1.0 - clamp((now - INSTANCE_CUSTOM.r)/life, 0.0, 1.0); }` and use `fade` in `fragment()`. The two MultiMeshes (480 droplets, 240 marks) then cost 0.2–0.5 ms of script time per frame on the M4 Pro in Chromium with 60 actors.
+
+## GDT-372 — A `FontVariation` on a Latin-only base font (Fredoka) draws Korean as tofu boxes unless `fallbacks` is set; a label that mixes digits and Korean needs the fallback even when the project's other labels use a Korean font
+
+`측정 2026-11-01 · Godot 4.7.2 web export · Fredoka (wght 650) display font, Jua body font · splash`
+
+**증상:** the round clock used a Fredoka `FontVariation` for digits. Setting its text to `끝!` or `서든데스 7` rendered `□□!`: the base font has no Hangul and the variation had no `fallbacks`, so Godot drew notdef boxes instead of falling back to the project's Korean font. It looked fine in every other screen because those labels used Jua.
+
+**해결:** `display_font.fallbacks = [JUA]` on the variation, and keep the big display label to digits anyway (put the Korean word in a second label). Check every label that can receive dynamic text against the glyph coverage of its font, not only the static ones.
+
+## GDT-373 — Predicted grid movement over a 50 ms tick server: step locally on key-down at the server's own cadence, send on change plus every 100 ms, and reconcile against the cell recorded when the acknowledged input was sent, not against the live cell
+
+`측정 2026-11-01 · Godot 4.7.2 web client · SpacetimeDB 2.8 module with a 20 Hz scheduled reducer, move gate 3 ticks · busan.mac local server RTT 17–40 ms, production from Busan 500–700 ms · splash`
+
+**증상:** without prediction the drop moved 738 ms after the key (input timer ≤100 ms, uplink, 50 ms tick, up to 250 ms move gate, 100 ms publish batch, downlink, interpolation). A first attempt compared the server cell with the *current* predicted cell and snapped whenever they differed by more than one cell, which with the Busan RTT (several steps in flight) snapped the drop back constantly.
+
+- The client steps the moment a direction key goes down and then every 150 ms (the server's `MOVE_TICKS * 50 ms`), checking passability on its own copy of the tile and balloon grids. Keys are kept in press order; when the wanted turn is blocked the drop keeps sliding along the lane it is on (Pac-Man style turn buffering), and a wall gives a visible bump instead of silence.
+- Every send records `pred_at_send[seq] = predicted cell`. On a server row with `ack_seq = s`, compare the server cell with `pred_at_send[s]`, tolerance one cell (two for a 100 ms cadence). Only on a miss replay the moves logged since `s` from the server cell through the same passability check and snap to the result. In play this snapped 8 times in a 95 s round on a 20 ms link and the first step showed within 11–69 ms of key-down.
+- Prediction is off while the drop is trapped, lifted, slipping or dead: those cells come from the server.
+- A balloon shows as a ghost at the predicted cell until the server's row appears there, and expires after 0.8 s if it never does.
+
+**해결:** keep `window.<state>` export at 250 ms for QA; the latency measured through it is bounded by that interval, so quote it as "≤ N ms + 250 ms observation lag".
