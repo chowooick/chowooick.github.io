@@ -12591,3 +12591,12 @@ A four-line reproduction on the designated test host printed Node `v26.12.1`, th
 **해결:** On this host, changed only the new service to ProcessType Standard and LowPriorityIO=false, used the installed runtime's --reasoning off / --no-reasoning-preserve flags, and kept a simple JSON-object generation grammar with independent strict result/scope validation. A complete 6,437-token prompt plus 2,229-token response then finished in 63.1 s; the server reported 46.81 generated tokens/s and no truncation. Several settings changed together, so this measurement does not isolate one flag as the sole cause. No system-wide GPU or memory limit was changed. Test a sustained representative request, not only /health or a short answer.
 
 When changing this owned LaunchAgent's arguments, immediate bootstrap after bootout returned "Bootstrap failed: 5: Input/output error" while the old job was still exiting. After the job was observably absent, the same valid plist bootstrapped successfully. See AGT-096 for why kickstart alone does not reload ProgramArguments. First Metal initialization took about 57 s to listen; a warm restart listened in 1.64 s.
+
+
+## OPS-793 — SpacetimeDB 모듈의 native 단위 테스트는 cargo test --lib; 기본 cargo test는 cdylib 호스트 심볼에서 링크 실패
+
+`측정 2026-10-31 · SpacetimeDB 2.8.0 · Rust 1.99.1 · macOS arm64`
+
+**증상:** `[lib] crate-type = ["cdylib", "rlib"]`인 모듈의 `cargo test`가 native dylib까지 링크하다 `Undefined symbols for architecture arm64`로 실패했다. `_bytes_sink_write`, `_bytes_source_read`, `_datastore_insert_bsatn` 등 SpacetimeDB WASM 호스트 심볼이 목록에 있었다.
+
+**해결:** 순수 게임 규칙 검증은 `cargo test --lib`, 실제 모듈은 `cargo build --release --target wasm32-unknown-unknown`으로 분리했다. 규칙 테스트 6개와 WASM 빌드가 통과했고, standalone 서버에 게시한 모듈의 실제 WebSocket 12인 구독도 확인했다.

@@ -5980,3 +5980,12 @@ The model was visible again in the native 320 x 780 capture at UI scale 1.3 afte
 **증상:** 한국어 입력기가 활성화된 네이티브 고객센터에서 `adb shell input text`로 넣은 영문·토큰 문자열이 의도한 문자열과 달리 한글 키 입력으로 해석됐다. 줄바꿈 전달도 제출 동작을 확실히 보장하지 않았다.
 
 **해결:** 이 격리 AVD에만 설치한 네트워크 권한 없는 QA 입력기의 `InputConnection.commitText`로 한국어 점검 문장을 입력하고 실제 화면에서 문장을 확인한 뒤 보내기 버튼을 눌렀다. 중앙 원장과 받은함의 동일 접수를 확인했다. 입력기는 제품에 포함하지 않았으며 점검 종료 시 전용 에뮬레이터와 adb 서버를 종료했다.
+
+
+## GDT-352 — Godot headless에서 음악 정지 직후 프레임만 기다리고 종료하면 WAV playback이 남는다
+
+`측정 2026-10-31 · Godot 4.7.2-stable · busan.mac macOS · headless SceneTree 테스트`
+
+**증상:** WAV 음악을 `stop()`하고 씬을 `queue_free()`한 뒤 `await process_frame` 두 번 후 종료한 테스트는 모든 assertion을 통과해도 `WARNING: 2 ObjectDB instances were leaked at exit`, `ERROR: 1 resources still in use at exit`를 출력했다. `--verbose`의 남은 객체는 `AudioStreamWAV`와 `AudioStreamPlaybackWAV`였다.
+
+**해결:** 씬을 해제한 뒤 `await create_timer(0.3).timeout`으로 실제 시간을 기다리자 같은 테스트에서 경고가 사라졌다. 빠른 headless 프레임 두 번은 오디오 스레드의 해제 시간을 보장하지 않는다. 정상 플레이의 누수로 단정하기 전에 verbose의 실제 객체 종류를 확인한다.
