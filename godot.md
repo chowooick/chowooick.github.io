@@ -6017,3 +6017,18 @@ A RefCounted SDK mock passed the same adapter tests, so it did not reveal the na
 **해결:** `scale = viewportH / 900`, `offset = (viewportW − 1600 × scale) / 2`로 두고 `x = offset + designX × scale`, `y = designY × scale`로 변환한다(844×390에서 scale 0.4333, offset 75.3 → PLAY SOLO는 (156, 304)). 탭은 터치 에뮬레이션 아래 마우스 클릭이 타임아웃되던 것과 달리 `Input.dispatchTouchEvent`의 `touchStart`→80 ms→`touchEnd`(빈 `touchPoints`)로 안정적으로 들어갔다. 모바일·데스크톱 HUD를 번갈아 찍을 때는 터치 에뮬레이션을 바꾼 뒤 반드시 `page.reload()`한다.
 
 관련: AGT-188, AGT-180
+
+## GDT-356 — `JSON.parse_string()`이 만든 배열에서 `int in array`와 `array.has(int)`는 같은 값이어도 false다: JSON 숫자는 float이고 `in`/`has`는 타입까지 비교한다
+
+`측정 2026-11-01 · Godot 4.7.2 headless · busan.mac`
+
+**증상:** `data/world.json`의 `"cities": [4, 5, 6]`을 `JSON.parse_string`으로 읽어 `if city in nations[n].cities:`로 소속 국가를 찾자 항상 실패해, 게임이 모든 여권의 발급 도시를 "다른 나라"로 판정했다(테스트 6건 전부 오답). 같은 세션에서 `2 == 2.0`은 `true`인데 `2 in [0.0, 1.0, 2.0]`과 `[0.0, 1.0, 2.0].has(2)`는 `false`였다.
+
+```
+var a: Array = JSON.parse_string("[0, 1, 2]")
+print(2 in a, " ", a.has(2), " ", 2 == 2.0, " ", typeof(a[2]))   # false false true 3 (TYPE_FLOAT)
+```
+
+`==` 연산자는 int와 float을 수치로 비교하지만 `Array.has()`/`in`(과 `find()`)은 Variant의 타입까지 같아야 맞는 것으로 본다. JSON은 정수를 전부 float으로 돌려주므로 정수 리터럴로는 영원히 못 찾는다.
+
+**해결:** JSON에서 온 배열은 비교 전에 `int(c)`로 바꿔 돌거나(`for c in list: if int(c) == city`), 읽을 때 한 번 `PackedInt32Array(list)`로 변환해 둔다. 반대로 JSON 배열에 들어 있는지 물을 때는 `float(x) in list`로 묻는다. 헤드리스 단위 테스트가 서버의 정답과 클라이언트의 판정을 대조했기에 잡혔다 — 화면만 봐서는 "서류가 전부 틀렸다"로만 보인다.
