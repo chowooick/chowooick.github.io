@@ -12642,3 +12642,24 @@ When changing this owned LaunchAgent's arguments, immediate bootstrap after boot
 **증상:** 기존 공유 builder(2 CPU·2 GiB)의 amd64 Next 빌드가 컴파일 시작 뒤 진행 출력을 내지 않았고, 상태 조회용 exec도 `guest did not dial back for stderr ... within 30s`로 실패했다. 작업 취소 뒤 공유 builder 안에 컴파일 프로세스가 남지 않은 것은 확인했다. 메모리 부족 자체를 측정해 확정한 것은 아니다.
 
 **해결:** 기존 공유 builder는 재시작하지 않고 잡 전용 VM을 `container run --platform linux/amd64 --rosetta --cpus 4 --memory 8G --cap-add ALL --publish-socket <host.sock>:/run/buildkit/buildkitd.sock moby/buildkit@<pinned-index-digest>`로 만들었다. `buildctl --addr unix://<host.sock> build --frontend dockerfile.v0 ... --output type=oci,dest=<tar>,name=<image>`로 같은 소스의 컴파일 7.4초·타입 검사 5.4초·265페이지 생성·OCI 출력 및 변환 후 무결성 검증까지 통과했다. 시험 VM은 종료·삭제했다. 루트 파일시스템의 임시 캐시만 사용해 외부 캐시 볼륨이 없어도 실행되게 하고, 잡 ID별 VM·소켓만 정리한다. ALL 권한은 이 전용 Linux VM 내부의 rootful BuildKit 중첩 실행용이며 운영 VM에 적용하지 않는다.
+
+## OPS-799 — Astro SSR stream ends at `<main>` with HTTP 200 when a page throws inside a slot
+
+`측정 2026-11-01 · Astro 7.3 dev · busan.mac`
+
+**증상:** 페이지가 헤더까지만 보이고 본문이 비어 있다. 응답은 200이고, HTML은 `<main id="main-content">` 바로 뒤에서 끊긴다. `</main>` 뒤의 스크립트는 실행되지 않아, 그 스크립트가 지워야 할 표시가 남는다. 브라우저 콘솔에는 오류가 없다.
+
+Astro는 레이아웃을 먼저 흘려 보낸 뒤 slot을 렌더링한다. slot 안에서 예외가 나면 상태 코드는 이미 200으로 나갔다. 원인은 서버 로그에만 있다. 이번에는 새 작업 폴더의 로컬 D1에 테이블이 없어 `D1_ERROR: no such table: region_visibility: SQLITE_ERROR`가 났다.
+
+**해결:** 빈 본문을 보면 응답 코드 대신 HTML 끝과 개발 서버 로그를 먼저 본다. 로컬 D1은 데이터베이스마다 `npx wrangler d1 migrations apply <이름> --local`로 만든다.
+
+## OPS-800 — Hiding content that a script moves later can raise layout shift instead of lowering it
+
+`측정 2026-11-01 · Chromium 계열 Ego Lite · 390px · 운영 8회`
+
+**증상:** 프레임워크가 목록을 그리기 전에 잠깐 보이는 카드 묶음이 0.37 레이아웃 시프트를 만들었다(8회 중 3회). 스크립트가 옮기기 전까지 `display: none`으로 숨겼더니 0.2 시프트가 8회 중 6회로 늘었다.
+
+숨긴 요소의 높이가 사라지면 그 아래 요소가 화면 안으로 올라오고, 목록이 그려질 때 다시 밀린다. 움직이는 요소가 카드에서 그 아래 내용으로 바뀌었을 뿐이다.
+
+**해결:** 숨기려면 같은 높이의 자리를 함께 잡는다. 시프트 수정은 한 번 재서 판단하지 말고 같은 페이지를 8회 이상 불러 횟수를 비교한다. 한 번은 0이 나오기 쉽다.
+
