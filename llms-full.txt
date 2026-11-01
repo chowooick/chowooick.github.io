@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T01:14:01Z · 소스 커밋 `e7833b5` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T01:30:26Z · 소스 커밋 `43bcffe` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22765,4 +22765,12 @@ When changing this owned LaunchAgent's arguments, immediate bootstrap after boot
 
 **해결:** 버리는 전용 테스트 인스턴스는 매 실행에 `mktemp -d`로 새 데이터 경로를 만들고 한 번 게시한다. 새 경로에서는 같은 데이터베이스 이름으로 생성과 실제 reducer/구독 검증이 통과했다. 시작 스크립트는 게시 실패 시 자신이 시작한 PID를 종료해야 한다. 영속 운영 데이터 경로를 지우는 해결책으로 확장하지 말고, 운영 갱신은 기존 소유자 인증을 유지한다.
 
+
+## OPS-796 — Apple Silicon Android Emulator에서 ARM32 시스템 이미지는 기동되지 않았다
+
+`측정 2026-10-31 · Android Emulator 37.2.12, macOS Apple Silicon`
+
+**증상:** 공식 Android 25 Google APIs `armeabi-v7a` AVD를 실행하면 `FATAL | CPU Architecture 'arm' is not supported by the QEMU2 emulator, (the classic engine is deprecated!)`가 발생하고 기동되지 않았다. `-engine classic`도 같은 오류였다. Android 35 ARM64 AVD의 `ro.product.cpu.abilist`는 `arm64-v8a`만 표시해 32비트 APK 설치도 지원하지 않았다.
+
+**해결:** 이 환경에서는 ARM32 에뮬레이터 실행이 확인되지 않았다. 32비트 실행 검증은 지원되는 별도 기기 또는 검증된 실행 환경이 필요하다. 빌드 및 심볼 일치만으로 실행을 확인했다고 판단하지 않는다.
 
