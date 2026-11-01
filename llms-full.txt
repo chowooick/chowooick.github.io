@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T09:05:49Z · 소스 커밋 `5e3e74d` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T09:10:20Z · 소스 커밋 `0bcdb7a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10305,6 +10305,24 @@ Measured while rendering the same file locally instead:
 - 1440×1500·390×844 × 밝음·어두움 × 모션 켬·끔으로 22장을 두 라운드에서 각 1분 안에 찍었다. 같은 `page.evaluate`에서 `[...document.fonts].filter(f=>f.status==="loaded")`로 Google Fonts 4종 로드와 `document.documentElement.scrollWidth`(가로 넘침 0)도 함께 확인했다.
 
 **해결:** 테마·모션 상태별 검증은 OS 설정이 아니라 CDP `Emulation.setEmulatedMedia`로 한다. `matchMedia`를 한 번만 읽는 페이지는 `goto` 전에 걸고, 매 라운드 다시 적용한다.
+
+## AGT-193 — Reusing a list row's classes for a redesign leaks into every other screen that shares them: scope to the list and test the stylesheet
+
+`측정 2026-11-01 · CSS nesting · container queries · kyomincenter one-line lists`
+
+**증상:** A stylesheet that turned cards into one-line rows hid `.sf-poll` and `.sf-react` globally. A post's own page reuses those classes for its poll and reaction buttons, so they vanished there too, with no failed unit test and no console error. The same sheet shrank the hover preview's topic tag to a 6px dot, hid the business page's paragraphs and flattened a sell form's preview card. Row measurements were all correct, because rows were the only thing measured.
+
+**해결:** before hiding anything, list where each class is used, including `.ts` files that clone row nodes into a popup. Write every rule against the list (`.sf-card .sf-poll`, `.mk-grid .mk-card-photo`). For rules that have no list parent to name, wrap them in a query that only matches inside the list: `@container oneline (min-width: 0) { … }`. A small test that parses the stylesheet and rejects bare shared classes keeps this from returning.
+
+## AGT-194 — Moving a chip into the row flow turned its `::before` hit area into a full-row click trap
+
+`측정 2026-11-01 · Chromium · Playwright`
+
+**증상:** A row's topic chip was `position: absolute` with `.chip::before { position: absolute; inset: -10px -6px; }` for a larger touch area. Setting the chip to `position: static` to put it in the flex row made `::before` resolve against the nearest positioned ancestor, the row. Every click on the title then opened the chip's menu. Playwright reported `<button class="… topic-chip"> intercepts pointer events` on the link, 23 times. Switching to `position: relative` fixed that and brought back the chip's old `top: 13px`, which pushed it 13px down.
+
+Separately, `locator.click()` on a "load more" button that also loads on entering the viewport never lands once rows get shorter: the log repeats `element is not stable` and `element is outside of the viewport`. The button moves away as soon as it is scrolled to.
+
+**해결:** when taking an element out of absolute positioning, keep `position: relative` with `inset: auto` and remove or re-scope its pseudo-element hit area. For the button, use `scrollIntoView` and wait for the row count to grow.
 
 ---
 
@@ -23069,4 +23087,22 @@ WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 �
 **증상:** A prototype served by `python3 -m http.server` was edited and rsynced, then reopened with `page.goto(url)` in a new `ego-browser nodejs` round. The browser kept executing the old `feel.js`: `Runtime.exceptionThrown` events still pointed at the old line and column (254:182) although four lines had been inserted above it, and the fix was invisible. `http.server` sends `Last-Modified` and no `Cache-Control`, so Chromium's heuristic freshness kept the script for minutes, and a plain `goto` of the page URL (even with a changed query string on the page) does not revalidate sub-resources. A second trap stacked on top: `page.events()` returns the whole buffer accumulated since the last call, so exceptions from the previous round were counted as new ones.
 
 **해결:** at the start of every round call `page.cdp("Network.enable")` then `page.cdp("Network.setCacheDisabled", {cacheDisabled: true})` (like the viewport override, OPS-788, CDP state does not carry over between rounds), and call `page.events()` once to drain the old buffer before the actions under test. Prove the browser has the new file with `page.evaluate(() => fetch("feel.js", {cache: "no-store"}).then(r => r.text()).then(t => t.split("\n").length))` and compare with `wc -l` on disk. With both in place the same run reported 0 exceptions for the fixed script. A cache-busting query on the script tag works too but has to be edited into the HTML each time.
+
+## OPS-809 — Playwright on Node 26 stops before any test with `needs an import attribute of "type: json"`: preload tsx
+
+`측정 2026-11-01 · Playwright (kyomincenter lockfile) · Node 26.12 · tsx · busan.mac`
+
+**증상:** `npx playwright test` printed `needs an import attribute of "type: json"` for a `.json` file imported by application code under `tests/` (kyomincenter: `editorial-images.json`) and loaded no tests at all. Single unit runs through `tsx --test` passed, so the import looked healthy.
+
+**해결:** run the suite with `NODE_OPTIONS="--import tsx" npx playwright test`. All 320 tests then load. The application code does not change.
+
+## OPS-810 — A failing suite needs a baseline run, and a dev server that hangs mid-run fakes one: compare the failing line, not the test name
+
+`측정 2026-11-01 · Astro 7 dev · Playwright · busan.mac`
+
+**증상:** A clean commit, run with the failing test list from a feature branch, reported 78 failures against the branch's 85, which read as "almost everything is pre-existing". The tests after number 36 had all failed at `page.goto` or a `beforeEach`. `astro dev` had stopped answering at 17:07 with 0% CPU and no error in its log; `curl` timed out at 10 s while the process stayed alive. Every later test failed for that reason and looked identical to a real failure.
+
+Comparing names alone would have hidden regressions. Two tests that failed on both sides failed at different lines.
+
+**해결:** compare the first `>` source line of each failure on both runs, and treat a failure at `page.goto`, `beforeEach` or `afterEach` as unknown, not as a baseline failure. Restart the server and rerun the unknown tests in a small batch (28 tests, 3.2 minutes here). Run one dev server at a time on the host.
 
