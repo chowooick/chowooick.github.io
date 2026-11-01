@@ -12788,3 +12788,18 @@ Measured on a temporary database: publishing the old module, creating a row and 
 JSON stored in a string column is outside schema migration, so a new field without a serde default fails at the next parse, inside the scheduled reducer. A rehearsal driven only by HTTP reducer calls also proves nothing about the scheduler when the module skips sessions with nobody online: each HTTP call connects and disconnects, so `tick` stayed at 0 here.
 
 **해결:** add `#[serde(default)]` to new JSON fields with a unit test that loads an old row, rehearse the update with old module then new module, and confirm ticking with a real WebSocket client after release. The database owner token can remove test rows from private tables with `DELETE FROM <table> WHERE ...` through `/sql`.
+
+## OPS-812 — Pretendard 가변 폰트 6.7 MB는 웨이트 하나로 고정하고 한글 완성형만 남기면 2.5 MB다 — fontTools 두 줄
+
+`측정 2026-11-01 · PretendardVariable.ttf 6,739,336 B · fontTools 4.60.2 · macOS python3`
+
+**증상:** 게임·웹 빌드에 한글 UI 폰트로 `PretendardVariable.ttf`를 그대로 넣으면 pck의 대부분이 폰트다. 가변 축(`wght`)과 한글 11,172자·조합형 자모가 전부 들어 있다.
+
+**해결:** `pyftsubset` 실행 파일이 없어도 모듈로 부른다.
+```
+python3 -m fontTools.varLib.instancer PretendardVariable.ttf wght=600 -o Pretendard-600.ttf     # 3,117,972 B
+python3 -m fontTools.subset Pretendard-600.ttf --output-file=Pretendard-600-sub.ttf \
+  --unicodes="U+0020-007E,U+00A0-00FF,U+2010-2027,U+2190-21FF,U+25A0-25FF,U+AC00-D7A3,U+3131-318E" \
+  --layout-features=kern,liga --no-hinting                                                       # 2,530,116 B
+```
+가변 폰트를 서브셋만 하면(`--layout-features='*'`) 5,777,496 B에 그친다 — 줄이는 것은 서브셋이 아니라 웨이트 고정이다. 완성형 한글(U+AC00–D7A3)은 사용자 이름 입력 때문에 전부 남겼다.

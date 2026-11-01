@@ -6122,3 +6122,27 @@ CSS 기준 6–7 px로 읽을 수 없다. 3D는 선명하니 해상도 문제로
 **증상:** 플레이 중 나가기를 누르면 `leave_room`을 보내고 곧바로 타이틀로 돌아가는데, 왕복 지연 동안 이미 오고 있던 `TransactionUpdate`가 상태를 다시 채워 화면이 플레이로 돌아갔다. 서버에는 방이 없으므로 틱은 멈추고, 입력마다 `Join first`가 표시됐다. 지연이 없는 로컬 시험에서는 재현되지 않는다.
 
 **해결:** `leave()`에서 `left_code = room_code`로 기억하고 상태 적용에서 `code == left_code`면 버린다. 같은 코드로 다시 합류할 때만 지운다. 지연 주입 프록시를 켠 시험을 기본으로 둔다. Python aiohttp 프록시에서 방향별 큐에 `(도착 시각, 메시지)`를 넣어 순서를 유지하며 지연시켰다. 메시지마다 `sleep`하면 지연이 누적된다.
+
+## GDT-366 — SpacetimeDB 2.8 Rust 모듈에서 `#[unique]` 컬럼 인덱스의 `.update()`는 컴파일되지 않는다 — 갱신은 `#[primary_key]` 인덱스로만 된다
+
+`측정 2026-11-01 · SpacetimeDB 2.8.0 Rust 모듈 · rustc 1.97.1 · wasm32-unknown-unknown`
+
+**증상:** `#[primary_key] #[auto_inc] id: u32`와 `#[unique] identity: Identity`를 가진 테이블에서 `ctx.db.player().identity().find(x)`로 행을 찾은 뒤 같은 인덱스로 `ctx.db.player().identity().update(row)`를 부르면 E0277이 난다: `the trait bound '_::__indices::identity: PrimaryKey' is not satisfied … required by a bound in UniqueColumn::update`. `find`는 두 인덱스 모두에서 되므로, `update`만 막히는 것을 에러 메시지로야 알게 된다.
+
+**해결:** 찾기는 어떤 unique 인덱스로 해도 되고, 쓰기는 `ctx.db.player().id().update(row)`처럼 기본 키 인덱스로 한다. `update`가 바꾸는 행은 기본 키로 결정되므로 `identity`로 찾은 행을 `id()`로 갱신해도 같은 행이다.
+
+## GDT-367 — `CanvasLayer` 바로 아래의 `Control`은 앵커가 먹지 않아 크기가 (0, 0)이다 — `_draw()` HUD가 통째로 안 보인다
+
+`측정 2026-11-01 · Godot 4.7.2 · Forward+ 1600×900 · 코드로 만든 씬`
+
+**증상:** `CanvasLayer.add_child(hud)` 뒤 `_ready()`에서 `set_anchors_preset(PRESET_FULL_RECT)`를 불렀는데 `size`가 `(0, 0)`으로 남아 `_draw()`가 `size` 기준으로 그린 미터·칩·힌트가 전부 화면 밖(좌상단 한 점)에 그려졌다. 오류나 경고는 없다. `CanvasLayer`는 `Control`이 아니라 앵커가 참조할 부모 사각형이 없기 때문이다. 에디터에서 만든 씬은 `.tscn`에 저장된 `offset_*`로 보통 가려진다.
+
+**해결:** 뷰포트를 직접 따른다. `size = get_viewport().get_visible_rect().size`를 `_ready()`에서 한 번, `get_viewport().size_changed`에서 다시 넣는다. `window/stretch/mode="canvas_items"`면 이 값은 창 크기가 아니라 프로젝트 뷰포트 크기(1600×900)다 — `--resolution 800x450`로 띄워도 그대로다.
+
+## GDT-368 — Web export에 URL 쿼리를 `OS.get_cmdline_user_args()`로 넘기는 법: 셸의 `engine.startGame({ args: ["--", …] })`
+
+`측정 2026-11-01 · Godot 4.7.2 Web export(gl_compatibility, no threads) · Brave 1.98 headless`
+
+**증상:** 데스크톱에서 `godot -- --stdb=… --db=…`로 받던 사용자 인자를 웹 빌드에서도 같은 코드로 받고 싶었다. 웹에는 명령줄이 없다.
+
+**해결:** 커스텀 HTML 셸에서 `const q = [...new URLSearchParams(location.search)].map(([k, v]) => "--" + k + "=" + v); engine.startGame({ args: q.length ? ["--", ...q] : [] })`. 그러면 `index.html?stdb=http://127.0.0.1:3611&db=bubbleup`가 데스크톱과 똑같이 `OS.get_cmdline_user_args()`에 `["--stdb=…", "--db=…"]`로 온다. 앞의 `"--"`가 없으면 엔진 인자로 해석된다. 같은 실행에서 브라우저의 Godot `HTTPRequest`·`WebSocketPeer`가 `127.0.0.1:3611`의 SpacetimeDB 2.8에 교차 출처로 토큰 교환·구독까지 됐고, 콘솔 오류는 `favicon.ico` 404뿐이었다.
