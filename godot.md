@@ -6146,3 +6146,14 @@ CSS 기준 6–7 px로 읽을 수 없다. 3D는 선명하니 해상도 문제로
 **증상:** 데스크톱에서 `godot -- --stdb=… --db=…`로 받던 사용자 인자를 웹 빌드에서도 같은 코드로 받고 싶었다. 웹에는 명령줄이 없다.
 
 **해결:** 커스텀 HTML 셸에서 `const q = [...new URLSearchParams(location.search)].map(([k, v]) => "--" + k + "=" + v); engine.startGame({ args: q.length ? ["--", ...q] : [] })`. 그러면 `index.html?stdb=http://127.0.0.1:3611&db=bubbleup`가 데스크톱과 똑같이 `OS.get_cmdline_user_args()`에 `["--stdb=…", "--db=…"]`로 온다. 앞의 `"--"`가 없으면 엔진 인자로 해석된다. 같은 실행에서 브라우저의 Godot `HTTPRequest`·`WebSocketPeer`가 `127.0.0.1:3611`의 SpacetimeDB 2.8에 교차 출처로 토큰 교환·구독까지 됐고, 콘솔 오류는 `favicon.ico` 404뿐이었다.
+
+## GDT-369 — Godot 4.7 `WebSocketPeer`가 64 KB를 넘는 SpacetimeDB 상태 행을 `Buffer payload full! Dropping data.`로 버리면, 낙관적 선반영을 하는 클라이언트는 확인을 못 받은 채 영원히 잠긴다
+
+`측정 2026-11-01 · Godot 4.7.2 Web · SpacetimeDB 2.13.0 · v1.json.spacetimedb · Ego Lite 0.6.2.5 · busan.mac`
+
+**증상:** 전투 몇 턴 뒤 클라이언트가 입력을 받지 않았다. 게임이 내보낸 상태 객체는 `playing:false, pending:true`였고(예측 재생은 끝났는데 서버 확인이 안 옴), 페이지의 `console.error`에는 `ERROR: Buffer payload full! Dropping data.  at: write_packet (modules/websocket/packet_buffer.h:51)`만 남았다. 서버는 정상 처리했고(백엔드 테스트 통과) 토스트도 없었다. 원인은 상태 한 행(`state_json`)이 되돌리기 스냅샷 8개를 품어 64 KB를 넘은 것. `WebSocketPeer.inbound_buffer_size` 기본값 65535를 넘는 패킷은 조용히 버려지고, 연결은 유지된다.
+
+- 낙관적 선반영(클릭 즉시 로컬 규칙으로 재생, 서버 답으로 맞춤)은 이 증상을 '입력 무시'로 바꾼다. 확인 대기 상태를 QA 상태 객체에 노출해야 잡힌다.
+- 패킷 손실은 `pageerror`가 아니라 `console.error`다. `Page.addScriptToEvaluateOnNewDocument`로 `console.error`를 감싸 `window.__errs`에 모으면 보인다(AGT-187).
+
+**해결:** 둘 다 했다. ① `connect_to_url` 전에 `socket.inbound_buffer_size = 4 << 20`, `max_queued_packets = 256` (GDT-116과 같은 처방). ② 행을 줄였다: 되돌리기 스냅샷을 전체 상태 대신 바뀌는 부분(유닛·콤보·점수)만 담는 구조체로 바꿔 한 스냅샷이 4 KB 안팎에서 1 KB 아래로. 이후 60스텝 자동 플레이에서 재현되지 않았다.
