@@ -12933,3 +12933,33 @@ wasm 빌드와 호스트 테스트 양쪽에 적용된다. 리터럴을 둘로 �
 **증상:** a new dated folder (rsync of the working tree, `npm ci`, `.dev.vars` copied from another folder) started `astro dev` cleanly, but the first request to a page that reads a D1 binding returned HTTP 500 with `D1_ERROR: no such table: region_visibility: SQLITE_ERROR`. The page's code was unchanged and worked in the folders of other sessions. The new folder had no `.wrangler/state/v3/d1`: miniflare creates the local D1 databases empty, and `.wrangler` is not part of an rsync or a git checkout. Copying the other session's `.wrangler` would also copy its rows and its open SQLite files.
 
 **해결:** stop the dev server, then in the new folder run `npx wrangler d1 migrations apply <BINDING> --local` once for each `d1_databases` binding in `wrangler.jsonc` (kyomincenter: `MEMBERS`, `COUPONS`, `ANALYTICS`, `LAUNCH`; `BETA` had nothing to apply). The command reads each binding's `migrations_dir` and writes only `.wrangler/state`. Start `astro dev` afterwards; the same URL answered 200. Put the five calls in a small script file and run it over ssh: a loop with `$db` inside a quoted `zsh -lc "…"` string broke on `=: not found` because the `==` in an `echo` was expanded by zsh.
+
+## OPS-826 — Screenshots and per-frame `getImageData` stall a WebGL page: a tap-to-reaction time measured with them came out 4× too long
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 (390×844 @2x) · Godot 4.7 Web (gl_compatibility) on busan.mac, nj1 ICMP 127 ms`
+
+**증상:** a screenshot burst after a tap (0, 100, 200 … 3,000 ms) reported 1.4–2.2 s until the first visible reaction,
+and a per-frame canvas `getImageData` probe reported 0.6–0.8 s. Both led to a wrong cause ("the server waits for both
+players") and a wrong plan. Measuring the same tap with nothing but timestamps gave tap→send 13–39 ms and
+send→reply 264–293 ms (one network round trip), 0.32–0.36 s until the page state changed.
+
+**해결:** measure latency with timestamps only. `Page.addScriptToEvaluateOnNewDocument` wraps `WebSocket` (record
+`performance.now()` at every `send` and every `message`) and listens for `pointerdown`; send the tap with
+`Input.dispatchMouseEvent`; take screenshots in a separate run, never in the run that produces numbers. A page's own
+test state can lag the screen too: in blabla `publish_test_state()` ran before `play_fx()`, so the test state showed
+the previous server update. Also keep tokens out of the log: print message sizes and times, never the socket URL
+(a 60-second guest token is in it).
+
+## OPS-827 — `rsync --exclude /reports` leaves out the folders `build.sh` copies into the web build, and `verify.py public` then fails on a `design/…` asset
+
+`측정 2026-11-01 · blabla deploy/nj1 release flow · rsync 3.x · macOS`
+
+**증상:** a task folder on busan.mac was synced with large folders excluded (`/reports`, `/artwork`). `build.sh` copies
+`reports/mouse-20261024` and `reports/frequency-20261027` into `build/web/design/` only `if [ -d … ]`, so the build
+passed with those two studies silently missing. After the deploy `deploy/nj1/verify.py public` stopped with
+`AssertionError: design/frequency-20261027/assets/festival-dark-390.png`, and the live site no longer served them.
+A second rsync with `--delete` also overwrote `review/asset-hashes.json` that the build had just regenerated.
+
+**해결:** rsync the folders a build copies in (`reports/<name>` that `build.sh` lists), copy them into `build/web/design/`,
+run `python3 deploy/package.py` again to regenerate `review/asset-hashes.json`, then `verify.py public`. When a
+release is built from an excluded sync, compare `ls build/web/design` with the previous release before deploying.
