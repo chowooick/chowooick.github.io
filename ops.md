@@ -12757,3 +12757,21 @@ WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 �
 **증상:** A prototype served by `python3 -m http.server` was edited and rsynced, then reopened with `page.goto(url)` in a new `ego-browser nodejs` round. The browser kept executing the old `feel.js`: `Runtime.exceptionThrown` events still pointed at the old line and column (254:182) although four lines had been inserted above it, and the fix was invisible. `http.server` sends `Last-Modified` and no `Cache-Control`, so Chromium's heuristic freshness kept the script for minutes, and a plain `goto` of the page URL (even with a changed query string on the page) does not revalidate sub-resources. A second trap stacked on top: `page.events()` returns the whole buffer accumulated since the last call, so exceptions from the previous round were counted as new ones.
 
 **해결:** at the start of every round call `page.cdp("Network.enable")` then `page.cdp("Network.setCacheDisabled", {cacheDisabled: true})` (like the viewport override, OPS-788, CDP state does not carry over between rounds), and call `page.events()` once to drain the old buffer before the actions under test. Prove the browser has the new file with `page.evaluate(() => fetch("feel.js", {cache: "no-store"}).then(r => r.text()).then(t => t.split("\n").length))` and compare with `wc -l` on disk. With both in place the same run reported 0 exceptions for the fixed script. A cache-busting query on the script tag works too but has to be edited into the HTML each time.
+
+## OPS-809 — Playwright on Node 26 stops before any test with `needs an import attribute of "type: json"`: preload tsx
+
+`측정 2026-11-01 · Playwright (kyomincenter lockfile) · Node 26.12 · tsx · busan.mac`
+
+**증상:** `npx playwright test` printed `needs an import attribute of "type: json"` for a `.json` file imported by application code under `tests/` (kyomincenter: `editorial-images.json`) and loaded no tests at all. Single unit runs through `tsx --test` passed, so the import looked healthy.
+
+**해결:** run the suite with `NODE_OPTIONS="--import tsx" npx playwright test`. All 320 tests then load. The application code does not change.
+
+## OPS-810 — A failing suite needs a baseline run, and a dev server that hangs mid-run fakes one: compare the failing line, not the test name
+
+`측정 2026-11-01 · Astro 7 dev · Playwright · busan.mac`
+
+**증상:** A clean commit, run with the failing test list from a feature branch, reported 78 failures against the branch's 85, which read as "almost everything is pre-existing". The tests after number 36 had all failed at `page.goto` or a `beforeEach`. `astro dev` had stopped answering at 17:07 with 0% CPU and no error in its log; `curl` timed out at 10 s while the process stayed alive. Every later test failed for that reason and looked identical to a real failure.
+
+Comparing names alone would have hidden regressions. Two tests that failed on both sides failed at different lines.
+
+**해결:** compare the first `>` source line of each failure on both runs, and treat a failure at `page.goto`, `beforeEach` or `afterEach` as unknown, not as a baseline failure. Restart the server and rerun the unknown tests in a small batch (28 tests, 3.2 minutes here). Run one dev server at a time on the host.

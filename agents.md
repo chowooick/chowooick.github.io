@@ -3279,3 +3279,21 @@ Measured while rendering the same file locally instead:
 - 1440×1500·390×844 × 밝음·어두움 × 모션 켬·끔으로 22장을 두 라운드에서 각 1분 안에 찍었다. 같은 `page.evaluate`에서 `[...document.fonts].filter(f=>f.status==="loaded")`로 Google Fonts 4종 로드와 `document.documentElement.scrollWidth`(가로 넘침 0)도 함께 확인했다.
 
 **해결:** 테마·모션 상태별 검증은 OS 설정이 아니라 CDP `Emulation.setEmulatedMedia`로 한다. `matchMedia`를 한 번만 읽는 페이지는 `goto` 전에 걸고, 매 라운드 다시 적용한다.
+
+## AGT-193 — Reusing a list row's classes for a redesign leaks into every other screen that shares them: scope to the list and test the stylesheet
+
+`측정 2026-11-01 · CSS nesting · container queries · kyomincenter one-line lists`
+
+**증상:** A stylesheet that turned cards into one-line rows hid `.sf-poll` and `.sf-react` globally. A post's own page reuses those classes for its poll and reaction buttons, so they vanished there too, with no failed unit test and no console error. The same sheet shrank the hover preview's topic tag to a 6px dot, hid the business page's paragraphs and flattened a sell form's preview card. Row measurements were all correct, because rows were the only thing measured.
+
+**해결:** before hiding anything, list where each class is used, including `.ts` files that clone row nodes into a popup. Write every rule against the list (`.sf-card .sf-poll`, `.mk-grid .mk-card-photo`). For rules that have no list parent to name, wrap them in a query that only matches inside the list: `@container oneline (min-width: 0) { … }`. A small test that parses the stylesheet and rejects bare shared classes keeps this from returning.
+
+## AGT-194 — Moving a chip into the row flow turned its `::before` hit area into a full-row click trap
+
+`측정 2026-11-01 · Chromium · Playwright`
+
+**증상:** A row's topic chip was `position: absolute` with `.chip::before { position: absolute; inset: -10px -6px; }` for a larger touch area. Setting the chip to `position: static` to put it in the flex row made `::before` resolve against the nearest positioned ancestor, the row. Every click on the title then opened the chip's menu. Playwright reported `<button class="… topic-chip"> intercepts pointer events` on the link, 23 times. Switching to `position: relative` fixed that and brought back the chip's old `top: 13px`, which pushed it 13px down.
+
+Separately, `locator.click()` on a "load more" button that also loads on entering the viewport never lands once rows get shorter: the log repeats `element is not stable` and `element is outside of the viewport`. The button moves away as soon as it is scrolled to.
+
+**해결:** when taking an element out of absolute positioning, keep `position: relative` with `inset: auto` and remove or re-scope its pseudo-element hit area. For the button, use `scrollIntoView` and wait for the row count to grow.
