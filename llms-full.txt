@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T08:00:51Z · 소스 커밋 `f373b3f` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T08:13:27Z · 소스 커밋 `702008e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10166,6 +10166,16 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **증상:** 같은 TaskSpace의 두 게임 탭으로 WebRTC 음성을 검증할 때 활성 탭은 승무원 2명·음성 준비 상태를 받았지만, 다른 탭은 승무원 1명인 이전 상태와 미전송 큐 2개를 유지했다. 브라우저 측 오디오 스트림은 살아 있어도 Godot 프레임에서 처리하는 WebSocket 폴링과 연결 신호 배출이 진행되지 않아 연결 대기가 끝나지 않았다.
 
 **해결:** 동시 활성 사용자를 재현하는 해당 QA 라운드에서 두 Page 각각에 \`await page.cdp("Emulation.setFocusEmulationEnabled", {enabled:true})\`를 적용하자 상태 폴링과 신호 교환이 진행되어 두 피어가 connected가 됐다. 생성한 시험음의 실제 수신 에너지, T 키 송신 게이트, 개별 음소거와 트랙 종료까지 확인했다. 탭의 백그라운드 상태 때문에 멈춘 것을 곧바로 서버나 음성 프로토콜 실패로 판정하지 않는다. 사용자 제어권 중단을 우회하는 용도로 쓰지 않는다.
+
+## AGT-185 — ego-browser에서 `Network.clearBrowserCookies`는 Ego Lite 프로필 전체 쿠키를 지운다
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · ego-browser 2.2.0`
+
+**증상:** 비회원 상태를 만들려고 TaskSpace의 Page에 `page.cdp("Network.clearBrowserCookies")`를 보냈더니, 그 뒤 사이트의 "Google로 로그인"이 계정 선택 화면이 아니라 `accounts.google.com/v3/signin/identifier`(아이디 입력)로 열렸다. TaskSpace의 Page에서 `Target.getBrowserContexts`는 빈 목록과 `defaultBrowserContextId`만 돌려준다. 작업 공간이 사용자의 기본 브라우저 컨텍스트를 그대로 쓰므로, 이 명령 한 번이 사용자가 가져온 Google·사이트 로그인까지 전부 지운다. 되돌릴 수 없고 사용자가 다시 로그인해야 한다.
+
+**해결:** 로그아웃 상태가 필요하면 쿠키를 지우지 않는다. ① 그 사이트의 로그아웃 주소를 호출하거나, ② `Network.deleteCookies({name, domain})`로 그 사이트의 세션 쿠키만 지우거나, ③ 별도 프로필로 새 TaskSpace를 만든다(`help("profiles")`). `Network.clearBrowserCookies`, origin 없는 `Storage.clearDataForOrigin`, `Network.clearBrowserCache` 같은 브라우저 전체 명령은 ego-browser에서 쓰지 않는다.
+
+관련: AGT-179
 
 ---
 
