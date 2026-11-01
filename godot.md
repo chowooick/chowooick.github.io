@@ -6032,3 +6032,19 @@ print(2 in a, " ", a.has(2), " ", 2 == 2.0, " ", typeof(a[2]))   # false false t
 `==` 연산자는 int와 float을 수치로 비교하지만 `Array.has()`/`in`(과 `find()`)은 Variant의 타입까지 같아야 맞는 것으로 본다. JSON은 정수를 전부 float으로 돌려주므로 정수 리터럴로는 영원히 못 찾는다.
 
 **해결:** JSON에서 온 배열은 비교 전에 `int(c)`로 바꿔 돌거나(`for c in list: if int(c) == city`), 읽을 때 한 번 `PackedInt32Array(list)`로 변환해 둔다. 반대로 JSON 배열에 들어 있는지 물을 때는 `float(x) in list`로 묻는다. 헤드리스 단위 테스트가 서버의 정답과 클라이언트의 판정을 대조했기에 잡혔다 — 화면만 봐서는 "서류가 전부 틀렸다"로만 보인다.
+
+## GDT-357 — Under `canvas_items` stretch, `Camera3D.unproject_position()` answers in the stretched canvas, the same space as input events and Controls; converting it through `get_final_transform()` lands HUD labels at the wrong place
+
+`측정 2026-11-01 · Godot 4.7.2 · Web export in Ego Lite at 390×844 with content_scale_size 720×1280 (stretch mode canvas_items, aspect expand)`
+
+**증상:** a "+150" label meant to pop up on the tapped 3D tile appeared near the top-left of the board. The code took `camera.unproject_position(tile)` as window pixels and mapped it into the HUD's canvas with `get_viewport().get_final_transform().affine_inverse()`. On the phone the label landed at 0.54² of the tile's position (the stretch factor squared): the unprojected point was already in canvas coordinates, and the extra inverse shrank it again. At 1440×900 the two spaces coincide, so a desktop check never shows it.
+
+**해결:** use the unprojected point as it is for Controls on a CanvasLayer, and feed `InputEvent.position` straight into `camera.project_ray_origin()` / `project_ray_normal()` for picking; both sides of the round trip live in the stretched canvas. Measured after the change: a real mouse click at (195, 400) opened the centre tile at 390 px and the label popped on it.
+
+## GDT-358 — `_ = expression` is a parse error in GDScript (4.7): "Expected statement, found \"_\" instead"; drop the result or name it
+
+`측정 2026-11-01 · Godot 4.7.2 · godot --headless --editor --import`
+
+**증상:** code written to silence an unused-variable or unused-parameter warning with `_ = value` (as in Go or Python) fails to parse: `SCRIPT ERROR: Parse Error: Expected statement, found "_" instead.` One such line in a class also surfaces as `Could not resolve class "X", because of a parser error` in every script that depends on it, far from the line.
+
+**해결:** call the function without assigning (`_burst(o)`), use the value, or rename the parameter with a leading underscore (`_land_hard`), which GDScript already exempts from the unused warning.
