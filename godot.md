@@ -6204,3 +6204,11 @@ CSS 기준 6–7 px로 읽을 수 없다. 3D는 선명하니 해상도 문제로
 - A balloon shows as a ghost at the predicted cell until the server's row appears there, and expires after 0.8 s if it never does.
 
 **해결:** keep `window.<state>` export at 250 ms for QA; the latency measured through it is bounded by that interval, so quote it as "≤ N ms + 250 ms observation lag".
+
+## GDT-374 — A coroutine called without `await` and awaited later hangs forever if it already finished
+
+`측정 2026-11-01 · Godot 4.7.2 Web · GDScript`
+
+**증상:** `var sent=link.call_reducer(...)` started an HTTP call, the script played a 0.6 s animation, then ran `await sent`. The network returned first, so the coroutine had already completed. The caller never resumed: no error, no log, input stayed locked and the round froze. It only hid on a slow network where the call outlasted the animation.
+
+**해결:** do not keep a coroutine in a variable to await later. Wrap it and poll a flag: `func send(): sending=true; await call(); sending=false`, call `send()` without await, then `while sending: await get_tree().process_frame`.
