@@ -3230,3 +3230,30 @@ Measured while rendering the same file locally instead:
 **해결:** ① 루프 간격을 160 ms 이상으로 두고, 마우스는 목표가 25 px 넘게 움직였을 때만 `move()`한다. ② 누르고 있을 키는 매 루프 토글하지 말고 한 번 `keyboard.down("KeyK")`으로 잡아 둔다(Godot physical keycode는 `KeyW`·`KeyJ` 같은 코드 이름으로 들어간다). ③ `mouse.down()`을 한 번 걸어 두면 Godot의 `Input.is_mouse_button_pressed`가 계속 참이라 연사 조준에 쓸 수 있다. ④ 결과 JSON은 끝이 아니라 단계마다 써서 타임아웃 뒤에도 남긴다. 이렇게 바꾼 3회차는 17초 플레이와 사건별 스크린샷 4장을 남기고 정상 종료했고, 입력 없이 잰 rAF fps는 타이틀·플레이 모두 30이었다.
 
 관련: AGT-180, AGT-183, GDT-355
+
+## AGT-189 — A private claude.ai Artifact opened in an ego-browser TaskSpace on busan.mac shows the login wall, although the owner's Ego Lite is signed in; check the page from a locally served copy instead
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · ego-browser skill 2.2.0 · busan.mac · Claude Code Artifact tool, private artifact`
+
+**증상:** `page.goto("https://claude.ai/artifact/<id>")` in an agent TaskSpace rendered `로그인 – Claude` with one link to `/login?returnTo=…`, so a freshly published report could not be checked in the browser. The owner-facing Ego Lite profile was signed in (other sites worked the same day), but the TaskSpace page did not carry a claude.ai session, and a new artifact is private by default. Related: AGT-175 (serving the bare Artifact body shows mojibake and a 980px phone layout).
+
+- Do not ask the owner to make the artifact public just to verify it; the check works offline.
+- Wrap the Artifact body in the publish skeleton for the local copy: `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body>` … `</body></html>`. Keep the fonts and images in the same folder as the published `files` map (`assets/…`, `img/…`).
+- rsync the folder to a dated folder on busan.mac, serve it with `python3 -m http.server <own port> --bind 127.0.0.1` started with `nohup … & echo $! > serve.pid`, open `http://127.0.0.1:<port>/index.html` in the same TaskSpace, and kill the pid when done.
+
+**해결:** one script per check: `Emulation.setDeviceMetricsOverride` to the canvas size (1680×1000 for a 1600×900 Kyomin page so `--scale` is 1), `document.fonts.check('800 20px Hahmlet')`, every `img.complete && naturalWidth>0`, then per page every element's bounding box divided by the page's `--scale` against the 1600×900 canvas (anything with bottom > 902 or right > 1602 is an overflow) and the gap between the last content block and the `.foot` rule; then 390×844 with `mobile:true` and `document.documentElement.scrollWidth <= innerWidth` for horizontal scroll. The whole 20-page pass took about 30 s. A 20-page report checked this way matched the published artifact.
+
+## AGT-190 — Driving a Godot 4 web export through ego-browser: Playwright key names reach Godot physical keycodes, CDP touch events drive HTML touch controls, and a game-exported `window.<state>` object is the only way to assert anything
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 web export, GL Compatibility · splash.mnori.com from busan.mac`
+
+**증상:** a Godot canvas has no DOM semantics: `page.snapshot()` shows one canvas, so buttons and keys need coordinates and real input events, and `page.evaluate` sees no game state unless the game exports some.
+
+- Fix the viewport to the project's base size first (`Emulation.setDeviceMetricsOverride({width:1440,height:900,deviceScaleFactor:1,mobile:false})`), so Godot CanvasItem coordinates equal CSS pixels and `page.mouse.click(x, y)` lands on the Godot `Button` at its `position + size/2`.
+- `page.keyboard.down("KeyD")` … `up("KeyD")` holds an `InputMap` action bound to a physical keycode; `press("Space")`, `press("Escape")`, `press("KeyQ")` fire one-shot actions. The canvas must have focus: a prior `mouse.click` on it is enough.
+- Touch: `Emulation.setDeviceMetricsOverride({width:390,height:844,deviceScaleFactor:2,mobile:true})` + `Emulation.setTouchEmulationEnabled({enabled:true,maxTouchPoints:5})` makes `(pointer:coarse)` match, and `page.cdp("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[{x,y,id:1}]})` holds an HTML d-pad button that uses `pointerdown` + `setPointerCapture` until `{type:"touchEnd",touchPoints:[]}`. Read the button centres with `getBoundingClientRect()` in `page.evaluate` first.
+- Wait on the game's own ready flag, not on `load`: `goto` resolved at 0.9 s while the game became usable at 8.4 s.
+- A read-only state object the game writes on a timer (`window.splashState`, every 250 ms: fps, draw calls, RTT, own coordinates, alive) is what makes assertions and screenshots-at-events possible (`bubble_ticks>0`, `alive===false`, `phase==="finished"`). A latency measured by polling it carries up to one export interval of observation lag; report the interval with the number.
+- Leave the match with the game's own command (`window.splashMobile("home")`) before changing emulation, so the shared server lobby is clean for the next round; the production arena is single, so a match left running blocks the next quick-play as "관전".
+
+**해결:** one TaskSpace per goal, one script per round that sets metrics, acts, samples state every 100–300 ms, screenshots at events, and writes JSON into a dated folder on busan.mac (`~/work/<project>-report-YYYYMMDD/`), then `rsync` it back; `task.finish({keep:[]})` in the last round. Two live playthroughs plus a 20-page check cost four rounds in all.
