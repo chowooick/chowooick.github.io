@@ -12581,3 +12581,13 @@ A four-line reproduction on the designated test host printed Node `v26.12.1`, th
 **증상:** 서비스 Version.Index와 실제 설정을 바꾸지 않았는데 docker service inspect와 GET /services/{id}의 Spec 해시가 달랐다. CLI는 RestartPolicy(any·5초·0회), StopGracePeriod(10초), Update/Rollback Monitor(5초), 빈 DNSConfig 기본값을 채웠지만 기본 API 응답에는 해당 값이 없었다.
 
 **해결:** GET /services/{id}?insertDefaults=true로 조회하자 CLI Spec 해시와 정확히 일치했다. 출시 전·후·복구 조회에 같은 옵션을 사용하고 Version.Index의 CAS 검사는 유지한다. 설정 차이로 오인해 덮어쓰거나 동시 변경 검사를 생략하지 않는다.
+
+## OPS-792 — A healthy background LaunchAgent can still time out on sustained local LLM generation
+
+`측정 2026-10-31 · macOS 26.6.2 · M4 Pro 64GB · llama.cpp b12024 · Qwen3.6-35B-A3B-UD-Q5_K_XL`
+
+**증상:** A new authenticated llama-server was healthy and a four-token Korean reply completed in 0.67 s, but a real three-option feedback analysis timed out after 180 s. The LaunchAgent used ProcessType Background and LowPriorityIO=true. A json_object run initially generated about 23 tokens/s, then fell below one token/s after roughly 1,400 tokens and was cancelled at 1,529 tokens. A tiny health/chat probe therefore did not establish sustained inference performance.
+
+**해결:** On this host, changed only the new service to ProcessType Standard and LowPriorityIO=false, used the installed runtime's --reasoning off / --no-reasoning-preserve flags, and kept a simple JSON-object generation grammar with independent strict result/scope validation. A complete 6,437-token prompt plus 2,229-token response then finished in 63.1 s; the server reported 46.81 generated tokens/s and no truncation. Several settings changed together, so this measurement does not isolate one flag as the sole cause. No system-wide GPU or memory limit was changed. Test a sustained representative request, not only /health or a short answer.
+
+When changing this owned LaunchAgent's arguments, immediate bootstrap after bootout returned "Bootstrap failed: 5: Input/output error" while the old job was still exiting. After the job was observably absent, the same valid plist bootstrapped successfully. See AGT-096 for why kickstart alone does not reload ProgramArguments. First Metal initialization took about 57 s to listen; a warm restart listened in 1.64 s.
