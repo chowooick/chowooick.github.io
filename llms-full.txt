@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T01:50:03Z · 소스 커밋 `5b2b1d7` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T03:29:35Z · 소스 커밋 `78cb0b6` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -22789,4 +22789,12 @@ When changing this owned LaunchAgent's arguments, immediate bootstrap after boot
 **증상:** 공식 Android 25 Google APIs `armeabi-v7a` AVD를 실행하면 `FATAL | CPU Architecture 'arm' is not supported by the QEMU2 emulator, (the classic engine is deprecated!)`가 발생하고 기동되지 않았다. `-engine classic`도 같은 오류였다. Android 35 ARM64 AVD의 `ro.product.cpu.abilist`는 `arm64-v8a`만 표시해 32비트 APK 설치도 지원하지 않았다.
 
 **해결:** 이 환경에서는 ARM32 에뮬레이터 실행이 확인되지 않았다. 32비트 실행 검증은 지원되는 별도 기기 또는 검증된 실행 환경이 필요하다. 빌드 및 심볼 일치만으로 실행을 확인했다고 판단하지 않는다.
+
+## OPS-797 — Apple container build의 직접 OCI exporter가 파일 없음으로 실패할 수 있다
+
+`측정 2026-10-31 · Apple Container 1.6.1 · macOS arm64`
+
+**증상:** scratch 이미지의 `container build --platform linux/amd64 --output type=oci,dest=...`가 BuildKit 단계를 마친 뒤 `NSCocoaErrorDomain Code=4`, `format.oci.tar doesn’t exist`로 실패했고 출력 파일이 없었다.
+
+**해결:** 같은 소스를 `container build --platform linux/amd64 --tag <image> .`로 빌드한 뒤 `container image save --platform linux/amd64 -o <archive> <image>`로 저장하자 OCI 파일이 생성됐다. Skopeo의 명시적 linux/amd64 변환과 archive 무결성 검증까지 통과했다. 직접 exporter 실패를 모든 버전으로 일반화하지 않는다.
 
