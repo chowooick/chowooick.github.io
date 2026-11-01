@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T10:32:02Z · 소스 커밋 `074b496` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T10:32:39Z · 소스 커밋 `a8724ec` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23387,4 +23387,12 @@ Measured with the same clients: local p50 11.9 → 0.40 ms, p95 22.4 → 1.9 ms.
 **증상:** two tabs of one task space (`p1`, `p2`) played a two-player WebRTC voice test. The active tab's client worked; the other tab's client stopped dead: `document.hidden` read `false` and `document.visibilityState` was `visible` from `page.evaluate`, and a one-second `requestAnimationFrame` count run through `evaluate` even returned ~25, yet a 5-second "tick" note from `_process` never appeared, the websocket received nothing (the server's updates sat undelivered until the next click on that tab) and a WebRTC answer was sent 42 s late — the moment the tab got a mouse click. `task.tabs()` showed `active: false` for it. Chromium runs rAF only for the tab it paints; Ego's visibility values and an `evaluate`-driven rAF probe do not tell you that.
 
 **해결:** for every page that must keep running, call `await page.cdp("Page.setWebLifecycleState", { state: "active" })` after `goto`/`reload` and again after any step that activates another tab (clicks on the other page); ticks resumed within a second each time. `Page.bringToFront` also works but switches the painted tab. Judge liveness by a counter the app itself advances (a `_process` note every few seconds), never by `document.hidden`. A real player's background tab behaves the same way: existing WebRTC audio keeps flowing, but signaling and game updates pause until they return, so a game should expect that and not treat it as a disconnect.
+
+## OPS-820 — `rsync -a` onto a build folder restores the source file's older mtime, so `cargo` reports "Finished" in 0.05 s and builds the previous wasm; `touch` the changed sources
+
+`측정 2026-11-01 · macOS 26 · cargo 1.9x wasm32-unknown-unknown · rsync 2.6.9`
+
+**증상:** a Rust SpacetimeDB module was synced from another Mac with `rsync -az` after an earlier `git checkout -- .` had given the same files a newer mtime. `cargo test --lib` ran the old 26 tests and `cargo build --release` ended in 0.05 s with the sha256 of the previous module, although `lib.rs` on disk was the new text (40 tests expected). Publishing that wasm would have shipped the old rules.
+
+**해결:** after syncing sources into a folder that already has a `target/`, run `touch` on the changed files (or the whole `src`) before building, and compare the module sha256 with the last one before publishing. `git checkout -- .` and `git reset --hard` also reset mtimes to "now", which is what makes the older rsynced copy look stale.
 
