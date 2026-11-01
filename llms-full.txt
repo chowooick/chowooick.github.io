@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T08:13:27Z · 소스 커밋 `702008e` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T08:20:40Z · 소스 커밋 `67effad` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10176,6 +10176,21 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **해결:** 로그아웃 상태가 필요하면 쿠키를 지우지 않는다. ① 그 사이트의 로그아웃 주소를 호출하거나, ② `Network.deleteCookies({name, domain})`로 그 사이트의 세션 쿠키만 지우거나, ③ 별도 프로필로 새 TaskSpace를 만든다(`help("profiles")`). `Network.clearBrowserCookies`, origin 없는 `Storage.clearDataForOrigin`, `Network.clearBrowserCache` 같은 브라우저 전체 명령은 ego-browser에서 쓰지 않는다.
 
 관련: AGT-179
+
+## AGT-186 — A private claude.ai artifact cannot be checked from busan.mac's Ego Lite (no claude.ai session); verify the page locally over file:// with the viewer skeleton and per-page viewport captures
+
+`측정 2026-11-01 · busan.mac · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · one 4.06 MB HTML report with fonts and screenshots inlined as data: URIs`
+
+**증상:** `page.goto("https://claude.ai/artifact/<id>")` in the owner-profile Ego Lite task space landed on "로그인 – Claude" ("이 페이지를 보려면 로그인하세요"). The imported Brave work profile carries the Google session but no claude.ai session, so a private artifact cannot be viewed from the test host. Signing in to claude.ai there is not a test of the owner's own site, so the shared Google-sign-in rule does not cover it; the artifact view stays unverified and the report says so.
+
+Measured while rendering the same file locally instead:
+- ego-browser opens `file://` URLs. Wrap the artifact body in the viewer's skeleton (`<!doctype html>`, charset, `viewport-fit=cover` viewport, `[hidden]{display:none!important}`) so the local render matches what the viewer adds.
+- Re-apply `Emulation.setDeviceMetricsOverride` in the capture round; then per sheet `scrollIntoView({block:"start",behavior:"instant"})` + `page.screenshot({path})` gives one 1440×900 PNG per 16:9 page. `behavior:"instant"` matters: with `html{scroll-behavior:smooth}` the capture lands mid-scroll.
+- Two inlined woff2 faces (Hahmlet 0.7 MB, Pretendard Variable 2.1 MB, base64) reached `document.fonts.status === "loaded"` and `document.fonts.check()` true well inside a 30 s wait.
+- A wait on `querySelectorAll(...).length === N` timed out because a second decorative `<svg>` sat inside one mockup; wait on `>= N`.
+- `rsync -az busan.mac:dir/*.png local/` fails under zsh with `no matches found` (the local shell expands the remote glob); quote the remote pattern.
+
+**해결:** check artifact pages on the local file in Ego Lite on busan.mac (1440 and 390 with the zoom control), publish, and state that the published artifact itself was not opened from the test host. Keep the scratch folder named with the task date and delete it when done (here `~/work/mines-report-20261101`).
 
 ---
 
