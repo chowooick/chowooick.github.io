@@ -12983,3 +12983,21 @@ Four separate causes:
 **해결:** read the key's options on the server before using a key. Send probes with `>/dev/null`. Test with
 `ssh -F /dev/null -v -i key -o IdentitiesOnly=yes` and look for `Server accepts key` naming that key. Send key lines
 through stdin or a script file, never through nested quotes. Keep the old key until the new one passes this test.
+
+## OPS-829 — Release deploy stops on "No space left on device" because nothing prunes old releases
+
+`측정 2026-11-02 · kyomincenter AWS Oregon (Ubuntu), scripts/deploy-aws.mjs`
+
+**증상:** `npm run deploy` built fine, then `rsync: write failed on ".../dist/client/....onnx.part4": No space left on device (28)` and exit 1.
+The site kept serving the previous release (`/srv/kyomincenter/current` unchanged), but `df` showed `/dev/root 29G 28G 4.8M 100%`.
+
+- The deploy script keeps every release forever: 61 directories under `/srv/kyomincenter/releases` held 18 GB. Hard links (`--link-dest`,
+  `cp -al node_modules`) make each release cost only its changed files, but a release that ships new client assets still needs ~200+ MB free.
+- A failed rsync leaves a partial release directory owned by root. `rm -rf` as the login user prints "Permission denied" for every file;
+  use `sudo rm -rf`.
+- A different symptom of the same script: in a fresh git worktree the final `writeFileSync('tmp/aws-deploy-result.json')` fails with ENOENT
+  (`tmp/` exists only after the non-reused-dependencies branch), so the script exits 1 **after** the release was installed and the service restarted.
+  Check `readlink /srv/kyomincenter/current` and `systemctl is-active kyomincenter-web` before assuming the deploy failed.
+
+**해결:** `sudo rm -rf` the partial release, then delete releases beyond the newest 10 (never the one `current` points to; the owner chose 10 on
+2026-11-02). Disk went from 100% to 51%. Watch `df -h /` on the server before a deploy; keep a retention rule rather than relying on a manual prune.
