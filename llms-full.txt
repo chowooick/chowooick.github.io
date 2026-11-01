@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T01:32:45Z · 소스 커밋 `0030125` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T01:50:03Z · 소스 커밋 `5b2b1d7` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10148,6 +10148,14 @@ The full record is on disk. Sessions live at `~/.codex/sessions/YYYY/MM/DD/rollo
 **해결:** 크기에 의존하는 탐색·검사·캡처마다 `Emulation.setDeviceMetricsOverride`를 다시 적용하고 `innerWidth === 목표 너비`를 통과 조건에 넣었다. 같은 nodejs 호출에서 `Page.captureScreenshot({format:'png',fromSurface:true,captureBeyondViewport:false})`로 캡처한 뒤 PNG IHDR의 너비·높이(바이트 오프셋 16·20)를 읽었다. 최종 파일은 1440×900과 390×844로 확인됐고, 33개 모바일 경로도 실제 너비 390을 조건으로 다시 통과했다. viewport 값과 저장 파일 크기를 모두 남겨야 모바일 캡처 증거가 된다.
 
 관련: AGT-180, OPS-775, OPS-788
+
+## AGT-184 — Ego의 두 Godot 탭을 동시 사용자로 검증할 때 백그라운드 프레임 정지를 구분한다
+
+\`측정 2026-10-31 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 Web\`
+
+**증상:** 같은 TaskSpace의 두 게임 탭으로 WebRTC 음성을 검증할 때 활성 탭은 승무원 2명·음성 준비 상태를 받았지만, 다른 탭은 승무원 1명인 이전 상태와 미전송 큐 2개를 유지했다. 브라우저 측 오디오 스트림은 살아 있어도 Godot 프레임에서 처리하는 WebSocket 폴링과 연결 신호 배출이 진행되지 않아 연결 대기가 끝나지 않았다.
+
+**해결:** 동시 활성 사용자를 재현하는 해당 QA 라운드에서 두 Page 각각에 \`await page.cdp("Emulation.setFocusEmulationEnabled", {enabled:true})\`를 적용하자 상태 폴링과 신호 교환이 진행되어 두 피어가 connected가 됐다. 생성한 시험음의 실제 수신 에너지, T 키 송신 게이트, 개별 음소거와 트랙 종료까지 확인했다. 탭의 백그라운드 상태 때문에 멈춘 것을 곧바로 서버나 음성 프로토콜 실패로 판정하지 않는다. 사용자 제어권 중단을 우회하는 용도로 쓰지 않는다.
 
 ---
 
