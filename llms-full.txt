@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T10:39:51Z · 소스 커밋 `21995d1` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T10:53:25Z · 소스 커밋 `cfb6109` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23453,4 +23453,34 @@ the whole replaced argument must fit; `-s` does not lift it.
 **해결:** write one small script per job into a folder and run `ls jobs/*.sh | xargs -P 3 -n 1 sh`;
 the replacement is then a short path. Also, in a remote `zsh -c` string do not write `echo ===` as a
 separator: zsh's `=cmd` expansion turns it into `zsh: == not found`; use `echo "---"`.
+
+## OPS-823 — serde_json `json!` 리터럴은 키 60개쯤에서 `recursion limit reached while expanding $crate::json_internal!`로 컴파일이 멈춘다: 크레이트에 `#![recursion_limit = "512"]`를 붙인다
+
+`측정 2026-11-01 · serde_json 1.0.154 · Rust 1.97 · SpacetimeDB 2.8.0 모듈(wasm32) + `cargo test`(host)`
+
+**증상:** 서버 스냅샷을 `json!({"a":..,"b":..})` 한 리터럴로 만드는 모듈에 필드를 몇 개 더 넣자 빌드가
+`error: recursion limit reached while expanding $crate::json_internal!` 로 멈춘다. 코드에는 재귀가 없다.
+`json!` 매크로가 키 하나마다 한 단계씩 재귀하므로 리터럴 하나의 키 수가 기본 한도 128에 닿는 것이다
+(중첩 객체의 키도 같이 센다). 필드를 하나 뺀 직전 커밋은 그대로 통과하므로 "방금 추가한 필드"를 의심하기 쉽다.
+
+**해결:** `lib.rs` 맨 위(크레이트 속성 자리, `use` 앞)에 `#![recursion_limit = "512"]`. 다른 변화 없이 통과하고
+wasm 빌드와 호스트 테스트 양쪽에 적용된다. 리터럴을 둘로 쪼개는 방법도 되지만 스냅샷 문자열은 변하지 않으므로
+한도만 올리는 쪽이 짧다.
+
+## OPS-824 — `ssh host 'ego-browser nodejs' <<EOF` 를 Claude Code `run_in_background`로 돌리면 스크립트의 `console.log`가 출력 파일에 남지 않는다: 원격에서 로그 파일로 리디렉션한다
+
+`측정 2026-11-01 · Claude Code 2.1.314 · Ego Lite 0.6.2.5 ego-browser 2.2.0 · busan.mac(macOS 26.6)`
+
+**증상:** 10분 넘게 도는 Ego Lite 플레이 스크립트를 `ssh busan.mac '…; ego-browser nodejs' <<'EOF'`로
+`run_in_background: true`에 올렸더니, 끝난 뒤 출력 파일에는 `[exited with code 8]` 22바이트뿐이다.
+스크립트가 찍은 JSON 요약과 중간 `console.log`가 전부 없다. 같은 명령을 전경(foreground)으로 돌리면 전부 보인다.
+원격 쪽 스크린샷과 `fs.writeFile`로 남긴 결과 파일은 정상이므로 스크립트는 거의 끝까지 돌았다.
+종료 코드 8은 두 번째 `page.goto` 뒤 어디선가 났는데, 로그가 없어 원인을 못 잡았다.
+
+**해결:** 결과는 stdout이 아니라 원격 파일에 남긴다. 두 가지를 같이 한다.
+1. `ego-browser nodejs > ~/work/<project>/qa/<run>/run.log 2>&1; echo EXIT $?; tail -c 1500 …/run.log`
+   처럼 원격에서 리디렉션하고, 마지막에 꼬리만 stdout으로 돌려보낸다.
+2. 스크립트 안에서는 매 라운드마다 `fs.writeFile(result.json)`으로 중간 결과를 저장해, 중간에 죽어도 그때까지의
+   수치는 남게 한다. `task.finish({keep: []})`에 못 닿으면 작업 공간이 남으므로, 다음 실행 전에
+   `listTaskSpaces()`로 같은 이름을 찾아 `finish`한다.
 
