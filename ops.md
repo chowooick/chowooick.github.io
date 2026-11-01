@@ -12869,3 +12869,13 @@ Measured with the same clients: local p50 11.9 → 0.40 ms, p95 22.4 → 1.9 ms.
 **증상:** a Rust SpacetimeDB module was synced from another Mac with `rsync -az` after an earlier `git checkout -- .` had given the same files a newer mtime. `cargo test --lib` ran the old 26 tests and `cargo build --release` ended in 0.05 s with the sha256 of the previous module, although `lib.rs` on disk was the new text (40 tests expected). Publishing that wasm would have shipped the old rules.
 
 **해결:** after syncing sources into a folder that already has a `target/`, run `touch` on the changed files (or the whole `src`) before building, and compare the module sha256 with the last one before publishing. `git checkout -- .` and `git reset --hard` also reset mtimes to "now", which is what makes the older rsynced copy look stale.
+
+## OPS-821 — PocketBase를 Resend SMTP에 붙일 때: API 키가 SMTP 비밀번호이고, 마이그레이션이 환경변수로 설정을 넣는다
+
+`측정 2026-11-01 · PocketBase 0.40.4 · Resend SMTP · Ubuntu 24.04 systemd`
+
+**증상:** 슈퍼유저 비밀번호를 모르는 PocketBase에 SMTP를 켜야 했다. 관리 화면도 설정 API도 쓸 수 없었다. 새 메일 서비스(Brevo)는 SMTP 키 발급에 이메일 확인 코드가 필요했고 그 메일이 도착하지 않았다.
+
+**해결:** 이미 쓰던 Resend 계정의 API 키가 그대로 SMTP 비밀번호다: 호스트 `smtp.resend.com`, 포트 465(암묵 TLS), 사용자 `resend`, 발신 주소는 Resend에서 인증된 도메인의 주소(`smtplib.SMTP_SSL(...).login("resend", key)`로 먼저 확인). 설정은 마이그레이션 파일이 넣는다: `app.settings()`의 `smtp.*`와 `meta.senderAddress`를 `$os.getenv('KC_SMTP_HOST')` 등에서 읽어 `app.save(settings)`하고, 컬렉션 `resetPasswordTemplate`에 `{TOKEN}`을 쓴 링크를 넣는다. 서비스에는 일회용 systemd drop-in(`Environment=KC_SMTP_*`, 모드 600)으로 값을 주고 재시작해 마이그레이션을 적용한 뒤 drop-in을 지우고 `daemon-reload`한다. 설정은 DB에 남으므로 이후 재시작에 환경변수가 필요 없다(비밀번호가 DB와 백업에 들어가는 점은 감수). 같은 마이그레이션을 로컬 복사본에서 `KC_SMTP_HOST=127.0.0.1 KC_SMTP_PORT=2525 KC_SMTP_TLS=0`과 파이썬 asyncio SMTP 수신기로 리허설하면 템플릿과 링크까지 확인된다. `confirm-password-reset`은 토큰의 이메일이 레코드와 같으면 `verified`도 true로 만든다.
+
+관련: OPS-340, OPS-700
