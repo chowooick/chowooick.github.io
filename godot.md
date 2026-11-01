@@ -6069,3 +6069,11 @@ Godot's web platform listens for keys on the canvas, so any focused page element
 `JSON.parse_string` makes every number a float (GDT-356), and `JSON.stringify` writes that float as `1.0`.
 
 **해결:** convert before sending: `args.map(func(a): return int(a) if a is float and a == floorf(a) else a)`. Test the browser route end to end and read the row back; a client notice is easy to miss.
+
+## GDT-361 — `CPUParticles3D` + `StandardMaterial3D.BILLBOARD_PARTICLES`는 `scale_amount`를 무시하고 메시 원래 크기로 그린다: `BILLBOARD_ENABLED` + `billboard_keep_scale = true`로 바꾼다
+
+`측정 2026-11-01 · Godot 4.7.2 · gl_compatibility · busan.mac (M4 Pro)`
+
+**증상:** 눈송이를 `CPUParticles3D`(`scale_amount_min/max` 0.02~0.045)에 1 m `QuadMesh`와 `BILLBOARD_PARTICLES` 재질로 뿌리자, 화면이 1 m짜리 흰 사각형 420개로 덮였다. `amount`·`lifetime`·중력은 모두 먹었고 크기만 무시됐다. `BILLBOARD_PARTICLES`는 `GPUParticles3D`의 입자 애니메이션 프레임용이고, CPU 입자의 per-instance 스케일은 그 경로에서 버려진다.
+
+**해결:** 재질을 `billboard_mode = BILLBOARD_ENABLED`, `billboard_keep_scale = true`로 두면 `scale_amount`가 그대로 적용돼 2~4 cm 눈송이가 된다(같은 420개, 드로우 콜 변화 없음). 저장할 메시 크기를 줄이는 것으로는 안 된다 — 크기 차이를 `scale_amount`로 주려면 keep_scale이 필요하다.
