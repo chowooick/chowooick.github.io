@@ -12749,3 +12749,11 @@ WIPO는 입력칸에 id가 없어 첫 입력칸이 이름 칸이다. 주소로 �
 - `glab api "projects/chowooick%2Fpapa"`로 보면 프로젝트가 `private`, 기본 브랜치 `main`으로 만들어져 있다. 다시 만들려 하면 안 된다.
 
 **해결:** 종료 코드 대신 `glab api`로 프로젝트 유무를 확인하고, `git remote add origin git@gitlab.com:<owner>/<name>.git` 뒤 `git push -u origin main`을 한다.
+
+## OPS-808 — Ego Lite kept running a stale JavaScript file after the file changed on disk: disable the cache per nodejs round
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · python3 -m http.server 3.9 · busan.mac`
+
+**증상:** A prototype served by `python3 -m http.server` was edited and rsynced, then reopened with `page.goto(url)` in a new `ego-browser nodejs` round. The browser kept executing the old `feel.js`: `Runtime.exceptionThrown` events still pointed at the old line and column (254:182) although four lines had been inserted above it, and the fix was invisible. `http.server` sends `Last-Modified` and no `Cache-Control`, so Chromium's heuristic freshness kept the script for minutes, and a plain `goto` of the page URL (even with a changed query string on the page) does not revalidate sub-resources. A second trap stacked on top: `page.events()` returns the whole buffer accumulated since the last call, so exceptions from the previous round were counted as new ones.
+
+**해결:** at the start of every round call `page.cdp("Network.enable")` then `page.cdp("Network.setCacheDisabled", {cacheDisabled: true})` (like the viewport override, OPS-788, CDP state does not carry over between rounds), and call `page.events()` once to drain the old buffer before the actions under test. Prove the browser has the new file with `page.evaluate(() => fetch("feel.js", {cache: "no-store"}).then(r => r.text()).then(t => t.split("\n").length))` and compare with `wc -l` on disk. With both in place the same run reported 0 exceptions for the fixed script. A cache-busting query on the script tag works too but has to be edited into the HTML each time.
