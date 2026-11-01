@@ -12803,3 +12803,45 @@ python3 -m fontTools.subset Pretendard-600.ttf --output-file=Pretendard-600-sub.
   --layout-features=kern,liga --no-hinting                                                       # 2,530,116 B
 ```
 가변 폰트를 서브셋만 하면(`--layout-features='*'`) 5,777,496 B에 그친다 — 줄이는 것은 서브셋이 아니라 웨이트 고정이다. 완성형 한글(U+AC00–D7A3)은 사용자 이름 입력 때문에 전부 남겼다.
+
+## OPS-813 — SpacetimeDB 2.8: the v2/v3 websocket holds every update until the commit is on disk (`confirmed` defaults to true); `confirmed=false` cut a local input round trip from 12 ms to 0.4 ms and the trans-Pacific p95 from 1.9 s to 0.74 s
+
+`측정 2026-11-01 · SpacetimeDB 2.8.0 standalone, local and on nj2 behind a Cloudflare tunnel · v2.bsatn.spacetimedb · 12 synthetic Rust websocket clients at 20 Hz · Mac mini M4 Pro in Busan`
+
+**증상:** a reducer call's round trip measured 11.9 ms p50 / 22.4 ms p95 on localhost while the reducer ran 0.10 ms and waited 0.07 ms in its queue. The time is the durability actor: `crates/client-api/src/routes/subscribe.rs` `resolve_confirmed_reads_default` returns `DEFAULT_CONFIRMED_READS = true` for `WsVersion::V2 | V3` and `false` for V1, so reducer results and subscription updates are released only after the commit batch is fsynced. A v1.json client never saw this; a hand-written v2 client inherits it silently.
+
+Measured with the same clients: local p50 11.9 → 0.40 ms, p95 22.4 → 1.9 ms. Public path Busan → US (websocket ping p50 ≈ 300 ms): p50 522 → 344 ms, p95 1919 → 742 ms, p99 4256 → 982 ms, and inputs refused as "too fast" by a GCRA limiter fell from 63 to 10 of 14,400, because the stalls were releasing bursts.
+
+**해결:** add `&confirmed=false` to `/v1/database/<db>/subscribe?compression=…` for state a client may see rolled back without harm (a live match). Keep the default for anything the client must never have shown and then lost. The flag is a plain query parameter (`confirmed: Option<bool>`), no protocol change.
+
+## OPS-814 — SpacetimeDB 2.8 reschedules an interval reducer from the moment it actually ran, so every queue delay lengthens the period: a 50 ms `ScheduleAt::Interval` measured 18.1–19.3 Hz; stepping from a clock kept in the row restores 20.0 Hz
+
+`측정 2026-11-01 · SpacetimeDB 2.8.0 · Rust module · crates/core/src/host/scheduler.rs read at tag v2.8.0`
+
+**증상:** a 50 ms interval tick counted 18.06 ticks/s on the public server under 12 clients and 19.33 on an idle Mac. In `scheduler.rs`, `delete_scheduled_function_row` reschedules with `at_real: instant + dur` where `instant` is `Instant::now()` taken when the reducer starts, so the wait in the module-instance queue (`spacetime_scheduled_function_delay_seconds`, mean 1.5–2.1 ms here, more under input load) is added to every period instead of absorbed. `ctx.timestamp` inside the tick is the real start time too, not the scheduled time.
+
+**해결:** keep `clock_at` (micros) in the row the tick owns and catch up: `while now - clock_at >= TICK - 5_000 && steps < 3 { step(); clock_at += TICK }`, resyncing `clock_at = now` when more than three ticks behind so a paused database does not replay minutes. Measured 19.97–20.02 Hz in every run after, local, 8 rooms × 12 clients and public. When two steps share one publish, carry each player's last non-zero one-shot action into the published row, or clients never see it.
+
+## OPS-815 — SpacetimeDB 2.8: one 6.5 KB JSON state row published at 20 Hz costs each subscriber 267 KB/s (old row + new row per update); `compression=Gzip` cut it to 57 KB/s and rounding floats to three decimals before serializing to 48 KB/s
+
+`측정 2026-11-01 · SpacetimeDB 2.8.0 standalone · v2.bsatn.spacetimedb · Rust module with one JSON state row per room · 12 synthetic clients · local Mac and nj2 through a Cloudflare tunnel`
+
+**증상:** every update of a subscribed row arrives as the deleted row plus the inserted row, so a 6.5 KB state row at 20 Hz is 267 KB/s per client, uncompressed. Over the public tunnel from Busan to the US with 4 rooms × 12 clients the downlink saturated: input round trip p50 3.9 s, p95 11 s, clients observed 16.5 of 20 ticks/s, while the server's reducer time stayed 0.1 ms. The same build also wrote each player's input into that JSON row (parse + serialize per input, 240 inputs/s per room): 0.709 ms per input, 18.9% of one core per room, commit log growing 2.9 MB/s.
+
+**해결:** (1) a private `intent` table with one small row per player: `input` updates only that row and the tick reads all intents and writes the state once — input fell to 0.10 ms, one room to 4% of a core, commit log to 0.30 MB/s (OPS-143 measured the same split on a per-player pose table). (2) `?compression=Gzip` on the subscribe URL; the first byte of each server message is the tag (0 none, 2 gzip) and small messages still come as 0, so decode both. 267 → 57 KB/s. (3) `v = (v * 1000.).round() / 1000.` on every f32 before serde: the long decimals were what gzip could not compress, 57 → 48 KB/s, no measurable server cost. Public path after (2)+(3): 1 room p50 243 ms / p95 510 ms, 4 rooms p50 259 ms / p95 533 ms at 20.0 Hz.
+
+## OPS-816 — tokio-tungstenite 0.24 with `rustls-tls-webpki-roots` builds and serves `ws://`, then panics on the first `wss://` connect: "Could not automatically determine the process-level CryptoProvider"
+
+`측정 2026-11-01 · tokio-tungstenite 0.24.0 · rustls 0.23.46 · Rust 1.97 · macOS`
+
+**증상:** a load generator that passed every local run died against the public server. The panic is raised inside a tokio worker (`rustls/src/crypto/mod.rs:249`) and surfaced only as `JoinError::Panic` from the task handle's `unwrap()`, with the message hidden two lines down. The feature pulls rustls in without choosing between `ring` and `aws-lc-rs`, and rustls 0.23 refuses to guess.
+
+**해결:** `rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }` in Cargo.toml and `rustls::crypto::ring::default_provider().install_default().ok();` as the first line of `main`. Then `wss://` through Cloudflare worked unchanged.
+
+## OPS-817 — A self-hosted SpacetimeDB behind a Cloudflare tunnel with a `^/v1/.*` ingress rule serves `/v1/metrics` and the publish endpoints to the whole internet; a path-matched ingress list closes them without touching the database
+
+`측정 2026-11-01 · SpacetimeDB 2.8.0 standalone in Docker on Dokploy · cloudflared 2026.10.1, remote-managed tunnel configuration`
+
+**증상:** the game's tunnel forwarded `hostname + path '^/v1/.*'` to `spacetimedb:3000`. `GET https://<game>/v1/metrics` returned the whole Prometheus page without auth (reducer names, database identities, bytes sent, queue lengths), and `POST /v1/database` (publish a new database) was reachable by anyone who had asked `/v1/identity` for a token, since standalone has no publisher allowlist. Only the metrics exposure was exercised; publishing was not tried.
+
+**해결:** ingress rules run in order and `path` is a regex, so put the allowlist first and a 404 catch for the rest of `/v1`: `[{hostname, path: '^/v1/(ping|identity(/.*)?|database/<db>(/.*)?)$', service: 'http://spacetimedb:3000'}, {hostname, path: '^/v1/.*', service: 'http_status:404'}, {hostname, service: 'http://web:8080'}, {service: 'http_status:404'}]` through `PUT /accounts/<account>/cfd_tunnel/<tunnel>/configurations`. Live in about 10 s with no connector restart and no client disconnect. Verified afterwards: `/v1/ping` 200, `/v1/database/<db>/schema?version=9` 200, subscribe and `/sql` unchanged, `/v1/metrics` 404, `POST /v1/database` 404, `POST /v1/database/<other>` 404. The owner still publishes updates with `spacetime publish --server https://<game> <db>` because `/v1/database/<db>` stays open and an update needs the owner token.
