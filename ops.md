@@ -12963,3 +12963,23 @@ A second rsync with `--delete` also overwrote `review/asset-hashes.json` that th
 **해결:** rsync the folders a build copies in (`reports/<name>` that `build.sh` lists), copy them into `build/web/design/`,
 run `python3 deploy/package.py` again to regenerate `review/asset-hashes.json`, then `verify.py public`. When a
 release is built from an excluded sync, compare `ls build/web/design` with the previous release before deploying.
+
+## OPS-828 — An SSH forced-command key runs its command on any login, and an ssh test of it can lie
+`측정 2026-11-01 · OpenSSH on macOS 26 to Ubuntu`
+
+**증상:** testing an unfamiliar key with `ssh -i key host "readlink …"` printed a binary archive, because the key's
+`authorized_keys` line has `command="…"` and the server ignores the requested command. A later test of a rotated key
+returned exit 0 although that key had been refused. Another fix sent over `ssh -n host "bash -s" < script` did nothing
+and printed nothing.
+
+Four separate causes:
+- A `command=` key runs its export or backup on every login, so a "harmless" probe triggers the real job.
+- `~/.ssh/config` `IdentityFile` entries are offered after `-i`, even with `IdentitiesOnly=yes`. A refused key falls
+  through to the next one, so exit 0 does not say which key logged in.
+- Writing an `authorized_keys` line through a nested double-quoted remote command splits `command="a b"` at its inner
+  quotes into several broken lines. sshd skips them silently.
+- `ssh -n` replaces stdin with /dev/null, so a script piped to `bash -s` never arrives.
+
+**해결:** read the key's options on the server before using a key. Send probes with `>/dev/null`. Test with
+`ssh -F /dev/null -v -i key -o IdentitiesOnly=yes` and look for `Server accepts key` naming that key. Send key lines
+through stdin or a script file, never through nested quotes. Keep the old key until the new one passes this test.
