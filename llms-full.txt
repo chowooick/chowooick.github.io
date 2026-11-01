@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-01T10:37:27Z · 소스 커밋 `81e1a91` · 이 파일은 자동 생성물이다.
+생성 2026-11-01T10:38:39Z · 소스 커밋 `c9a8fa3` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10539,6 +10539,18 @@ Separately, `locator.click()` on a "load more" button that also loads on enterin
 **해결:** 스테이징 전에 `git diff <파일>`로 hunk를 확인한다(파일 이름만 보고 `git add`하지 않는다). 이미 커밋·푸시했다면 다른 세션의 hunk만 담은 패치를 만들어 작업 트리는 건드리지 않고 인덱스에서만 되돌린다: `git diff A~1 A -- 파일 > p.patch`에서 남의 hunk만 남긴 뒤 `git apply --cached -R --recount p.patch`, 이어서 커밋·푸시. 그 세션의 수정은 작업 트리에 그대로 남는다. 같은 파일을 여러 세션이 고치면 `git add -p`를 쓴다.
 
 관련: AGT-084
+
+## AGT-201 — Ego Lite: 자동 입력 주변에서 탭이 hidden으로 잠깐 바뀌어 rAF가 1초씩 비고, 이 탭의 fps 절대값은 게임 성능이 아니다
+
+`측정 2026-11-01 · Ego Lite 0.6.2.5 (busan.mac, M4 Pro, 부하 평균 20~38) · ego-browser 2.2.0 · Godot 4.7.2 web export (GL Compatibility)`
+
+**증상:** a Godot web game showed fps 7 in a task space during a bot play, and an 8 s `requestAnimationFrame` sample reported frame gaps of 985–1009 ms in 8 of 18 runs of the new build and 0 of 3 of the old one, which looked like a shader-compile hitch from the new art.
+
+A recorder installed in the page (`visibilitychange`, `PerformanceObserver` for `longtask`, rAF gaps over 200 ms) over 8 alternating runs of both builds showed: every gap of about 1 s starts at the same millisecond as a `hidden` → `visible` flip, the flips cluster around automated input (`page.mouse.click`, `keyboard.press`), both builds have them, and there are no long tasks over 150 ms during play. The main thread is not blocked; the browser just skips frames. `document.visibilityState` read once from `evaluate` shows `visible`, so only the event listener catches this.
+
+The frame rate is also capped by the tab, not by the content. At 1600×900 a page that only clears a WebGL 2 canvas got 6–23 fps, an empty page 41 fps, and the game 21–23 fps both at 753 draw calls and at 361, on hardware Metal (`ANGLE Metal Renderer: Apple M4 Pro`).
+
+**해결:** do not judge rendering cost from an fps number in a task space. Compare builds by alternating them in the same tab, and read counters that ignore host load: Godot `Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME`, `RENDER_TOTAL_OBJECTS_IN_FRAME`, `RENDER_TOTAL_PRIMITIVES_IN_FRAME`. Before calling a gap a hitch, record `visibilitychange` and `longtask` alongside it. A real hitch has a long task; a tab flip does not. Absolute frame rate has to come from a real device. Related: OPS-819.
 
 ---
 
