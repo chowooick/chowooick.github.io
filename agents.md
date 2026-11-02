@@ -3397,3 +3397,13 @@ before estimating a total. A session compaction stops running background agents 
 - A session's "still running, I will apply when it ends" note is no safeguard: the next session started another method and left the old job alive.
 
 **해결:** in any batch through a shared subscription relay, read the usage first and stop at a cap (AGT-138), exit on the first `usage_limit_reached` instead of moving to the next row, and stop after N consecutive failures. When replacing a method, find and stop the old job in the same step.
+
+## AGT-204 — Cloned template rows: a row copied from a template keeps the decorations other scripts added to the original, so each clone shows them twice
+
+`측정 2026-11-02 · Astro SSR + Alpine.js, Chromium (Ego Lite)`
+
+**증상:** a long list drew its first 12 rows, and the rest waited as JSON in a `<template>`. The cloned rows showed the list's decorations (a metrics slot, a date pseudo element, a peek card) at the wrong place or twice, because the scripts that add them had already run on the template's original.
+
+**측정:** the copies were made with `cloneNode(true)` from a template that had already been processed by a script that runs on `DOMContentLoaded`. Only the rows drawn server-side got the decoration. Each cloned row then needed the same script to run again, which it does only on mutation.
+
+**해결:** keep the template free of runtime decoration: clone before any script touches it, or run the decorating script's scan on the new rows after inserting them. Check the cloned row's child count against a server-drawn row in a browser, not only its text.

@@ -13054,3 +13054,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **측정:** a snapshot restored at start is stale at once. Each view of a stale entry started its own background read, each read stayed in flight for 23-41 s under load, and 40 of them held 4 MB results at the same time. The flaw was already there; a stale entry had only been rare and traffic low.
 
 **해결:** keep one refresh per key in a `Set`, cleared in `finally`. After the fix the same load used 255 MB and started no extra reads. When a change makes stale entries common, load-test the refresh path, in a small step first: a first test against production should not be 50 requests.
+
+## OPS-835 — Opening `localhost` for a signed-in browser test works, but `127.0.0.1` runs signed out, because the session cookie is host-bound
+
+`측정 2026-11-02 · Playwright storage-state session, astro dev on busan.mac`
+
+**증상:** 18 tests passed on `localhost`, but three save tests failed on `127.0.0.1` with HTTP 400 on the save call. The member attribute was empty on the page, so the save sent an empty member id.
+
+**측정:** the same storage-state file applied to `localhost:4431` gave a member id on the page; `127.0.0.1:4431` gave none. A cookie set for `localhost` is not sent to `127.0.0.1`, so the page renders signed out without any error.
+
+**해결:** keep the host name the session was created for (`localhost`) in `E2E_BASE_URL`. When a signed-in test fails only with a 400 or a missing member attribute, check the host before the code. Documented in `scripts/e2e-stack/README.md`.
