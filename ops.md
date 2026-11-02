@@ -13044,3 +13044,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **측정:** the old entry keeps serving until its stale limit, so the first visible effect comes at the next restart, when the entry is gone and every request reads the 3-second path.
 
 **해결:** log when an entry is refused and alert near the cap. Check the largest entry against the cap whenever a bulk import lands.
+
+## OPS-834 — Stale-while-revalidate without a single-flight guard restarts the process once a slow read is stale
+
+`측정 2026-11-01 · Node 24, t4g.small, 448 MiB heap, 640 MiB restart limit`
+
+**증상:** right after adding a disk snapshot of a 4 MB list, 50 sequential requests took RSS from 240 MB to 678 MB, responses to 9.7 s, and the process restarted itself (`memory.restart`).
+
+**측정:** a snapshot restored at start is stale at once. Each view of a stale entry started its own background read, each read stayed in flight for 23-41 s under load, and 40 of them held 4 MB results at the same time. The flaw was already there; a stale entry had only been rare and traffic low.
+
+**해결:** keep one refresh per key in a `Set`, cleared in `finally`. After the fix the same load used 255 MB and started no extra reads. When a change makes stale entries common, load-test the refresh path, in a small step first: a first test against production should not be 50 requests.
