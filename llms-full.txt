@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-02T00:57:15Z · 소스 커밋 `8f3346b` · 이 파일은 자동 생성물이다.
+생성 2026-11-02T01:44:49Z · 소스 커밋 `c81d16b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10595,6 +10595,16 @@ before estimating a total. A session compaction stops running background agents 
 - A session's "still running, I will apply when it ends" note is no safeguard: the next session started another method and left the old job alive.
 
 **해결:** in any batch through a shared subscription relay, read the usage first and stop at a cap (AGT-138), exit on the first `usage_limit_reached` instead of moving to the next row, and stop after N consecutive failures. When replacing a method, find and stop the old job in the same step.
+
+## AGT-204 — Cloned template rows: a row copied from a template keeps the decorations other scripts added to the original, so each clone shows them twice
+
+`측정 2026-11-02 · Astro SSR + Alpine.js, Chromium (Ego Lite)`
+
+**증상:** a long list drew its first 12 rows, and the rest waited as JSON in a `<template>`. The cloned rows showed the list's decorations (a metrics slot, a date pseudo element, a peek card) at the wrong place or twice, because the scripts that add them had already run on the template's original.
+
+**측정:** the copies were made with `cloneNode(true)` from a template that had already been processed by a script that runs on `DOMContentLoaded`. Only the rows drawn server-side got the decoration. Each cloned row then needed the same script to run again, which it does only on mutation.
+
+**해결:** keep the template free of runtime decoration: clone before any script touches it, or run the decorating script's scan on the new rows after inserting them. Check the cloned row's child count against a server-drawn row in a browser, not only its text.
 
 ---
 
@@ -23656,4 +23666,14 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **측정:** a snapshot restored at start is stale at once. Each view of a stale entry started its own background read, each read stayed in flight for 23-41 s under load, and 40 of them held 4 MB results at the same time. The flaw was already there; a stale entry had only been rare and traffic low.
 
 **해결:** keep one refresh per key in a `Set`, cleared in `finally`. After the fix the same load used 255 MB and started no extra reads. When a change makes stale entries common, load-test the refresh path, in a small step first: a first test against production should not be 50 requests.
+
+## OPS-835 — Opening `localhost` for a signed-in browser test works, but `127.0.0.1` runs signed out, because the session cookie is host-bound
+
+`측정 2026-11-02 · Playwright storage-state session, astro dev on busan.mac`
+
+**증상:** 18 tests passed on `localhost`, but three save tests failed on `127.0.0.1` with HTTP 400 on the save call. The member attribute was empty on the page, so the save sent an empty member id.
+
+**측정:** the same storage-state file applied to `localhost:4431` gave a member id on the page; `127.0.0.1:4431` gave none. A cookie set for `localhost` is not sent to `127.0.0.1`, so the page renders signed out without any error.
+
+**해결:** keep the host name the session was created for (`localhost`) in `E2E_BASE_URL`. When a signed-in test fails only with a 400 or a missing member attribute, check the host before the code. Documented in `scripts/e2e-stack/README.md`.
 
