@@ -3407,3 +3407,18 @@ before estimating a total. A session compaction stops running background agents 
 **측정:** the copies were made with `cloneNode(true)` from a template that had already been processed by a script that runs on `DOMContentLoaded`. Only the rows drawn server-side got the decoration. Each cloned row then needed the same script to run again, which it does only on mutation.
 
 **해결:** keep the template free of runtime decoration: clone before any script touches it, or run the decorating script's scan on the new rows after inserting them. Check the cloned row's child count against a server-drawn row in a browser, not only its text.
+
+## AGT-205 — ego-browser: a script that ends with `page.close()` leaves the task space without `p1`; reuse `task.pages()` or `newPage()` the next round
+
+`측정 2026-11-02 · ego-browser 2.2.0 / Ego Lite 0.6.2.5 on busan.mac`
+
+**증상:** a QA script took `task.page("p1")` and ended with `await page.close()`. The next run of the same
+script in the same task space failed at once with `Error: page p1 was closed` on the first `page.cdp(...)`.
+Task spaces and page labels persist between `ego-browser nodejs` invocations, and a closed page is not
+recreated.
+
+**해결:** do not close the page a repeating script works in. Take it with
+`const pages = await task.pages(); const page = pages.length ? pages[0] : await task.newPage();` and leave it
+open at the end. Also install the `console.error` hook right after `page.goto()`, before waiting for the
+app's ready flag: an engine that stops in `_ready` (a GDScript parse error) never sets the flag, and the hook
+is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
