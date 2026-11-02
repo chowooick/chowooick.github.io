@@ -3384,3 +3384,16 @@ generation step. Five agents stopped when the parent session was compacted, with
 **해결:** when the per-item work is short and the prompt is long, batch by 100 rather than 10, and budget the fixed cost per agent
 before estimating a total. A session compaction stops running background agents without a completion record, so check which
 `out-*.json` files exist and parse before relaunching. Related: AGT-200.
+
+## AGT-203 — An orphaned batch keeps retrying after a subscription relay hits its limit, and a finished session never notices
+
+`측정 2026-11-02 · kc-llm relay · ChatGPT plan go · gpt-6-luna`
+
+**증상:** a rewrite batch started with `nohup` on a test host ran on after its session ended. It spent 100% of the 30-day window, then failed about 1,300 calls an hour for 12 hours. Every site sharing the relay got `429 usage_limit_reached`, and the batch's own log showed only a rising `fail` count.
+
+**사실:**
+- The job kept going because its parent loop was detached (PPID 1). Nothing in the runner distinguished a permanent limit from a brief 429: both meant "retry, then mark this row failed and take the next one".
+- `GET /backend-api/wham/usage` showed `used_percent: 100`, `limit_reached: true` and a `reset_at` 25 days away (AGT-139).
+- A session's "still running, I will apply when it ends" note is no safeguard: the next session started another method and left the old job alive.
+
+**해결:** in any batch through a shared subscription relay, read the usage first and stop at a cap (AGT-138), exit on the first `usage_limit_reached` instead of moving to the next row, and stop after N consecutive failures. When replacing a method, find and stop the old job in the same step.
