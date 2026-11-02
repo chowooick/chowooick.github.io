@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-02T22:14:02Z · 소스 커밋 `f81b1a1` · 이 파일은 자동 생성물이다.
+생성 2026-11-02T23:04:57Z · 소스 커밋 `59bcf6c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23726,4 +23726,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **측정:** `https.request(url, { lookup })` with a lookup that resolves with `all: true` and fails when any address is private made the socket connect only to checked addresses. Public names such as `localtest.me`, `127.0.0.1.nip.io` and `169.254.169.254.nip.io` resolve to loopback or metadata addresses and were refused (`VIEW_PRIVATE_ADDRESS`); a normal site returned 200. Node calls `lookup` with `all: true` when `autoSelectFamily` is on, so handle both callback shapes. Node prints IPv4-mapped IPv6 as `::ffff:7f00:1`, not `::ffff:127.0.0.1`, so a dotted-only check misses it.
 
 **해결:** do the address check in the connection's `lookup`, not before the request. Follow redirects manually and check every hop. Without fetch's automatic decoding, send `accept-encoding: identity` and still decode gzip, deflate and br if the server compresses anyway. Workers on Cloudflare do not need this, because they cannot reach the origin's private network.
+
+## OPS-838 — iOS Safari drops the first tap after a pointer-captured swipe when the page has no touch listener; a passive document `touchstart` listener fixes it
+
+`측정 2026-11-02 · iOS 27.0 simulator (iPhone 18 Pro), Safari · Xcode 27.1 XCUITest over ssh · busan.mac`
+
+**증상:** a swipe-to-confirm control (`pointerdown` + `setPointerCapture`, `touch-action:none`, the page re-renders after `pointerup`) worked, but the next tap anywhere on the page did nothing: no `pointerdown`, no `click`, 3 runs out of 3. A second tap worked. A control drag on plain page text followed by one tap was fine, so the harness was not the cause. Releasing the pointer capture explicitly, blurring the knob and moving focus did not help. While diagnosing, a capture-phase passive logger for `touchstart`/`pointerdown`/`click` on `window` made the bug disappear (4/4), which was the clue.
+
+**해결:** register one no-op passive listener for the page's lifetime: `addEventListener('touchstart', () => {}, { passive: true })`. Then the first tap after the swipe registered 3/3. Two test-side traps on the way: (1) the simulator's Safari kept the old script across runs even with `Cache-Control: max-age=0, must-revalidate`, because `XCUIDevice.shared.system.open(url)` reused the page; run `xcrun simctl terminate <udid> com.apple.mobilesafari` before each run and check the server log for a fresh `GET` of the script. (2) A `<button aria-pressed>` is an XCUI `toggle` (elementType 40), not a `button`, so `webViews.buttons["…"]` finds nothing; query `descendants(matching: .any)` by label. Related: OPS-239 (driving Safari in the simulator over ssh).
 
