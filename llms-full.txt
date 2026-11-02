@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-02T01:44:49Z · 소스 커밋 `c81d16b` · 이 파일은 자동 생성물이다.
+생성 2026-11-02T21:24:02Z · 소스 커밋 `5eed00b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23676,4 +23676,24 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **측정:** the same storage-state file applied to `localhost:4431` gave a member id on the page; `127.0.0.1:4431` gave none. A cookie set for `localhost` is not sent to `127.0.0.1`, so the page renders signed out without any error.
 
 **해결:** keep the host name the session was created for (`localhost`) in `E2E_BASE_URL`. When a signed-in test fails only with a 400 or a missing member attribute, check the host before the code. Documented in `scripts/e2e-stack/README.md`.
+
+## OPS-836 — Astro 7 `security.csp` sends a header on SSR pages, leaves `is:inline` scripts unhashed, and blocks Cloudflare's injected Web Analytics beacon
+
+`측정 2026-11-02 · Astro 7.3.3, @astrojs/node 11 and @astrojs/cloudflare 14, site behind the Cloudflare proxy`
+
+**증상:** after turning on `security: { csp: {...} }`, no `<meta http-equiv="content-security-policy">` appeared in server-rendered pages, so a check for the meta tag reported "no CSP". In production every page then logged `script-src-elem https://static.cloudflareinsights.com/beacon.min.js` violations, a script that is not in the repository at all.
+
+**측정:** Astro chooses `cspDestination` as `meta` only for prerendered routes; an on-demand route gets a `content-security-policy` response header. Astro hashes the scripts it bundles or inlines itself, but not `<script is:inline>` (literal or `set:html`): those need their hashes in `scriptDirective.hashes`, or the browser blocks them. Hashing the literal body exactly as written in the `.astro` file matched what Astro emitted: 1,772 inline scripts on 150 signed-out pages and 2,593 on 260 signed-in pages, 0 mismatches. Cloudflare Web Analytics (automatic setup) inserts its beacon `<script src>` at the edge, so it shows only in production.
+
+**해결:** read the response header, not the HTML, when checking an SSR page. Hash every `is:inline` body at config time (and keep a test that fails when a new `set:html` inline script is not registered). Add `https://static.cloudflareinsights.com` to `script-src` when the zone uses Web Analytics. Alpine.js (standard build) still needs `'unsafe-eval'`. Verify in a browser with a `securitypolicyviolation` listener added through CDP `Page.addScriptToEvaluateOnNewDocument`, which CSP does not block.
+
+## OPS-837 — Checking a host's DNS before `fetch()` does not stop SSRF on a Node server: pin the check inside the connection's `lookup`
+
+`측정 2026-11-02 · Node 26.12, node:https`
+
+**증상:** a server-side page fetcher refused private addresses by resolving the name first (DNS-over-HTTPS) and then calling `fetch()`. `fetch()` resolves again, so a name with a short TTL can answer a public address to the check and `127.0.0.1` or `169.254.169.254` to the connection (DNS rebinding). On a VM this reaches the host's own services and the cloud metadata endpoint.
+
+**측정:** `https.request(url, { lookup })` with a lookup that resolves with `all: true` and fails when any address is private made the socket connect only to checked addresses. Public names such as `localtest.me`, `127.0.0.1.nip.io` and `169.254.169.254.nip.io` resolve to loopback or metadata addresses and were refused (`VIEW_PRIVATE_ADDRESS`); a normal site returned 200. Node calls `lookup` with `all: true` when `autoSelectFamily` is on, so handle both callback shapes. Node prints IPv4-mapped IPv6 as `::ffff:7f00:1`, not `::ffff:127.0.0.1`, so a dotted-only check misses it.
+
+**해결:** do the address check in the connection's `lookup`, not before the request. Follow redirects manually and check every hop. Without fetch's automatic decoding, send `accept-encoding: identity` and still decode gzip, deflate and br if the server compresses anyway. Workers on Cloudflare do not need this, because they cannot reach the origin's private network.
 
