@@ -13203,3 +13203,20 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 고정 1440 UI 축소를 없애려고 `window/stretch/mode="disabled"`를 쓴 뒤 390×844 / DPR1 검증은 통과했다. DPR2에서는 `innerWidth=390`, `canvas.width=780`, Godot 논리 viewport=780이 되어 글자와 터치 영역이 CSS 기준 절반으로 작아졌다. DPR3도 backing canvas와 논리 좌표를 구분해야 한다.
 
 **해결:** 웹에서 `Window.CONTENT_SCALE_MODE_CANVAS_ITEMS`를 항상 설정하고, `content_scale_size`를 `window.innerWidth/innerHeight`의 CSS 크기에 맞춰 resize 때 갱신했다. 모드는 크기 변경 조건 밖에서 설정한다. 기본 content_scale_size가 이미 1440×900이면 크기가 같다는 이유로 모드 설정을 건너뛰어 DPR2 데스크톱이 다시 물리 좌표2880을 쓰는 오류가 있었다. 수정 후 390 CSS / DPR1·2·3에서 backing 390·780·1170과 논리390을 동시에 확인했고, 양손 각도·길이 1회·밖 해제·메뉴 해제가 모두 통과했다. 1440 CSS / DPR1·2에서도 같은 마우스 이동 각도와 휠·Esc를 확인했다. DPR1 캡처만으로 모바일 크기 검증을 끝내지 않는다.
+
+
+## OPS-852 — 격리 폴더를 가리키던 공용 Python 심볼릭 링크는 폴더 정리 뒤 실행되지 않는다
+
+`측정 2026-11-02 · macOS 26 · Python 3.9.6/3.12.14 · uv · Emscripten 4.0.11 · busan.mac`
+
+**증상:** `~/.local/bin/python3.12`는 존재했지만, 대상은 이미 삭제된 이전 프로젝트의 `.runtime/python/.../bin/python3.12`였다. PATH에 `~/.local/bin`을 넣어도 `python3.12: command not found`였고, 기본 Xcode Python 3.9.6으로 emsdk를 실행하면 `emsdk requires python 3.10 or above`로 멈췄다.
+
+**해결:** 새 작업 폴더에서 `uv python install 3.12 --install-dir .runtime/python --no-bin`으로 설치하고 반환된 Python의 절대 경로로 emsdk 설치·활성화를 실행했다. 이후 빌드도 해당 bin 경로를 작업 셸에만 추가해 성공했다. 공용 심볼릭 링크를 임시 작업 폴더에 의존시키지 않고, 정리 시 자신이 만든 링크의 대상이 없어지는지도 확인한다. 기존 공용 링크는 임의로 교체하지 않았다.
+
+## OPS-852 — Godot editor import는 export 제외 폴더의 PNG에도 메타파일을 만들어 clean-tree 배포를 막는다
+
+`측정 2026-11-02 · Godot 4.7.2 · Git · busan.mac`
+
+**증상:** 깨끗한 일반 clone에서 `godot --headless --editor --import --path . --quit`와 Web export를 실행하자, 새 `*.gd.uid`·`*.gdshader.uid`와 export에서 제외한 docs의 `*.png.import`가 미추적 파일로 생겼다. `git status --porcelain`을 검사하는 배포 도구는 `Commit source before module publish`로 배포를 거절했다. 소스 변경은 없었다.
+
+**해결:** 방금 만든 본인 전용 clone에서만 생성 목록을 확인하고, export가 끝난 뒤 해당 미추적 메타파일만 `git clean -f -- '*.gd.uid' '*.gdshader.uid' '*.png.import'`로 정리했다. 다시 clean 상태를 확인한 동일 소스 커밋에서 배포했다. 공유 체크아웃·사용자 변경이 있는 폴더에 이 정리를 적용하지 않는다. `.uid`를 일괄 ignore하면 필요한 UID 참조까지 숨길 수 있어 그 방식으로 우회하지 않았다.
