@@ -13335,3 +13335,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 커밋된 153 MiB ZIP을 OPS-720의 SSH 루프백 전달로 올릴 때 `urllib.request.urlopen(req, timeout=180)`이 `urllib.error.URLError: <urlopen error timed out>`으로 종료됐다. 직후 `application.one`에는 새 배포가 없었다. 프록시를 우회해도 클라이언트의 소켓 제한이 업로드보다 먼저 끝날 수 있다.
 
 **해결:** 새 배포가 없는 것을 API로 확인한 뒤, 같은 커밋 ZIP과 API 키 전달 방식으로 클라이언트 제한만 900초로 늘려 재시도했다. `application.dropDeployment`가 `true`를 반환했고 두 대상의 배포가 각각 `done`이 됐다. 시간 초과 직후에는 중복 배포를 피하려고 배포 기록을 먼저 확인한다. 전송 후 SSH 전달 연결이 끊어질 수 있으므로 다음 대상 업로드 전에 루프백 리스너를 확인한다.
+
+
+## OPS-867 — PWA 배포 후 현재 sw.js 내용만으로 설치 사용자의 서비스워커 갱신을 판정하지 않는다
+
+`측정 2026-11-03 · Ego Lite 0.6.2.5 / Chromium 156 · Astro 7.3.3 · Cloudflare browser TTL 4시간 · busan.mac`
+
+**증상:** 운영 페이지에서 `navigator.serviceWorker.register('/sw.js')`가 load 시 호출되는 것을 계측했지만, 재방문 검사 중 활성 캐시는 v7에 머물렀다. `/sw.js`를 `cache:'reload'`로 요청하면 본문은 v8이고 응답은 `Cache-Control: max-age=14400`이었다. 등록의 명시적 `update()` 후에는 v8이 설치됐다. 새 스크립트 HTTP 200만으로 기존 설치 사용자까지 갱신됐다고 보고할 수 없다. 관련: OPS-375.
+
+**해결:** 페이지의 등록을 `register('/sw.js',{updateViaCache:'none'}).then(registration=>registration.update())`로 바꾼 뒤 실제 갱신을 검증한다. 같은 출처의 v7 서비스워커와 4시간 캐시된 스크립트, 구 버전 오프라인 HTML을 준비한 격리 재현에서 새 페이지 방문만으로 v8이 활성화되고 v7 캐시가 삭제됐다. 테스트 코드의 수동 갱신 호출 없이 구 오프라인 HTML의 이전 UI도 교체됐다. 스크립트 버전, 활성 캐시 이름, 캐시된 HTML을 함께 검사한다. 이 관측은 기본 등록의 잔존 원인을 HTTP 캐시와 브라우저 갱신 검사 시점 중 하나로 단독 확정한 것은 아니다.
