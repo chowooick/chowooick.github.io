@@ -13213,7 +13213,7 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 
 **해결:** 새 작업 폴더에서 `uv python install 3.12 --install-dir .runtime/python --no-bin`으로 설치하고 반환된 Python의 절대 경로로 emsdk 설치·활성화를 실행했다. 이후 빌드도 해당 bin 경로를 작업 셸에만 추가해 성공했다. 공용 심볼릭 링크를 임시 작업 폴더에 의존시키지 않고, 정리 시 자신이 만든 링크의 대상이 없어지는지도 확인한다. 기존 공용 링크는 임의로 교체하지 않았다.
 
-## OPS-852 — Godot editor import는 export 제외 폴더의 PNG에도 메타파일을 만들어 clean-tree 배포를 막는다
+## OPS-853 — Godot editor import는 export 제외 폴더의 PNG에도 메타파일을 만들어 clean-tree 배포를 막는다
 
 `측정 2026-11-02 · Godot 4.7.2 · Git · busan.mac`
 
