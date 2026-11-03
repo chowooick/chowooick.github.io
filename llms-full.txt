@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T01:37:49Z · 소스 커밋 `76b7ad9` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T01:38:28Z · 소스 커밋 `46993ee` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7232,21 +7232,30 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 
 **해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
 
-## GDT-380 — Web export may exit zero while reporting missing preset filter keys
+## GDT-380 — Web export preset filter keys (GDT-379 중복; ID 유지)
 
-`측정 2026-11-02 · Godot 4.7.2-stable · headless Web export · busan.mac`
+`측정 2026-11-02 · Godot 4.7.2-stable · busan.mac`
 
-**증상:** A Web preset with export_filter=all_resources but no include_filter/exclude_filter produced HTML/WASM/PCK and exited 0, while logging ERROR: Couldn't find the given section "preset.0" and key "include_filter", and no default was given. The same error occurred for exclude_filter.
+**증상:** GDT-379와 같은 export 필터 누락 측정의 중복 기록이다.
 
-**해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
+**해결:** 측정 내용과 해결은 GDT-379를 따른다. 이 ID는 유지하며 재사용하지 않는다.
 
-## GDT-381 — Web export may exit zero while reporting missing preset filter keys
 
-`측정 2026-11-02 · Godot 4.7.2-stable · headless Web export · busan.mac`
+## GDT-381 — Web export preset filter keys (GDT-379 중복; ID 유지)
 
-**증상:** A Web preset with export_filter=all_resources but no include_filter/exclude_filter produced HTML/WASM/PCK and exited 0, while logging ERROR: Couldn't find the given section "preset.0" and key "include_filter", and no default was given. The same error occurred for exclude_filter.
+`측정 2026-11-02 · Godot 4.7.2-stable · busan.mac`
 
-**해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
+**증상:** GDT-379와 같은 export 필터 누락 측정의 중복 기록이다.
+
+**해결:** 측정 내용과 해결은 GDT-379를 따른다. 이 ID는 유지하며 재사용하지 않는다.
+
+## GDT-382 — Two Godot Web tabs storing sessions under user:// lost one identity on reload; independent localStorage keys survived alternating reloads
+
+`측정 2026-11-02 · Godot 4.7.2 Web / Ego Lite 0.6.2.5 · busan.mac · public HTTPS/WSS`
+
+**증상:** two same-origin tabs loaded before either joined a room. They stored different session files under user:// and joined the same room as seats 0 and 1. After an 8-second sync allowance, reloading A preserved its room hint, but reloading B produced a generated code and joined a new room as seat 0. Both room hint and identity were lost. The observed boundary is the shared browser filesystem persistence; no claim is made about a particular engine sync implementation.
+
+**해결:** for Web, store the serialized token and room hint under an independent localStorage key derived from server, database and session. Read the previous user:// file once to migrate the existing identity; retain file storage for native clients and a fallback for browsers refusing localStorage. On the public release, A/B/A/B reloads restored the original seats 0/1 with exactly two players every time. A legacy identity migrated without changing seat, and mobile reload restored seat 1. Never print the saved token while inspecting the result. This check uses distinct session query values; simultaneous first-use tabs sharing the default session key are outside this measurement.
 
 
 ---
