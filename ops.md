@@ -13353,3 +13353,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 앱 프로세스는 살아 있지만 CPU 100%로 화면이 응답하지 않았다. `sample <PID> 3 10 -file <path>`의 메인 스레드 234/234 표본이 `NSHostingView.layout → NSTextStorage.endEditing → NSTextLayoutManager._fixSelectionAfterChangeInCharacterRange → NSTextView.setSelectedRanges → NSAccessibility → NSHostingView.accessibilityNodes → AttributeGraph` 경로에 머물렀으며 `AG::Graph::print_cycle`도 관측됐다. 앱 진단 로그의 마지막 메인 스레드 기록은 `View menu: Make Text Bigger selected`였고, 직전 스크롤 로그는 `isStreaming=true`였다. 이후 백그라운드 네트워크 로그만 이어졌다. 글자 확대와 시간상 연관되지만 재현 실험으로 촉발 조건을 확정한 것은 아니다. Crashpad dump는 없었다.
 
 **해결:** 진단 로그와 sample, 환경설정을 보존하고 소유자 승인 후 해당 Gemini 본체 PID만 강제 종료했다. `defaults delete com.google.GeminiMacOS relativeFontSize`로 기존 1.0 사용자 설정을 제거하고 앱을 재실행했다. 두 차례 후속 sample에서 메인 스레드는 주로 이벤트 대기 상태이고 print_cycle은 없었으며, 소유자가 입력·스크롤 복구를 확인했다. 재시작과 설정 복원을 함께 적용했으므로 어느 조치가 필수인지는 분리 검증하지 않았다. 근본 결함 수정은 아니며 재발 방지를 위해 응답 스트리밍 중 글자 크기 변경을 피한다. 앱 런처의 업데이트 조회는 `No update available`이었다. 진단 로그는 `~/Library/Caches/com.google.GeminiMacOS/Logs/`, 자체 크래시 기록은 `~/Library/Application Support/com.google.GeminiMacOS/Crashpad/`에 있으므로 macOS DiagnosticReports에 없다고 장애가 없었던 것으로 판정하지 않는다.
+
+## OPS-869 — Workers AI `mistral-small-3.1-24b-instruct`는 한 메시지에 사진 여러 장을 받는다. 로컬 `astro dev`에서는 AI 바인딩이 "needs to be run remotely"로 즉시 실패한다
+
+`측정 2026-11-03 · Workers AI REST · @cf/mistralai/mistral-small-3.1-24b-instruct · @astrojs/cloudflare 14 · wrangler 4.156`
+
+**증상:** 사진 2~3장으로 한국어 JSON 초안을 만드는 기능에서 모델이 여러 이미지를 받는지 문서로 확인되지 않았다. 또 `astro dev`에서 `env.<AI 바인딩>.run()`을 부르면 5 ms 만에 `Error: Binding JOBS_AI needs to be run remotely`로 실패한다. `wrangler.jsonc`의 `"ai": { "binding": ..., "remote": true }`만 추가해서는 같은 오류가 그대로 났다.
+
+user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:image/jpeg;base64,...'}}`를 여러 개 넣으면 모두 읽는다. 960 px 음식 사진 1장은 2.2 s, 2장(비빔밥·불고기)은 3.3 s였고 두 요리 이름이 모두 나왔다. 프롬프트에 예시 문장을 넣으면 모델이 그 문장을 글자 그대로 출력에 복사했다("돌솥에 담겨 나와 끝까지 따뜻해 보여요"). "방은 사진에 보일 때만 말하라"는 지시가 있어도 음식 사진만 받고 "식당 분위기도 따뜻해 보여요"를 덧붙였다.
+
+**해결:** 여러 장은 한 메시지에 그대로 보낸다. 프롬프트에는 그대로 베낄 수 있는 예시 문장 대신 문장 형태만 적고, 모델 출력은 사용자가 확인하는 초안으로만 쓴다. 로컬 개발에서 모델 경로를 확인하려면 AI 바인딩 대신 `LLM_URL` 같은 HTTP 릴레이 자리에 loopback 대역 서버를 띄워 Cloudflare REST(`/accounts/<id>/ai/run/<model>`, wrangler OAuth 토큰)로 넘겼다. 모델이 실패하면 오류를 삼키지 말고 `{event, source, error}` 한 줄을 로그로 남겨야 원인이 보인다.
