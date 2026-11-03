@@ -13284,3 +13284,11 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** Lima `plain: true`에서는 게스트 에이전트가 실행되지 않고, 해당 이미지의 `/etc/resolv.conf`가 존재하지 않는 대상에 연결된 심볼릭 링크여서 Docker 이미지 pull이 `lookup registry-1.docker.io on [::1]:53: ... connection refused`로 실패했다. 읽기 전용 디렉터리 마운트 위에 파일을 중첩할 때 부모 디렉터리에 해당 파일이 없으면 `create mountpoint ... read-only file system`으로 컨테이너가 시작되지 않았다.
 
 **해결:** 격리 게스트 안에서만 dangling `/etc/resolv.conf`를 일반 파일로 바꾸고 DNS를 지정한 뒤 digest로 고정한 이미지를 받았다. 읽기 전용 부모에 모든 중첩 파일과 디렉터리의 마운트 지점을 미리 만들면 Compose 컨테이너가 시작됐고 파일 쓰기 거부 및 `RW=false`를 확인했다. Lima plain 모드는 호스트 마운트와 동적 포트 전달을 끄지만 게스트 관리용 임시 loopback SSH 포트는 사용했다.
+
+## OPS-861 — 원격 GitLab SSH 설정의 IdentitiesOnly가 전달된 에이전트 키를 무시한다
+
+`측정 2026-11-02 · busan.mac macOS OpenSSH · GitLab agent forwarding`
+
+**증상:** 컨트롤러의 GitLab 키를 작업 전용 ssh-agent에 적재해 `ssh -A busan.mac`으로 전달했지만 원격 `git push`가 프로젝트를 찾을 수 없거나 접근 권한이 없다고 실패했다. 원격 `ssh -G gitlab.com`은 다른 전용 키와 `identitiesonly yes`를 표시했다. 컨트롤러에서는 동일 저장소 읽기가 성공했다.
+
+**해결:** 원격 호스트의 SSH 설정을 먼저 확인하고, 이 작업의 Git 명령에만 `GIT_SSH_COMMAND="ssh -F /dev/null"`을 지정해 전달된 에이전트 키를 선택했다. 이때 알려진 호스트 키 확인은 유지했다. 같은 연결에서 원격 push와 `ls-remote`의 일치하는 커밋을 확인했다. 별도 작업용 에이전트는 명령 종료 후 닫았다.
