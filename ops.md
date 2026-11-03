@@ -13238,3 +13238,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 소유권을 확인한 컨테이너의 로그를 `since=2026-11-03T03:40:00Z`로 요청하자 WebSocket이 4000으로 닫혔다. 같은 인증·대상에서 `since=15m`은 연결을 유지했다. Docker CLI가 받을 수 있는 ISO 시각을 이 WSS에 그대로 넘긴 것이 원인이었다.
 
 **해결:** Dokploy `isValidSince`는 `all` 또는 `^\d+[smhd]$` 형식만 허용하므로 `5s`, `15m`, `1h`처럼 넉넉한 기간을 요청하고 수신한 자료를 필요한 UTC 창으로 메모리에서 다시 거른다. 원시 로그와 인증값을 그대로 출력하지 않는다. 4000만으로 인증 실패라고 단정하지 말고 입력 검증을 확인한다.
+
+
+## OPS-856 — Dokploy dropDeployment의 524는 배포 상태부터 확인하고 중복 Web 산출물을 줄여 재시도한다
+
+`측정 2026-11-02 · nj2 Dokploy dropDeployment · Cloudflare · nginx 1.29-alpine · busan.mac`
+
+**증상:** Godot 원본·gzip sidecar·이전 주소 호환용 복사본을 함께 넣은 40,974,580바이트 ZIP을 `application.dropDeployment`에 보냈더니 HTTP 524가 돌아왔다. 직후 `deployment.all`과 공개 `release.json`은 이전 배포 그대로였다. 이 관측은 Dokploy의 고정 업로드 크기 제한이나 모든 524의 실패를 뜻하지 않는다.
+
+**해결:** 상태를 확인한 뒤 검증된 `.gz`와 이미지·메타데이터만 넣은 10,071,030바이트 ZIP을 보냈고 HTTP 200, 새 배포 `done`, 공개 릴리스 일치를 확인했다. Dockerfile에서 `gzip -dc`로 원본을 복원하고 이전 주소는 활성 내용 해시 디렉터리로 향하는 심볼릭 링크로 만들었다. 압축 해제 후 모든 파일 SHA-256이 기존 산출물과 일치했다. `try_files $uri`와 `gzip_static on`을 함께 쓰면 검사할 원본도 필요하므로 sidecar만 배치하지 말고 빌드 중 원본 복원 후 `nginx -t`를 실행한다. 524 응답만 보고 같은 큰 패키지를 반복 전송하지 않는다.
