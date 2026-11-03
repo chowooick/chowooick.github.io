@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T06:06:47Z · 소스 커밋 `0cc9e6d` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T07:07:56Z · 소스 커밋 `60fa68c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -24026,4 +24026,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** `https://www-9news-com.translate.goog/`, `https://www-njtransit-com.translate.goog/travel-alerts-to`, `https://nj1015-com.translate.goog/joseph-technicolor-dreamcoat-coming-november-nj/`에 `_x_tr_sl=en&_x_tr_tl=ko&_x_tr_hl=ko`를 붙여 busan.mac Ego Lite에서 열면 제목은 `Google Translate`이고 본문에 `This translation service isn't available in your region`과 `Go to original page`가 표시된다. `translate.google.com/translate?sl=en&tl=ko&u=...` 경로도 같은 translate.goog 페이지로 이동해 같은 오류를 반환했다.
 
 **해결:** translate.goog 링크 형식만으로 한국어 본문 표시를 보장하지 않는다. 이 환경에서는 한국어 번역 성공을 통과로 기록하지 않고 원문 링크를 별도로 제공한다. 다른 지역 또는 서비스 상태에서의 동작은 별도로 확인한다.
+
+
+## OPS-863 — Fresh gzip timestamps invalidate delta-release artifact manifests
+
+`측정 2026-11-03 · Python 3.9 gzip / macOS busan.mac / nj1 Docker release directories`
+
+**증상:** A package recompressed identical Godot exports with gzip.open, recording new hashes for five gzip sidecars. A source-delta upload reused the previous release sidecars, so only their compressed hashes failed; all uncompressed files matched. Header timestamps changed despite unchanged game code.
+
+**해결:** Generate sidecars with gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0, compresslevel=9), and include regenerated sidecars when first changing packaging. All 14 host artifact hashes then passed, and decompressed public HTML, JS, WASM, PCK and worklets matched SHA-256. Source-only Git differences do not describe regenerated release artifacts.
 
