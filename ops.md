@@ -13185,3 +13185,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **해결:** 비교 대상 클라이언트와 같은 `confirmed` 값을 명시하고 결과에 실제 값을 기록한다. 생성기 기본값을 false로 맞추고, 서버 기본값 비교는 별도 명시 옵션으로 분리했다. false 명시 12클라이언트·30초 제어 측정은 RTT p50/p95 428.7/1164.2ms였지만 이전 생략 측정과 시간·길이가 달라 인과적인 개선률로 해석하지 않았다. 쿼리 의미와 측정 조건 확인이 먼저다.
 
 근거: https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/client-api/src/routes/subscribe.rs#L95-L110 · https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/client-api/src/lib.rs#L30-L33
+
+
+## OPS-849 — Godot Web의 터치 HUD는 두 번째 손가락과 합성 마우스 중복 입력을 따로 처리해야 한다
+
+`측정 2026-11-02 · Godot 4.7.2 Web · Ego Lite 0.6.2.5 / ego-browser 2.2.0 · busan.mac`
+
+**증상:** 390×844 CSS px에서 CDP 실제 터치 두 개로 망치·시점 패드를 드래그하면 둘 다 움직였지만, 망치를 누른 채 두 번째 손가락으로 HUD 버튼을 누르는 경로는 기본 마우스 에뮬레이션만으로 작동하지 않았다. 터치 드래그와 마우스 경로를 함께 허용하면 35px 망치 이동의 기대 변화 -0.3675rad가 -0.8225rad로 커졌다. `DEVICE_ID_EMULATION`만 제외한 상태에서도 이 중복이 남았다.
+
+**해결:** 게임 HUD 버튼은 `_input(InputEventScreenTouch)`에서 손가락별로 처리하고 마우스 이벤트는 터치 처리 뒤 짧은 시간(측정 구현 400ms) 차단했다. 패드는 손가락 ID와 직전 `event.position`을 저장해 위치 차이를 한 번만 적용했다. 실제 Ego에서 망치 35px 이동 -0.3675rad와 시점 30px 이동 -0.3rad, 망치 유지 중 두 번째 손가락 길이 +0.18m 1회, 패드 밖 해제, 두 번째 손가락 메뉴 열기 후 motor=false / 두 ID=-1을 확인했다. 메뉴의 일반 터치 입력은 기존 GUI 에뮬레이션을 유지했고 별도 마우스 회귀도 통과했다. 합성 입력의 원인을 모든 브라우저에 일반화하지 말고 실제 각도와 버튼 1회 처리 수치로 검증한다.
