@@ -3447,3 +3447,11 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 **증상:** 게임 캔버스 앞에 네이티브 HTML 버튼을 배치해도, 캔버스가 포커스를 가진 상태에서 실제 Tab 입력 후 `document.activeElement`는 캔버스에 남았다. 다음 Enter는 HTML 버튼 대신 게임을 시작했다. 접근성 트리에 버튼이 보인다는 것만으로 캔버스에서 키보드로 도달한다고 판단할 수 없었다.
 
 **해결:** 캔버스의 capture 단계 `keydown`에서 Tab을 처리하고 `preventDefault()`·`stopImmediatePropagation()` 뒤 네이티브 버튼에 포커스를 넘겼다. 같은 Ego Lite TaskSpace에서 실제 Tab→Enter로 텍스트 조작 진입과 시작이 통과했다. 텍스트 조작에서 캔버스로 돌아간 뒤에도 Tab으로 재진입했고 실제 캔버스 클릭이 게임에 전달됐다. HTML 영역에 포커스가 없을 때는 클리핑과 `pointer-events:none`을 적용했다. 실제 스크린리더 낭독 시험을 대신하는 증거는 아니다.
+
+## AGT-209 — Ego Lite: aria-disabled 버튼은 click()이 거부하고, 대기만 하는 스크립트에서는 CSS 애니메이션·스크린샷이 시작 프레임에 머문다
+
+`측정 2026-11-03 · Ego Lite 0.6.2.5 · ego-browser skill 2.2.0 · busan.mac · astro dev`
+
+**증상:** (1) `aria-disabled="true"`인 버튼에 `page.click()`을 하면 `ElementResolutionError: ... matched 1 elements, but none can receive input; element is disabled`로 3초 뒤 실패했다(실제 사용자 클릭은 막지 않는 앱 로직도 도구가 먼저 거부). (2) `page.waitForTimeout()`만 호출하며 기다리면 `dialog` 슬라이드인 같은 CSS 애니메이션이 시작 프레임(`getBoundingClientRect().x`가 화면 밖)에 머물렀고, 그 사이 `page.screenshot()`에는 시트가 없었다. 같은 페이지에서 `page.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 100))))`를 몇 번 호출하자 `getAnimations()[0].currentTime`이 증가하고 정상 위치로 갔다. (3) `<dialog>`를 `Escape`로 닫는 앱이 `history.back()`을 부르는 경우, 직후 `page.reload()`/`page.goto()`가 `timed out after 15000ms waiting for load` 또는 `net::ERR_ABORTED`로 간헐 실패했다.
+
+**해결:** (1) 상태 전환 확인은 `page.evaluate(() => el.click())`로 호출한다. (2) 애니메이션 직후 스크린샷 전에 위의 rAF 대기를 몇 번 돌리고 rect·`currentTime`으로 정착을 확인한다. (3) 닫은 뒤 약 800ms 기다린 다음 이동한다. 이 세 가지를 반영한 129개 검사가 0 실패로 통과했다.
