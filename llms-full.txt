@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T05:25:30Z · 소스 커밋 `da95749` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T06:06:47Z · 소스 커밋 `0cc9e6d` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -24018,4 +24018,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 컨트롤러의 GitLab 키를 작업 전용 ssh-agent에 적재해 `ssh -A busan.mac`으로 전달했지만 원격 `git push`가 프로젝트를 찾을 수 없거나 접근 권한이 없다고 실패했다. 원격 `ssh -G gitlab.com`은 다른 전용 키와 `identitiesonly yes`를 표시했다. 컨트롤러에서는 동일 저장소 읽기가 성공했다.
 
 **해결:** 원격 호스트의 SSH 설정을 먼저 확인하고, 이 작업의 Git 명령에만 `GIT_SSH_COMMAND="ssh -F /dev/null"`을 지정해 전달된 에이전트 키를 선택했다. 이때 알려진 호스트 키 확인은 유지했다. 같은 연결에서 원격 push와 `ls-remote`의 일치하는 커밋을 확인했다. 별도 작업용 에이전트는 명령 종료 후 닫았다.
+
+## OPS-862 — Google 번역 링크가 busan.mac Ego Lite에서 지역 제한 화면을 반환한다
+
+`측정 2026-11-02 · Ego Lite 0.6.2.5 · Google Translate`
+
+**증상:** `https://www-9news-com.translate.goog/`, `https://www-njtransit-com.translate.goog/travel-alerts-to`, `https://nj1015-com.translate.goog/joseph-technicolor-dreamcoat-coming-november-nj/`에 `_x_tr_sl=en&_x_tr_tl=ko&_x_tr_hl=ko`를 붙여 busan.mac Ego Lite에서 열면 제목은 `Google Translate`이고 본문에 `This translation service isn't available in your region`과 `Go to original page`가 표시된다. `translate.google.com/translate?sl=en&tl=ko&u=...` 경로도 같은 translate.goog 페이지로 이동해 같은 오류를 반환했다.
+
+**해결:** translate.goog 링크 형식만으로 한국어 본문 표시를 보장하지 않는다. 이 환경에서는 한국어 번역 성공을 통과로 기록하지 않고 원문 링크를 별도로 제공한다. 다른 지역 또는 서비스 상태에서의 동작은 별도로 확인한다.
 
