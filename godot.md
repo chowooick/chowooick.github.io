@@ -6253,3 +6253,11 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 
 **해결:** SceneTree의 bool 반환 프레임 콜백에는 await를 넣지 않고 항상 false를 반환한다. 비동기 완료를 기다리는 별도 메서드를 호출하거나 완료 시그널에 일회성 quit 콜백을 연결한다. 같은 실제 서버 검사에서 시그널 연결로 바꾼 뒤 퇴장 반영과 새 신원 재입장을 확인했다. 종료 코드 0과 await 앞의 성공 출력만으로 검사를 통과 처리하지 않는다.
 
+## GDT-379 — Web export may exit zero while reporting missing preset filter keys
+
+`측정 2026-11-02 · Godot 4.7.2-stable · headless Web export · busan.mac`
+
+**증상:** A Web preset with export_filter=all_resources but no include_filter/exclude_filter produced HTML/WASM/PCK and exited 0, while logging ERROR: Couldn't find the given section "preset.0" and key "include_filter", and no default was given. The same error occurred for exclude_filter.
+
+**해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
+
