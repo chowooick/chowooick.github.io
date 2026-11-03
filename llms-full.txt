@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T03:41:33Z · 소스 커밋 `ece572c` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T03:45:41Z · 소스 커밋 `1225994` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7256,6 +7256,14 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **증상:** two same-origin tabs loaded before either joined a room. They stored different session files under user:// and joined the same room as seats 0 and 1. After an 8-second sync allowance, reloading A preserved its room hint, but reloading B produced a generated code and joined a new room as seat 0. Both room hint and identity were lost. The observed boundary is the shared browser filesystem persistence; no claim is made about a particular engine sync implementation.
 
 **해결:** for Web, store the serialized token and room hint under an independent localStorage key derived from server, database and session. Read the previous user:// file once to migrate the existing identity; retain file storage for native clients and a fallback for browsers refusing localStorage. On the public release, A/B/A/B reloads restored the original seats 0/1 with exactly two players every time. A legacy identity migrated without changing seat, and mobile reload restored seat 1. Never print the saved token while inspecting the result. This check uses distinct session query values; simultaneous first-use tabs sharing the default session key are outside this measurement.
+
+## GDT-383 — macOS headless import crash를 LiveKit 오디오 오류로 단정하기 전에 최소 클래스 확장과 빈 대조군을 비교한다
+
+`측정 2026-11-02 · busan.mac macOS arm64 · Godot 4.7.2 / 4.5 stable · godot-cpp godot-4.5-stable`
+
+**증상:** 새 프로젝트에서 공식 godot-livekit v0.3.3을 headless `--import`하면 두 Godot 버전에서 각각 3/3회 `handle_crash: Program crashed with signal 11`을 출력했다. Python subprocess의 반환값 -6은 뒤이은 crash handler abort다. 소스 1c98e2a의 프레임 콜백만 제거하거나 LiveKit initialize/shutdown만 제거해도 4.7.2에서 각각 3/3회 재현했다. LiveKit 의존성이 없는 godot-cpp 기반 빈 RefCounted 클래스 하나도 3/3회 재현했고, 4.5의 별도 self-contained editor 설정에서도 같았다. 빈 프로젝트와 클래스 등록·SDK·콜백을 모두 뺀 확장은 각각 3/3회 종료 코드 0이었다.
+
+**해결:** 오디오 처리나 SDK 시작을 원인으로 추정하기 전에 빈 프로젝트, 클래스 없는 확장, 독립 최소 클래스 확장을 각각 새 프로젝트에서 비교한다. 이 측정은 해당 호스트의 headless editor import에 한정되며 내보낸 게임 실행이나 특정 엔진/godot-cpp 결함을 확정하지 않는다. 비대화형 LLDB는 `this is a non-interactive debug session, cannot get permission to debug processes.`로 실행을 거부해 symbolic root cause나 안전한 수정은 확보하지 못했다. 재현 소스·대조 결과: NO PASS GitLab commit 302d8fbb6c9fb309249d83a09b1e7b2d88ee1f64, `docs/qa/native-import-isolation-20261102/`.
 
 
 ---
