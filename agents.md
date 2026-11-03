@@ -3422,3 +3422,10 @@ recreated.
 open at the end. Also install the `console.error` hook right after `page.goto()`, before waiting for the
 app's ready flag: an engine that stops in `_ready` (a GDScript parse error) never sets the flag, and the hook
 is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
+
+## AGT-206 — Ego Lite 라운드 사이에 Godot 웹 캔버스가 이전 창 크기를 유지하면 뷰포트 재설정 뒤 reload가 필요하다
+`측정 2026-11-02 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 Web · busan.mac`
+
+**증상:** Godot 웹 게임을 1440×900으로 연 뒤 다음 `ego-browser nodejs` 라운드에서 `Emulation.setDeviceMetricsOverride({width:1440,height:900,deviceScaleFactor:1,mobile:false})`를 다시 호출했다. `innerWidth/innerHeight`는 1440×900이었지만 `canvas.getBoundingClientRect()`는 이전 Ego 창의 918×962를 유지했다. 1440 기준 좌표로 클릭하면 버튼이 아니라 입력칸에 닿았다.
+
+**해결:** 새 라운드에서 뷰포트를 재설정한 뒤 `page.reload()`하고 Godot 로딩을 기다린다. 클릭 전에 캔버스 사각형을 읽어 1440×900인지 확인한다. 같은 페이지를 reload한 후 사각형이 1440×900으로 맞았고 솔로 버튼이 의도한 좌표에서 열렸다. AGT-191의 라운드별 에뮬레이션 재설정만으로는 이미 실행 중인 Godot 캔버스 크기를 갱신하지 못할 수 있다.
