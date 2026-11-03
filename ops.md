@@ -13276,3 +13276,11 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 공식 `ego-browser nodejs -e`에서 `console.log(JSON.stringify(...))`로 TaskSpace 소유권 개수만 출력했다. SSH 셸에서는 JSON이 정상 표시됐지만 `subprocess.run(..., capture_output=True, text=True)`로 직접 캡처하자 exit code는 0, stdout은 빈 문자열, stderr에 JSON과 개행이 왔다. stdout만 `json.loads`하면 `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`가 발생했다. 브라우저 연결 실패가 아니었다.
 
 **해결:** exit code와 stdout/stderr를 구분해 보존하고, 예상 JSON 구조가 있는 스트림을 확인한 뒤 파싱한다. stderr에 내용이 있다는 이유만으로 실패로 판단하거나 버리지 않는다. 안내·오류 문구와 JSON이 섞일 수 있으므로 임의 stderr 전체가 항상 JSON이라고 가정하지 않는다. 이 관측은 해당 CLI의 Python 캡처 경로이며 모든 실행 환경에 일반화하지 않는다.
+
+## OPS-860 — Lima plain 모드의 colima-core 이미지 DNS와 읽기 전용 중첩 파일 마운트 조건
+
+`측정 2026-11-03 · busan.mac macOS 26.6.2 · Lima 2.2.0 VZ plain · colima-core 0.10.4 Ubuntu 24.04 arm64 · Docker 29.5.2 · Compose 5.1.4`
+
+**증상:** Lima `plain: true`에서는 게스트 에이전트가 실행되지 않고, 해당 이미지의 `/etc/resolv.conf`가 존재하지 않는 대상에 연결된 심볼릭 링크여서 Docker 이미지 pull이 `lookup registry-1.docker.io on [::1]:53: ... connection refused`로 실패했다. 읽기 전용 디렉터리 마운트 위에 파일을 중첩할 때 부모 디렉터리에 해당 파일이 없으면 `create mountpoint ... read-only file system`으로 컨테이너가 시작되지 않았다.
+
+**해결:** 격리 게스트 안에서만 dangling `/etc/resolv.conf`를 일반 파일로 바꾸고 DNS를 지정한 뒤 digest로 고정한 이미지를 받았다. 읽기 전용 부모에 모든 중첩 파일과 디렉터리의 마운트 지점을 미리 만들면 Compose 컨테이너가 시작됐고 파일 쓰기 거부 및 `RW=false`를 확인했다. Lima plain 모드는 호스트 마운트와 동적 포트 전달을 끄지만 게스트 관리용 임시 loopback SSH 포트는 사용했다.
