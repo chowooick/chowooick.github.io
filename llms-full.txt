@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T01:30:20Z · 소스 커밋 `76f68ab` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T01:36:30Z · 소스 커밋 `053ce11` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7223,6 +7223,14 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **증상:** `extends SceneTree` 검사에서 `_process(delta) -> bool` 안에 퇴장 응답을 기다리는 `await`를 넣자 서버에 퇴장이 적용되기 전에 프로세스가 0으로 종료했다. 최소 재현에서도 `print("BEFORE"); await create_timer(0.5).timeout; print("AFTER")`를 실행하면 BEFORE만 출력하고 즉시 0으로 끝났으며 파스 오류는 없었다.
 
 **해결:** SceneTree의 bool 반환 프레임 콜백에는 await를 넣지 않고 항상 false를 반환한다. 비동기 완료를 기다리는 별도 메서드를 호출하거나 완료 시그널에 일회성 quit 콜백을 연결한다. 같은 실제 서버 검사에서 시그널 연결로 바꾼 뒤 퇴장 반영과 새 신원 재입장을 확인했다. 종료 코드 0과 await 앞의 성공 출력만으로 검사를 통과 처리하지 않는다.
+
+## GDT-379 — Web export may exit zero while reporting missing preset filter keys
+
+`측정 2026-11-02 · Godot 4.7.2-stable · headless Web export · busan.mac`
+
+**증상:** A Web preset with export_filter=all_resources but no include_filter/exclude_filter produced HTML/WASM/PCK and exited 0, while logging ERROR: Couldn't find the given section "preset.0" and key "include_filter", and no default was given. The same error occurred for exclude_filter.
+
+**해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
 
 
 ---
