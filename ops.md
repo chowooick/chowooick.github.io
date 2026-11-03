@@ -13258,3 +13258,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **해결:** 실제 픽셀 갱신 대조군을 추가했다. 3회×6초 중앙값은 CSS transform28.99, DOM 색상29.09, Canvas2D29.01, 최소WebGL29.08, 게임29.09 Hz였다. 독립16ms 타이머는 약62 Hz였다. `Page.setWebLifecycleState(active)`·`Page.bringToFront`도 회복시키지 못했고 DOM/WebGL main-thread TaskDuration 비율은2.7–3.8%였다. 최소clear GPU query는0.142ms(disjoint false)였으며 1×1 buffer·flush·finish도 약29 Hz였다. 이는 시각 갱신 시 TaskSpace rAF 스케줄 경계까지의 분리이지 정확한 Ego/Chromium 메커니즘이나 물리 GPU 상한의 확정은 아니다. 정적 rAF 숫자만으로 게임60 FPS를 판정하거나 화질을 낮추지 않는다. 실제 표시 프레임은 별도로 측정한다.
 
 추가 함정: 첫 내비게이션 때 viewport emulation이918×962로 초기화된 표본이 있었다. `goto` 뒤에 override를 다시 적용하고 `innerWidth/innerHeight`를 매번 assert한18개 표본만 비교했다. 숨은 TaskSpace의 `visible`만으로 실제 화면 표시를 인증하지 않는다(OPS-819·OPS-840).
+
+## OPS-858 — SpacetimeDB 2.8 출력 queue gauge는 encode/frame 채널과 WebSocket flush 대기를 포함하지 않는다
+
+`측정 2026-11-03 · SpacetimeDB v2.8.0 upstream 소스 검토 · tokio-tungstenite 0.24 / rustls 0.23 비공개 TLS fixture · busan.mac`
+
+**증상:** 출력 queue가 거의 0이고 serialize 평균이 1ms 미만인데도 공개 RTT는 수백 ms~수초였다. 이 두 수치만으로 서버 출력 대기가 없다고 판단할 수 없었다. v2.8.0 `core/src/client/client_connection.rs` 637행의 metered receiver는 dequeue 때 gauge를 줄인다. `client-api/src/routes/subscribe.rs` 1234~1236행은 그 뒤 별도 unbounded encode/frame 채널을 만들고, 1342·1366행에서 `feed`와 `flush`를 실행한다. `EncodedPayloadMetrics` 1803행과 `time_encode` 1871행은 serialize/compress closure만 재며 scheduling overhead를 제외한다. 기존 queue 개수는 message age가 아니다.
+
+**해결:** 정확한 출력 dwell은 host 엔진에 enqueue/dequeue와 encode/frame/flush 경계의 monotonic 계측을 추가해야 한다. 게임 WASM reducer에서 이 host 경계에 접근하는 API는 확인되지 않았다. 클라이언트는 동기 read `poll_next` wall time과 첫 Pending→완성 item span을 따로 기록하되 후자는 네트워크·스케줄·다른 작업의 혼합값으로 표시한다. 비공개 TLS 조각 시험에서 span82.555ms와 poll0.003~0.056ms가 분리됐고, 서버 send+flush 완료 뒤 client 읽기를80ms 늦추자 수신은82.955ms 후였다. flush 완료는 원격 애플리케이션 수신 완료가 아니다. 이 fixture 수치를 공개 경로 비용에 대입하지 않는다. 소스 경계·해시는 Ringleader `docs/qa/output-boundaries-20261103/result.json`에 기록했다. 배포된 엔진 바이너리와 upstream 소스의 해시 일치는 별도로 검증하지 않았다.
+
+근거: https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/client-api/src/routes/subscribe.rs#L1208-L1369 · https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/core/src/client/client_connection.rs#L637-L645
