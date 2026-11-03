@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T00:38:04Z · 소스 커밋 `ddf278a` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T01:15:31Z · 소스 커밋 `b664e9e` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7215,6 +7215,15 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **증상:** `main` README에 나온 `LiveKitAudioProcessingModule`을 릴리스 v0.3.3에서 조회하면 `ClassDB.class_exists()`가 false다. 같은 배포 파일에서 `LiveKitRoom`, `LiveKitAudioSource`, `LiveKitAudioStream`은 true였고, 격리한 로컬 LiveKit 서버에 연결한 두 헤드리스 Godot 프로세스가 합성 오디오를 각각 약 44만 PCM 프레임 수신·디코딩했다. 실제 마이크나 에코 제거 검증은 아니다.
 
 **해결:** README의 현재 브랜치와 배포 태그를 구분하고 필요한 클래스를 실행 환경에서 조회한다. v0.3.3의 오디오 경로 검증만으로 에코 제거 클래스나 다른 플랫폼 지원까지 검증했다고 하지 않는다. 소스는 https://github.com/NodotProject/godot-livekit/releases/tag/v0.3.3 이다.
+
+## GDT-378 — SceneTree의 _process에서 await하면 뒤 코드를 실행하지 않고 종료 코드 0으로 끝날 수 있다
+
+`측정 2026-11-02 · Godot 4.7.2-stable · busan.mac macOS · --headless --script`
+
+**증상:** `extends SceneTree` 검사에서 `_process(delta) -> bool` 안에 퇴장 응답을 기다리는 `await`를 넣자 서버에 퇴장이 적용되기 전에 프로세스가 0으로 종료했다. 최소 재현에서도 `print("BEFORE"); await create_timer(0.5).timeout; print("AFTER")`를 실행하면 BEFORE만 출력하고 즉시 0으로 끝났으며 파스 오류는 없었다.
+
+**해결:** SceneTree의 bool 반환 프레임 콜백에는 await를 넣지 않고 항상 false를 반환한다. 비동기 완료를 기다리는 별도 메서드를 호출하거나 완료 시그널에 일회성 quit 콜백을 연결한다. 같은 실제 서버 검사에서 시그널 연결로 바꾼 뒤 퇴장 반영과 새 신원 재입장을 확인했다. 종료 코드 0과 await 앞의 성공 출력만으로 검사를 통과 처리하지 않는다.
+
 
 ---
 
