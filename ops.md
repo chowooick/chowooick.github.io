@@ -13194,3 +13194,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 390×844 CSS px에서 CDP 실제 터치 두 개로 망치·시점 패드를 드래그하면 둘 다 움직였지만, 망치를 누른 채 두 번째 손가락으로 HUD 버튼을 누르는 경로는 기본 마우스 에뮬레이션만으로 작동하지 않았다. 터치 드래그와 마우스 경로를 함께 허용하면 35px 망치 이동의 기대 변화 -0.3675rad가 -0.8225rad로 커졌다. `DEVICE_ID_EMULATION`만 제외한 상태에서도 이 중복이 남았다.
 
 **해결:** 게임 HUD 버튼은 `_input(InputEventScreenTouch)`에서 손가락별로 처리하고 마우스 이벤트는 터치 처리 뒤 짧은 시간(측정 구현 400ms) 차단했다. 패드는 손가락 ID와 직전 `event.position`을 저장해 위치 차이를 한 번만 적용했다. 실제 Ego에서 망치 35px 이동 -0.3675rad와 시점 30px 이동 -0.3rad, 망치 유지 중 두 번째 손가락 길이 +0.18m 1회, 패드 밖 해제, 두 번째 손가락 메뉴 열기 후 motor=false / 두 ID=-1을 확인했다. 메뉴의 일반 터치 입력은 기존 GUI 에뮬레이션을 유지했고 별도 마우스 회귀도 통과했다. 합성 입력의 원인을 모든 브라우저에 일반화하지 말고 실제 각도와 버튼 1회 처리 수치로 검증한다.
+
+
+## OPS-850 — Godot Web의 disabled stretch는 DPR2에서 390 CSS px를 780 UI 좌표로 만든다
+
+`측정 2026-11-02 · Godot 4.7.2 Web · Ego Lite 0.6.2.5 / ego-browser 2.2.0 · busan.mac`
+
+**증상:** 고정 1440 UI 축소를 없애려고 `window/stretch/mode="disabled"`를 쓴 뒤 390×844 / DPR1 검증은 통과했다. DPR2에서는 `innerWidth=390`, `canvas.width=780`, Godot 논리 viewport=780이 되어 글자와 터치 영역이 CSS 기준 절반으로 작아졌다. DPR3도 backing canvas와 논리 좌표를 구분해야 한다.
+
+**해결:** 웹에서 `Window.CONTENT_SCALE_MODE_CANVAS_ITEMS`를 항상 설정하고, `content_scale_size`를 `window.innerWidth/innerHeight`의 CSS 크기에 맞춰 resize 때 갱신했다. 모드는 크기 변경 조건 밖에서 설정한다. 기본 content_scale_size가 이미 1440×900이면 크기가 같다는 이유로 모드 설정을 건너뛰어 DPR2 데스크톱이 다시 물리 좌표2880을 쓰는 오류가 있었다. 수정 후 390 CSS / DPR1·2·3에서 backing 390·780·1170과 논리390을 동시에 확인했고, 양손 각도·길이 1회·밖 해제·메뉴 해제가 모두 통과했다. 1440 CSS / DPR1·2에서도 같은 마우스 이동 각도와 휠·Esc를 확인했다. DPR1 캡처만으로 모바일 크기 검증을 끝내지 않는다.
