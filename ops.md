@@ -13230,3 +13230,11 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **해결:** 승인된 키를 SSH 표준입력으로만 받아 `x-api-key` 헤더에 넣은 `/listen-docker-stats-monitoring?appName=...&appType=application&serviceId=...`는 HTTP 101로 열리고 실시간 CPU·메모리·누적 NetworkIO를 반환했다. `/docker-container-terminal`도 같은 인증을 받아, 소유권을 확인한 컨테이너 ID와 serviceId로 제한한 읽기 명령을 실행할 수 있었다. 해당 DB 컨테이너의 localhost `/v1/metrics`를 한 번 읽어 reducer 실행·대기·스케줄 지연 카운터를 확보했다. 공개 metrics 경로를 열거나 호스트 Docker 권한·배포 설정을 바꾸지 않았다. 감시 소켓을 닫으면 그 구독이 끝나며, 터미널은 읽기 명령 뒤 exit하고 소켓도 닫는다.
 
 주의: `application.readAppMonitoring`은 감시 소켓이 기록한 과거 자료를 읽는 경로라 빈 배열은 인증 실패와 다르다. Docker NetworkIO의 MB/GB 표시는 반올림된 누적값이므로 정밀 바이트율로 해석하지 않는다. 키·쿠키·터미널 환경 전체를 출력하지 않고 대상 서비스의 필요한 지표만 보관한다.
+
+## OPS-855 — Dokploy 로그 WSS의 since는 Docker ISO 시각 대신 all 또는 상대 기간만 받는다
+
+`측정 2026-11-03 · nj2 Dokploy logs WSS(실행 버전 미확인) · docker-container-logs`
+
+**증상:** 소유권을 확인한 컨테이너의 로그를 `since=2026-11-03T03:40:00Z`로 요청하자 WebSocket이 4000으로 닫혔다. 같은 인증·대상에서 `since=15m`은 연결을 유지했다. Docker CLI가 받을 수 있는 ISO 시각을 이 WSS에 그대로 넘긴 것이 원인이었다.
+
+**해결:** Dokploy `isValidSince`는 `all` 또는 `^\d+[smhd]$` 형식만 허용하므로 `5s`, `15m`, `1h`처럼 넉넉한 기간을 요청하고 수신한 자료를 필요한 UTC 창으로 메모리에서 다시 거른다. 원시 로그와 인증값을 그대로 출력하지 않는다. 4000만으로 인증 실패라고 단정하지 말고 입력 검증을 확인한다.
