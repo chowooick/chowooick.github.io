@@ -3438,3 +3438,12 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 
 **해결:** with the room field focused, `keyboard.type("J95781")` entered the intended ASCII text. The screenshot showed J95781, and a fresh identity joined the existing room as seat 1 alongside seat 0. Use canvas screenshots to verify text entry before joining; a successful input API receipt does not prove the canvas consumed the text. This measurement covers the ASCII room code only, not Korean text composition.
 
+
+
+## AGT-208 — Godot Web 캔버스에서 Tab이 소비되면 네이티브 접근성 조작으로 넘어갈 명시적 경로가 필요하다
+
+`측정 2026-11-02 · Godot 4.7.2 Web · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · busan.mac`
+
+**증상:** 게임 캔버스 앞에 네이티브 HTML 버튼을 배치해도, 캔버스가 포커스를 가진 상태에서 실제 Tab 입력 후 `document.activeElement`는 캔버스에 남았다. 다음 Enter는 HTML 버튼 대신 게임을 시작했다. 접근성 트리에 버튼이 보인다는 것만으로 캔버스에서 키보드로 도달한다고 판단할 수 없었다.
+
+**해결:** 캔버스의 capture 단계 `keydown`에서 Tab을 처리하고 `preventDefault()`·`stopImmediatePropagation()` 뒤 네이티브 버튼에 포커스를 넘겼다. 같은 Ego Lite TaskSpace에서 실제 Tab→Enter로 텍스트 조작 진입과 시작이 통과했다. 텍스트 조작에서 캔버스로 돌아간 뒤에도 Tab으로 재진입했고 실제 캔버스 클릭이 게임에 전달됐다. HTML 영역에 포커스가 없을 때는 클리핑과 `pointer-events:none`을 적용했다. 실제 스크린리더 낭독 시험을 대신하는 증거는 아니다.
