@@ -13130,3 +13130,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** nodejs 라운드마다 `Emulation.setDeviceMetricsOverride`를 1440×900으로 다시 설정한 뒤 즉시 Godot 버튼 좌표를 읽어 클릭하자 입장 동작이 누락되고 `page.waitForFunction timed out after 15000ms`가 났다. 같은 관찰에서 `window.innerWidth/innerHeight`는 1440×900이지만 canvas DOM rect와 Godot viewport는 아직 918×962였다. 이후 스크린샷은 정상 1440×900이어서 좌표 문제가 가려졌다.
 
 **해결:** CDP viewport 설정 후 `innerWidth`만 기다리지 말고 앱이 갱신한 viewport 또는 canvas 크기가 목표값과 같아질 때까지 기다린다. 그 뒤 현재 Control의 중심 좌표를 읽고 클릭한다. Godot가 진단 객체에 viewport를 공개하도록 한 뒤 1440×900 또는 390×844 일치를 기다리니 입장·출발·키보드 이동·터치 버튼 이동이 모두 통과했다. screenshot은 기다림 조건으로 사용하지 않는다.
+
+## OPS-843 — The SpacetimeDB SQL CLI adds its own client_connected presence row to a connection count
+
+`측정 2026-11-02 · SpacetimeDB 2.8.0 · busan.mac`
+
+**증상:** spacetime sql SELECT COUNT(*) FROM presence reports 65 for 64 game WebSocket clients, and 1 after every game client disconnects; this can look like a leaked connection.
+
+**해결:** The SQL CLI itself opens a connection and runs client_connected. Account for its one probe when measuring presence; confirm 64+1 while running and 0+1 after shutdown. Fresh startup after SIGTERM and SIGKILL both returned 1 before game clients reconnected.
+
