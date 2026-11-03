@@ -6269,3 +6269,11 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 
 **해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
 
+## GDT-381 — Web export may exit zero while reporting missing preset filter keys
+
+`측정 2026-11-02 · Godot 4.7.2-stable · headless Web export · busan.mac`
+
+**증상:** A Web preset with export_filter=all_resources but no include_filter/exclude_filter produced HTML/WASM/PCK and exited 0, while logging ERROR: Couldn't find the given section "preset.0" and key "include_filter", and no default was given. The same error occurred for exclude_filter.
+
+**해결:** Declare include_filter="" and the intended exclude_filter explicitly. A rebuild with both keys emitted no SCRIPT ERROR or ERROR: logs and completed compression. Check logs as well as exit status. If tests/* is excluded, ensure product scripts do not preload tests (GDT-323).
+
