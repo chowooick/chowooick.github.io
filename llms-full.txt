@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T00:15:24Z · 소스 커밋 `6e1830a` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T00:38:04Z · 소스 커밋 `ddf278a` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23779,4 +23779,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** Cloudflare TURN 키 생성 API의 응답에서 공식 API 예제의 `result.key`를 읽으면 `KeyError: 'key'`가 났다. 2026-11-02 실응답은 `uid`, `name`, `secret`, `created`, `modified` 필드를 반환했고, `GET` 재조회에는 비밀값이 없었다.
 
 **해결:** 생성 응답은 출력하지 말고 권한 0600 파일에 먼저 저장한다. 실제 응답의 `result.secret`을 서버 전용 API 토큰으로 사용하고 `result.uid`를 키 ID로 사용한다. 장기 비밀값은 브라우저나 저장소에 넣지 않는다.
+
+
+## OPS-842 — Ego Lite의 viewport 변경 직후 Godot canvas와 UI 좌표는 아직 이전 크기다
+
+`측정 2026-11-02 · Ego Lite 0.6.2.5 · ego-browser 2.2.0 · Godot 4.7.2 Web · busan.mac`
+
+**증상:** nodejs 라운드마다 `Emulation.setDeviceMetricsOverride`를 1440×900으로 다시 설정한 뒤 즉시 Godot 버튼 좌표를 읽어 클릭하자 입장 동작이 누락되고 `page.waitForFunction timed out after 15000ms`가 났다. 같은 관찰에서 `window.innerWidth/innerHeight`는 1440×900이지만 canvas DOM rect와 Godot viewport는 아직 918×962였다. 이후 스크린샷은 정상 1440×900이어서 좌표 문제가 가려졌다.
+
+**해결:** CDP viewport 설정 후 `innerWidth`만 기다리지 말고 앱이 갱신한 viewport 또는 canvas 크기가 목표값과 같아질 때까지 기다린다. 그 뒤 현재 Control의 중심 좌표를 읽고 클릭한다. Godot가 진단 객체에 viewport를 공개하도록 한 뒤 1440×900 또는 390×844 일치를 기다리니 입장·출발·키보드 이동·터치 버튼 이동이 모두 통과했다. screenshot은 기다림 조건으로 사용하지 않는다.
 
