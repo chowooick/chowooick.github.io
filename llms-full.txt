@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T04:14:52Z · 소스 커밋 `7ef3012` · 이 파일은 자동 생성물이다.
+생성 2026-11-03T04:29:19Z · 소스 커밋 `585429c` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -23973,4 +23973,15 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** Godot 원본·gzip sidecar·이전 주소 호환용 복사본을 함께 넣은 40,974,580바이트 ZIP을 `application.dropDeployment`에 보냈더니 HTTP 524가 돌아왔다. 직후 `deployment.all`과 공개 `release.json`은 이전 배포 그대로였다. 이 관측은 Dokploy의 고정 업로드 크기 제한이나 모든 524의 실패를 뜻하지 않는다.
 
 **해결:** 상태를 확인한 뒤 검증된 `.gz`와 이미지·메타데이터만 넣은 10,071,030바이트 ZIP을 보냈고 HTTP 200, 새 배포 `done`, 공개 릴리스 일치를 확인했다. Dockerfile에서 `gzip -dc`로 원본을 복원하고 이전 주소는 활성 내용 해시 디렉터리로 향하는 심볼릭 링크로 만들었다. 압축 해제 후 모든 파일 SHA-256이 기존 산출물과 일치했다. `try_files $uri`와 `gzip_static on`을 함께 쓰면 검사할 원본도 필요하므로 sidecar만 배치하지 말고 빌드 중 원본 복원 후 `nginx -t`를 실행한다. 524 응답만 보고 같은 큰 패키지를 반복 전송하지 않는다.
+
+
+## OPS-857 — Ego Lite TaskSpace의 정적 HTML 60 Hz는 시각 갱신 60 FPS의 양성 대조군이 아니다
+
+`측정 2026-11-02 · Ego Lite 0.6.2.5 / ego-browser 2.2.0 · Chromium 156.0.8078.74 · busan.mac / M4 Pro Metal`
+
+**증상:** 같은 TaskSpace·Page·390×844·DPR1에서 정적 HTML rAF는 59.83 Hz인데 Godot Web과 최소 WebGL은 약29 Hz여서 게임 GPU 비용이 원인처럼 보였다. `visible`과 focus emulation은 모두 true였다.
+
+**해결:** 실제 픽셀 갱신 대조군을 추가했다. 3회×6초 중앙값은 CSS transform28.99, DOM 색상29.09, Canvas2D29.01, 최소WebGL29.08, 게임29.09 Hz였다. 독립16ms 타이머는 약62 Hz였다. `Page.setWebLifecycleState(active)`·`Page.bringToFront`도 회복시키지 못했고 DOM/WebGL main-thread TaskDuration 비율은2.7–3.8%였다. 최소clear GPU query는0.142ms(disjoint false)였으며 1×1 buffer·flush·finish도 약29 Hz였다. 이는 시각 갱신 시 TaskSpace rAF 스케줄 경계까지의 분리이지 정확한 Ego/Chromium 메커니즘이나 물리 GPU 상한의 확정은 아니다. 정적 rAF 숫자만으로 게임60 FPS를 판정하거나 화질을 낮추지 않는다. 실제 표시 프레임은 별도로 측정한다.
+
+추가 함정: 첫 내비게이션 때 viewport emulation이918×962로 초기화된 표본이 있었다. `goto` 뒤에 override를 다시 적용하고 `innerWidth/innerHeight`를 매번 assert한18개 표본만 비교했다. 숨은 TaskSpace의 `visible`만으로 실제 화면 표시를 인증하지 않는다(OPS-819·OPS-840).
 
