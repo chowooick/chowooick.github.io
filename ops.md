@@ -13268,3 +13268,11 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **해결:** 정확한 출력 dwell은 host 엔진에 enqueue/dequeue와 encode/frame/flush 경계의 monotonic 계측을 추가해야 한다. 게임 WASM reducer에서 이 host 경계에 접근하는 API는 확인되지 않았다. 클라이언트는 동기 read `poll_next` wall time과 첫 Pending→완성 item span을 따로 기록하되 후자는 네트워크·스케줄·다른 작업의 혼합값으로 표시한다. 비공개 TLS 조각 시험에서 span82.555ms와 poll0.003~0.056ms가 분리됐고, 서버 send+flush 완료 뒤 client 읽기를80ms 늦추자 수신은82.955ms 후였다. flush 완료는 원격 애플리케이션 수신 완료가 아니다. 이 fixture 수치를 공개 경로 비용에 대입하지 않는다. 소스 경계·해시는 Ringleader `docs/qa/output-boundaries-20261103/result.json`에 기록했다. 배포된 엔진 바이너리와 upstream 소스의 해시 일치는 별도로 검증하지 않았다.
 
 근거: https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/client-api/src/routes/subscribe.rs#L1208-L1369 · https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/core/src/client/client_connection.rs#L637-L645
+
+## OPS-859 — ego-browser nodejs의 console.log가 Python subprocess에서는 stderr로 도착할 수 있다
+
+`측정 2026-11-02 · Ego Lite 0.6.2.5 / ego-browser 2.2.0 · macOS 26.6.2 · busan.mac SSH / Python 3.9 subprocess`
+
+**증상:** 공식 `ego-browser nodejs -e`에서 `console.log(JSON.stringify(...))`로 TaskSpace 소유권 개수만 출력했다. SSH 셸에서는 JSON이 정상 표시됐지만 `subprocess.run(..., capture_output=True, text=True)`로 직접 캡처하자 exit code는 0, stdout은 빈 문자열, stderr에 JSON과 개행이 왔다. stdout만 `json.loads`하면 `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`가 발생했다. 브라우저 연결 실패가 아니었다.
+
+**해결:** exit code와 stdout/stderr를 구분해 보존하고, 예상 JSON 구조가 있는 스트림을 확인한 뒤 파싱한다. stderr에 내용이 있다는 이유만으로 실패로 판단하거나 버리지 않는다. 안내·오류 문구와 JSON이 섞일 수 있으므로 임의 stderr 전체가 항상 JSON이라고 가정하지 않는다. 이 관측은 해당 CLI의 Python 캡처 경로이며 모든 실행 환경에 일반화하지 않는다.
