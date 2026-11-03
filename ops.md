@@ -13157,3 +13157,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** `IdentityToken.connection_id` and `TransactionUpdate.caller_connection_id` encode `__connection_id__` as a JSON u128 number. Godot `JSON.parse_string` converts that number to float, discarding low bits. Comparing it to an exact server connection ID falsely displaced the current session and closed its socket. The same packet loop then reported `Cannot call method 'get_available_packet_count' on a null value`.
 
 **해결:** Before JSON parsing, quote only numeric `__connection_id__` tokens, then compare exact decimal strings against server `ConnectionId.to_u128().to_string()`. Do not resolve pending reducer requests from another connection with the same identity. Maximum-u128 preservation (`340282366920938463463374607431768211455`) and real Godot join, pose and respawn transport passed. Also check for a null socket in the packet loop because handling an update can close it.
+
+
+## OPS-846 — Apple Container의 공유 builder가 `running`인데 응답하지 않으면 `container build`가 멈춘다
+
+`측정 2026-11-03 · Apple Container 1.6.1 · builder-shim 0.13.2 · busan.mac (Mac16,11)`
+
+**증상:** `container builder status`가 `buildkit … running 2 CPU 2048 MB`로 보이는데 빌드가 실패했다. 다른 크기를 요청한 `container build --cpus 4 --memory 4G …`는 builder를 바꾸려다 `internalError: "failed to stop container buildkit (cause: … deleteProcess: failed to delete process: invalidState: "exec … does not exist in container buildkit")`로 끝났다. 크기 옵션을 뺀 같은 빌드는 정확히 5분 뒤 `Error: Timeout waiting for connection to builder`로 끝났다. 그동안 실행 중인 다른 빌드는 없었다(`pgrep -fl "container build|buildctl"` 결과 없음).
+
+**해결:** 다른 빌드가 돌고 있지 않은지 먼저 확인하고 `container builder stop`을 실행한다(상태 `stopped`). 그러면 다음 `container build --cpus 4 --memory 4G`가 builder를 새로 띄우고, 이미지 빌드와 `container image save`, Skopeo 변환까지 끝난다. 다른 세션이 builder를 쓰는 중이면 멈추지 말고, 잡 전용 BuildKit VM을 띄운다(OPS-798).
