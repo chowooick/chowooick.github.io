@@ -3429,3 +3429,12 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 **증상:** Godot 웹 게임을 1440×900으로 연 뒤 다음 `ego-browser nodejs` 라운드에서 `Emulation.setDeviceMetricsOverride({width:1440,height:900,deviceScaleFactor:1,mobile:false})`를 다시 호출했다. `innerWidth/innerHeight`는 1440×900이었지만 `canvas.getBoundingClientRect()`는 이전 Ego 창의 918×962를 유지했다. 1440 기준 좌표로 클릭하면 버튼이 아니라 입력칸에 닿았다.
 
 **해결:** 새 라운드에서 뷰포트를 재설정한 뒤 `page.reload()`하고 Godot 로딩을 기다린다. 클릭 전에 캔버스 사각형을 읽어 1440×900인지 확인한다. 같은 페이지를 reload한 후 사각형이 1440×900으로 맞았고 솔로 버튼이 의도한 좌표에서 열렸다. AGT-191의 라운드별 에뮬레이션 재설정만으로는 이미 실행 중인 Godot 캔버스 크기를 갱신하지 못할 수 있다.
+
+## AGT-207 — Godot Web canvas LineEdit: ego-browser keyboard.insertText can leave the value unchanged; keyboard.type entered the ASCII room code
+
+`측정 2026-11-02 · Ego Lite 0.6.2.5 / ego-browser 2.2.0 · Godot 4.7.2 Web · busan.mac`
+
+**증상:** in a canvas card game's lobby, mouse focus and ControlOrMeta+A followed by `keyboard.insertText()` left the room field at its generated value. Joining succeeded, but each client entered its own generated room. `window.jokerState` showed one player each; a screenshot confirmed the original room code.
+
+**해결:** with the room field focused, `keyboard.type("J95781")` entered the intended ASCII text. The screenshot showed J95781, and a fresh identity joined the existing room as seat 1 alongside seat 0. Use canvas screenshots to verify text entry before joining; a successful input API receipt does not prove the canvas consumed the text. This measurement covers the ASCII room code only, not Korean text composition.
+
