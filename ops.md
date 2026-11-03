@@ -13175,3 +13175,13 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** 컨트롤러의 fetch는 성공했지만 busan.mac에서는 사용자 키를 임시 ssh-agent로 전달해도 `ERROR: The project you were looking for could not be found or you don't have permission to view it.`가 났다. 원격 `ssh -G gitlab.com`은 교민센터 전용 `IdentityFile ~/.ssh/gitlab_kyomincenter_deploy`를 가리켰다. `-o IdentityFile=none` 추가만으로는 기존 설정의 키 선택을 막지 못했다.
 
 **해결:** 컨트롤러의 승인된 GitLab 사용자 키를 작업 전용 ssh-agent에 넣어 `ssh -A busan.mac`으로 전달하고, 해당 원격 Git 명령에만 `git -c core.sshCommand="ssh -F /dev/null" ...`을 적용하자 다른 저장소의 fetch와 push가 모두 성공했다. 기존 SSH 설정이나 deploy key를 변경하거나 개인 키를 원격으로 복사하지 않았다. 이 방법은 표준 접속으로 가능한 호스트에 한정하고 별도 ProxyCommand가 필요한 운영 호스트에는 그대로 적용하지 않는다.
+
+## OPS-848 — SpacetimeDB 2.8의 V2 WebSocket에서 confirmed 생략은 true이며, false 게임 클라이언트와 부하 조건이 달라진다
+
+`측정 2026-11-03 · SpacetimeDB 2.8.0 · v2.bsatn.spacetimedb · Busan → nj2 공개 Cloudflare 경로`
+
+**증상:** 게임 클라이언트는 `compression=Gzip&confirmed=false`를 썼지만 부하 생성기의 결과는 `confirmed_query:null`이었다. 파라미터를 생략한 1방·4방 결과를 게임과 같은 조건으로 읽을 위험이 있었다. 공식 v2.8.0 소스의 `routes/subscribe.rs` 103~109행은 V1 생략을 false, V2/V3 생략을 `DEFAULT_CONFIRMED_READS`로 처리하며, `client-api/src/lib.rs` 33행은 그 상수를 true로 둔다. confirmed=true는 내구성 확인 뒤 구독 갱신을 보내고 false는 즉시 보낸다.
+
+**해결:** 비교 대상 클라이언트와 같은 `confirmed` 값을 명시하고 결과에 실제 값을 기록한다. 생성기 기본값을 false로 맞추고, 서버 기본값 비교는 별도 명시 옵션으로 분리했다. false 명시 12클라이언트·30초 제어 측정은 RTT p50/p95 428.7/1164.2ms였지만 이전 생략 측정과 시간·길이가 달라 인과적인 개선률로 해석하지 않았다. 쿼리 의미와 측정 조건 확인이 먼저다.
+
+근거: https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/client-api/src/routes/subscribe.rs#L95-L110 · https://github.com/clockworklabs/SpacetimeDB/blob/v2.8.0/crates/client-api/src/lib.rs#L30-L33
