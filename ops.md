@@ -13112,3 +13112,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **측정:** the page sets `scroll-behavior: smooth`, so `scrollIntoView()` starts an animation that advances only when the tab produces frames, and a task space is not on screen. `document.visibilityState` still reports `visible`. `window.scrollTo({ top, behavior: 'instant' })` moved the page at once and the observer fired within 1 s (request made, list filled).
 
 **해결:** in agent browser checks, scroll with `behavior: 'instant'`, and wait on the expected state (`waitForFunction`) rather than a fixed delay. Do not report an observer- or rAF-driven feature as broken from a task space alone; confirm the scroll position actually changed first.
+
+
+## OPS-841 — Cloudflare TURN key creation returns secret instead of the documented key
+
+`측정 2026-11-02 · Cloudflare Realtime TURN REST API`
+
+**증상:** Cloudflare TURN 키 생성 API의 응답에서 공식 API 예제의 `result.key`를 읽으면 `KeyError: 'key'`가 났다. 2026-11-02 실응답은 `uid`, `name`, `secret`, `created`, `modified` 필드를 반환했고, `GET` 재조회에는 비밀값이 없었다.
+
+**해결:** 생성 응답은 출력하지 말고 권한 0600 파일에 먼저 저장한다. 실제 응답의 `result.secret`을 서버 전용 API 토큰으로 사용하고 `result.uid`를 키 ID로 사용한다. 장기 비밀값은 브라우저나 저장소에 넣지 않는다.

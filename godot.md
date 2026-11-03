@@ -6235,3 +6235,12 @@ help, because the frame in which the scale is restored still carries the scaled 
 **해결:** measure gestures with the wall clock: store `Time.get_ticks_msec()` at press and compute
 `hold_t = (now - press_ticks) / 1000.0` in `_process`. A gesture is real time whatever the engine's delta,
 delta smoothing or a hit-stop does. Keep the delta sum for things that should slow with time scale.
+
+
+## GDT-377 — godot-livekit v0.3.3 loads on Godot 4.7.2 macOS but differs from main README
+
+`측정 2026-11-02 · Godot 4.7.2 · godot-livekit v0.3.3 · macOS arm64`
+
+**증상:** `main` README에 나온 `LiveKitAudioProcessingModule`을 릴리스 v0.3.3에서 조회하면 `ClassDB.class_exists()`가 false다. 같은 배포 파일에서 `LiveKitRoom`, `LiveKitAudioSource`, `LiveKitAudioStream`은 true였고, 격리한 로컬 LiveKit 서버에 연결한 두 헤드리스 Godot 프로세스가 합성 오디오를 각각 약 44만 PCM 프레임 수신·디코딩했다. 실제 마이크나 에코 제거 검증은 아니다.
+
+**해결:** README의 현재 브랜치와 배포 태그를 구분하고 필요한 클래스를 실행 환경에서 조회한다. v0.3.3의 오디오 경로 검증만으로 에코 제거 클래스나 다른 플랫폼 지원까지 검증했다고 하지 않는다. 소스는 https://github.com/NodotProject/godot-livekit/releases/tag/v0.3.3 이다.
