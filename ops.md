@@ -13309,3 +13309,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **증상:** A package recompressed identical Godot exports with gzip.open, recording new hashes for five gzip sidecars. A source-delta upload reused the previous release sidecars, so only their compressed hashes failed; all uncompressed files matched. Header timestamps changed despite unchanged game code.
 
 **해결:** Generate sidecars with gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0, compresslevel=9), and include regenerated sidecars when first changing packaging. All 14 host artifact hashes then passed, and decompressed public HTML, JS, WASM, PCK and worklets matched SHA-256. Source-only Git differences do not describe regenerated release artifacts.
+
+
+## OPS-864 — SpacetimeDB 2.8 JSON WebSocket은 compression 인자를 적용하지 않는다
+
+`측정 2026-11-03 · SpacetimeDB 2.8.0 · ws 8.22.1 · Godot 4.7.2`
+
+**증상:** v1.json.spacetimedb에 compression=Gzip을 지정해도 JSON 텍스트는 압축되지 않는다. 2.8.0 crates/core/src/client/messages.rs::serialize는 Json 분기에서 바로 텍스트를 반환하고 Bsatn 분기에서만 압축한다. 같은 공개 서버의 최대 메시지는 원본 JSON 14,591B, 별도 gzip+base64 테이블 약 4,833B, 공식 v1.bsatn.spacetimedb+Gzip 약 2,291B였다.
+
+**해결:** 압축이 필요하면 공식 BSATN 메시지 태그(0=무압축, 2=gzip)와 row-list/reducer 형식을 복원하고 실제 연결과 재접속을 검사한다. JSON URL 인자만 바꾸지 않는다. 압축 후에도 한국 KT-Cloudflare LAX 공개 TCP의 장시간 지연과 timeout이 별도로 재현됐으므로 네트워크 문제의 해결로 단정하지 않는다.
