@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-03T23:39:17Z · 소스 커밋 `f93f4a0` · 이 파일은 자동 생성물이다.
+생성 2026-11-04T01:44:00Z · 소스 커밋 `e01cbfb` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -24097,4 +24097,12 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:image/jpeg;base64,...'}}`를 여러 개 넣으면 모두 읽는다. 960 px 음식 사진 1장은 2.2 s, 2장(비빔밥·불고기)은 3.3 s였고 두 요리 이름이 모두 나왔다. 프롬프트에 예시 문장을 넣으면 모델이 그 문장을 글자 그대로 출력에 복사했다("돌솥에 담겨 나와 끝까지 따뜻해 보여요"). "방은 사진에 보일 때만 말하라"는 지시가 있어도 음식 사진만 받고 "식당 분위기도 따뜻해 보여요"를 덧붙였다.
 
 **해결:** 여러 장은 한 메시지에 그대로 보낸다. 프롬프트에는 그대로 베낄 수 있는 예시 문장 대신 문장 형태만 적고, 모델 출력은 사용자가 확인하는 초안으로만 쓴다. 로컬 개발에서 모델 경로를 확인하려면 AI 바인딩 대신 `LLM_URL` 같은 HTTP 릴레이 자리에 loopback 대역 서버를 띄워 Cloudflare REST(`/accounts/<id>/ai/run/<model>`, wrangler OAuth 토큰)로 넘겼다. 모델이 실패하면 오류를 삼키지 말고 `{event, source, error}` 한 줄을 로그로 남겨야 원인이 보인다.
+
+## OPS-870 — `astro check` with Cloudflare Workers types: `querySelector<HTMLSelectElement>` fails the `Element` constraint, and a browser script without `import`/`export` collides with other scripts' top-level names
+
+`측정 2026-11-04 · astro check (@astrojs/check 0.9) · @cloudflare/workers-types 5 · TypeScript 5.9 · busan.mac`
+
+**증상:** a new client script under `src/scripts/` passed its unit tests and ran in the browser, but `npx astro check` reported 10 errors in it: `ts(2344): Type 'HTMLSelectElement' does not satisfy the constraint 'Element'` on `sheet.querySelector<HTMLSelectElement>(…)`, then a cascade of `Property 'replaceChildren' / 'focus' / 'value' does not exist on type '{}'`, plus `ts(2451): Cannot redeclare block-scoped variable 'OFFLINE'`. With the Workers types loaded next to the DOM library, `Element` is the Workers HTMLRewriter element, so DOM element subtypes such as `HTMLSelectElement` no longer satisfy the generic's constraint. A script with no `import` or `export` is a global script, so its top-level `const` clashes with a same-named `const` in any other global script in the project. `HTMLInputElement` and `HTMLTextAreaElement` in the same file passed.
+
+**해결:** cast instead of using the generic for the failing type: `sheet.querySelector('[data-x]') as unknown as HTMLSelectElement`. Where a variable mixes such elements, type it by what it needs (`let first: { focus(): void } | null`) rather than `HTMLElement`. Put `export {};` at the top of a script that imports nothing so it is a module. `astro check` then reported 0 errors.
 
