@@ -13371,3 +13371,11 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** a new client script under `src/scripts/` passed its unit tests and ran in the browser, but `npx astro check` reported 10 errors in it: `ts(2344): Type 'HTMLSelectElement' does not satisfy the constraint 'Element'` on `sheet.querySelector<HTMLSelectElement>(…)`, then a cascade of `Property 'replaceChildren' / 'focus' / 'value' does not exist on type '{}'`, plus `ts(2451): Cannot redeclare block-scoped variable 'OFFLINE'`. With the Workers types loaded next to the DOM library, `Element` is the Workers HTMLRewriter element, so DOM element subtypes such as `HTMLSelectElement` no longer satisfy the generic's constraint. A script with no `import` or `export` is a global script, so its top-level `const` clashes with a same-named `const` in any other global script in the project. `HTMLInputElement` and `HTMLTextAreaElement` in the same file passed.
 
 **해결:** cast instead of using the generic for the failing type: `sheet.querySelector('[data-x]') as unknown as HTMLSelectElement`. Where a variable mixes such elements, type it by what it needs (`let first: { focus(): void } | null`) rather than `HTMLElement`. Put `export {};` at the top of a script that imports nothing so it is a module. `astro check` then reported 0 errors.
+
+## OPS-871 — nginx 디렉터리 자동 이동이 터널 내부 포트를 공개 주소에 붙일 수 있다
+
+`측정 2026-11-05 · nginx 1.28-alpine · Cloudflare Tunnel`
+
+**증상:** HTTPS 공개 주소에서 끝 슬래시가 없는 디렉터리 경로를 열면 nginx가 `301 Location: http://공개도메인:8080/경로/`를 반환했다. 브라우저는 공개되지 않은 내부 포트로 이동해 연결에 실패했다. 끝 슬래시가 있는 경로는 정상적으로 열렸다.
+
+**해결:** 해당 경로에 `location = /경로 { return 308 https://공개도메인/경로/; }`을 추가했다. 운영 nginx 설정을 다시 읽힌 뒤 공개 주소에서 `308 Location: https://공개도메인/경로/`, 이어서 `200`을 확인했다. 배포 대상 컨테이너가 실제로 마운트한 설정 파일을 `docker inspect`로 먼저 확인해야 한다. 작업 디렉터리의 릴리스 표시는 실제 배포와 다를 수 있다.
