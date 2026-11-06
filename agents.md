@@ -3492,3 +3492,25 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 
 근거: https://www.canva.com/ko_kr/design-trends/ · AGT-210 · AGT-211
 
+
+## AGT-213 — 네이버 모바일 뉴스 기사 반응은 사건 감정이 아니라 기사 가치로 받는다
+
+`측정 2026-11-05 · n.news.naver.com 모바일 기사(390폭) · Ego Lite 0.6.2.7 / Chromium 156 · busan.mac · ko`
+
+**증상:** 뉴스 팝업에 귀여운 반응을 넣을 때, 슬픈 기사에 웃는 표정이 붙는 위험을 피할 비교 근거가 필요했다.
+
+**관찰:** 기사 상단에는 웃는 얼굴 아이콘의 `추천` 단추가 있고, 하단 반응 단추는 `쏠쏠정보 · 흥미진진 · 공감백배 · 분석탁월 · 후속강추`로 기사 자체의 가치를 묻는다. 사건에 대한 감정(좋아요·슬퍼요 같은 이름)은 이 화면의 단추 이름에 없었다. 한국어 모바일 기사 한 건의 단추 이름과 위치까지 확인했고, 반응 집계 방식·도입 시점·효과는 확인하지 않았다.
+
+**해결·적용 조건:** 뉴스 화면의 캐릭터·표정 반응은 기사 내용이 아니라 사용자의 행동(넘김·저장·복귀)이나 기사 가치에 붙인다. 적용 예: kyomincenter 링크 시트 시안 v2(빨랫줄·도토리 다람쥐). AGT-210(놀이와 핵심 행동 분리)과 함께 쓴다.
+
+근거: https://n.news.naver.com/mnews/article/001/0015000000 · AGT-210
+
+## AGT-214 — 연쇄 WAAPI 장면은 한 타임라인으로 만들어야 중간 프레임 검사와 가로채기가 안전하다
+
+`측정 2026-11-05 · Ego Lite 0.6.2.7 / Chromium 156 · busan.mac · file:// 정적 HTML · AGT-209의 후속`
+
+**증상:** `await el.animate(...).finished`를 여러 번 이어 붙인 장면(달려가기 → 숨기 → 돌아오기)을 검사하려고 `document.getAnimations().forEach(a => a.pause())` 뒤 `currentTime`을 바꾸자, 그 순간 존재하던 한 단계만 멈추고 다음 단계는 나중에 새로 생겨 프레임이 맞지 않았다. 장면 도중 다른 조작이 같은 요소에 새 애니메이션을 걸면, 앞 단계의 `fill: 'forwards'` 애니메이션이 취소되지 않고 남아 새 위치(인라인 `transform`)를 덮어써 캐릭터가 엉뚱한 자리에 멈췄다. 오류 메시지는 없었다.
+
+**해결:** 장면 전체를 `offset`이 있는 키프레임 하나(같은 길이의 보조 애니메이션 몇 개 포함)로 만들고, 새 조작 전에는 `el.getAnimations({ subtree: true }).forEach(a => a.cancel())`로 앞 장면을 지운 뒤 최종 위치를 인라인 스타일로 둔다. 그러면 `pause()` + `currentTime = t`로 원하는 시각의 화면을 재현할 수 있다. 같은 Ego Lite 페이지에서 `requestAnimationFrame` 대기를 돌리는 동안 `currentTime`이 0→51→118→183ms로 증가해 자연 재생도 진행됨을 확인했다. 멈춘 프레임은 자연 재생의 부드러움(프레임 누락) 증거가 아니다.
+
+근거: kyomincenter 링크 시트 시안 v2 `qa/scripts/flow.js` · AGT-209
