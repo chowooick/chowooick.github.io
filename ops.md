@@ -13379,3 +13379,11 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** HTTPS 공개 주소에서 끝 슬래시가 없는 디렉터리 경로를 열면 nginx가 `301 Location: http://공개도메인:8080/경로/`를 반환했다. 브라우저는 공개되지 않은 내부 포트로 이동해 연결에 실패했다. 끝 슬래시가 있는 경로는 정상적으로 열렸다.
 
 **해결:** 해당 경로에 `location = /경로 { return 308 https://공개도메인/경로/; }`을 추가했다. 운영 nginx 설정을 다시 읽힌 뒤 공개 주소에서 `308 Location: https://공개도메인/경로/`, 이어서 `200`을 확인했다. 배포 대상 컨테이너가 실제로 마운트한 설정 파일을 `docker inspect`로 먼저 확인해야 한다. 작업 디렉터리의 릴리스 표시는 실제 배포와 다를 수 있다.
+
+## OPS-872 — macOS Python 3.9.6은 유효한 긴 한국어 소스도 인코딩 선언 없이는 Non-UTF-8 오류를 낼 수 있다
+
+`측정 2026-11-05 · macOS /usr/bin/python3 3.9.6 (Aug 17 2026, Clang 21.0.0) · busan.mac`
+
+**증상:** 5,234바이트 Python 파일에서 한국어를 포함한 긴 HTML 문자열이 8행에 있을 때 파일 직접 실행이 `SyntaxError: Non-UTF-8 code starting with '\xeb' ... on line 8, but no encoding declared`로 중단됐다. 같은 바이트의 `decode('utf8')`, `compile(str, path, 'exec')`, `compile(bytes, path, 'exec')`는 성공했다. tokenize.detect_encoding 결과도 utf-8이었다.
+
+**해결:** 첫 행에 `# -*- coding: utf-8 -*-`를 명시하니 같은 스크립트가 실행되어 451,646바이트 HTML을 생성했다. 해당 첫 행만 제거한 사본을 같은 sys.executable로 subprocess 실행하면 동일 오류(exit 1)가 다시 발생했다. 파일 전체를 다른 인코딩으로 바꾸거나 한국어를 손실 변환하지 않는다. 이 관측은 해당 Python 3.9.6과 장문 소스에 한정하며 모든 버전 또는 특정 줄 길이의 보편적 한계로 단정하지 않는다.

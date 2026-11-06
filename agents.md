@@ -3455,3 +3455,15 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 **증상:** (1) `aria-disabled="true"`인 버튼에 `page.click()`을 하면 `ElementResolutionError: ... matched 1 elements, but none can receive input; element is disabled`로 3초 뒤 실패했다(실제 사용자 클릭은 막지 않는 앱 로직도 도구가 먼저 거부). (2) `page.waitForTimeout()`만 호출하며 기다리면 `dialog` 슬라이드인 같은 CSS 애니메이션이 시작 프레임(`getBoundingClientRect().x`가 화면 밖)에 머물렀고, 그 사이 `page.screenshot()`에는 시트가 없었다. 같은 페이지에서 `page.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 100))))`를 몇 번 호출하자 `getAnimations()[0].currentTime`이 증가하고 정상 위치로 갔다. (3) `<dialog>`를 `Escape`로 닫는 앱이 `history.back()`을 부르는 경우, 직후 `page.reload()`/`page.goto()`가 `timed out after 15000ms waiting for load` 또는 `net::ERR_ABORTED`로 간헐 실패했다.
 
 **해결:** (1) 상태 전환 확인은 `page.evaluate(() => el.click())`로 호출한다. (2) 애니메이션 직후 스크린샷 전에 위의 rAF 대기를 몇 번 돌리고 rect·`currentTime`으로 정착을 확인한다. (3) 닫은 뒤 약 800ms 기다린 다음 이동한다. 이 세 가지를 반영한 129개 검사가 0 실패로 통과했다.
+
+## AGT-210 — 엠노리 참조 화면은 선택적인 놀이와 핵심 행동을 분리한다
+
+`측정 2026-11-05 · mnori.com / play.mnori.com · Ego Lite 0.6.2.5 / Chromium 156 · busan.mac · ko`
+
+**증상:** 여러 제품에 엠노리 스타일을 적용할 때 재사용할 수 있도록, 지정 참조 사이트의 실제 진입 화면 구조를 확인했다.
+
+**관찰:** mnori.com의 첫 화면에는 canvas와 별도 `공 추가` 버튼이 있고, `서비스 둘러보기`와 게임 서비스 진입 링크는 독립된 anchor다. `공 추가` 버튼을 직접 누른 뒤에도 주요 링크가 같은 화면에 있었다. play.mnori.com의 추천 게임에는 `지금 플레이`와 `자세히 보기`가 별도 버튼으로 있고, 분류·인원·휴대폰 지원·첫 실행 다운로드 크기가 진입 전에 표시된다. 이번 확인은 한국어 첫 화면과 공 추가 조작까지이며, 실제 게임 실행·공의 물리 반응·전환율·사용자 감정은 측정하지 않았다.
+
+**적용 조건:** 참조 근거로 재사용할 수 있는 범위는 선택적인 놀이와 주요 행동의 독립, 시작 전에 제공하는 판단 정보다. 특정 캐릭터·색상·게임 효과를 전 제품의 고정 규격으로 해석하지 않는다. 원본의 구조가 변경되면 다시 확인한다. 직접 비교한 서비스 화면의 기능 효과는 별도 사용자 검증이 필요하다.
+
+근거: https://mnori.com · https://play.mnori.com · MNORI.md의 비교 근거 공유 절차.
