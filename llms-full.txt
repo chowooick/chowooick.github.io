@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-07T12:33:32Z · 소스 커밋 `363238f` · 이 파일은 자동 생성물이다.
+생성 2026-11-07T16:25:33Z · 소스 커밋 `a17c0fa` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -10794,6 +10794,14 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 **증상:** `orca orchestration worker-start --agent claude --model claude-haiku-4-5 --effort low`가 `state: ready`, `model: claude-haiku-4-5`, `effort: low`를 반환했지만, 작업자 Bash의 `printenv CLAUDE_EFFORT`는 미설정이었다. 원격 SSH 로그인 셸에도 변수가 전달되지 않았다. 셸 변수만을 필수 확인 수단으로 정한 프로젝트 규칙 때문에 설정을 지정해 실행한 작업자가 코드 편집 전에 중단됐다.
 
 **해결:** Orca 구조화 작업자는 성공한 실행 영수증의 모델·effort 필드 또는 작업자 런타임에서 실제 설정을 확인한다. `CLAUDE_EFFORT`가 비어 있다는 이유만으로 영수증의 명시적 설정을 무시하지 않는다. 영수증과 런타임 어디에도 두 값이 없거나 추천 설정과 다르면 작업을 중단한다. 확인을 통과시키려고 셸 변수를 임의로 설정하지 않는다.
+
+## AGT-216 — 인계 문서의 "작업 후 정리" 줄은 임시 파일에만 적용한다: 배포 때마다 읽는 상시 자격증명을 쓰고 지우면 다음 배포가 막힌다
+
+`측정 2026-11-07 · Claude Code 세션 · busan.mac 배포`
+
+**증상:** 인계 문서(`cloudflare.md`)의 "작업이 끝나면 임시 `private/cloudflare.env`를 정리하라"는 줄을 따라 퍼지 직후 토큰 파일을 지웠다. 그 토큰은 `deploy/nj1/purge.py`가 기본 경로 `~/.config/cloudflare/mnori.env`에서 매 배포마다 읽는 상시 설정이다. 다음 배포에서 파일이 없어 퍼지가 `FileNotFoundError`로 실패했고, 소유자가 같은 파일을 두 번 받아 와야 했다. 질문으로 넘길 일(설치 위치)도 스스로 정하지 않았다.
+
+**해결:** 스크립트가 기본 경로로 읽는 자격증명은 그 경로에 권한 600으로 설치해 두고 지우지 않는다(인계 문서 자체는 설치 후 삭제). 일회용 작업 폴더와 상시 자격증명을 구분한다. 파일이 없을 때는 기본 위치와 KB를 먼저 확인하고(OPS-671 같은 선례가 이미 있었다), 판단할 수 있는 일은 질문하지 않고 결정해서 보고한다.
 
 ---
 
@@ -24232,4 +24240,20 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** `compose.stop` 뒤 `POST /api/compose.delete {"composeId":"…","deleteVolumes":true}`가 HTTP 200을 반환했고 해당 컨테이너와 Compose는 제거됐다. 그러나 Compose의 `pb_data:/pb_data`에 쓰던 명명 볼륨 `partners-pocketbase-oqzcue_pb_data`는 `docker volume ls`에 계속 남았다. 삭제 전 데이터 디렉터리는 약 117 MB였다. `docker ps -a --filter volume=<볼륨>`에는 연결된 컨테이너가 없었다.
 
 **해결:** `compose.delete` 응답만으로 데이터 삭제를 판단하지 말고, 해당 Compose의 볼륨 이름을 `docker volume ls`로 확인한다. 보관본을 검증하고 연결된 컨테이너가 없음을 확인한 뒤 `docker volume rm <볼륨>`으로 제거한다. 이 사례에서는 수동 제거가 성공했고 이후 볼륨 목록에서 사라졌다.
+
+## OPS-878 — busan.mac에서 `git clone git@gitlab.com:…`이 "project could not be found"로 실패한다: ssh config가 gitlab.com을 다른 저장소의 deploy key에 고정한다
+
+`측정 2026-11-07 · macOS OpenSSH · GitLab · busan.mac`
+
+**증상:** `ssh busan.mac 'git clone git@gitlab.com:chowooick/blabla.git …'`이 `remote: ERROR: The project you were looking for could not be found or you don't have permission to view it.`로 끝났다. 같은 호스트에서 `ssh -T git@gitlab.com`은 `Welcome to GitLab, @chowooick!`를 돌려줘 인증은 된 것처럼 보였다. `~/.ssh/config`의 `Host gitlab.com`이 `IdentityFile ~/.ssh/gitlab_kyomincenter_deploy` + `IdentitiesOnly yes`로 고정돼 있어 그 키가 다른 프로젝트 전용이었다. 호스트의 키 3개(`id_ed25519_verif`, `gitlab_joker_deploy`, `gitlab_kyomincenter_deploy`)는 모두 이 저장소를 읽지 못했다. 메시지가 `Permission denied (publickey)`가 아니라 "project not found"인 점이 OPS-671과 다르다.
+
+**해결:** 컨트롤러 Mac의 에이전트를 전달하고 호스트의 ssh config를 우회한다: `ssh -A busan.mac`으로 접속해 `GIT_SSH_COMMAND="ssh -F /dev/null -o BatchMode=yes"`를 export한 뒤 git을 실행한다. 이렇게 `git ls-remote origin main`이 읽혔고 `build.sh` 안의 `git fetch`(릴리스 가드)도 통과했다. 키 파일을 호스트에 복사하지 않는다. 막히면 키를 하나씩 돌려 보기 전에 OPS-671을 먼저 grep한다.
+
+## OPS-879 — Cloudflare 캐시를 호스트 단위로 퍼지하려면 `{"hosts":["<호스트>"]}`를 쓴다: URL 목록이 없어도 되고 같은 zone의 다른 사이트는 건드리지 않는다
+
+`측정 2026-11-07 · Cloudflare API v4 · zone mnori.com`
+
+**증상:** 빌드 작업 폴더를 이미 지워서 `review/asset-hashes.json`의 URL 목록이 없었다. `purge_everything`은 같은 zone의 다른 사이트까지 비운다.
+
+**해결:** `POST /client/v4/zones/<zoneId>/purge_cache`에 본문 `{"hosts":["blabla.mnori.com"]}`를 보내면 그 호스트의 캐시만 퍼지된다. 응답 `success: true`로 확인했다(zone 하나, 토큰은 파일에서 읽어 헤더로만 전달).
 
