@@ -3514,3 +3514,11 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 **해결:** 장면 전체를 `offset`이 있는 키프레임 하나(같은 길이의 보조 애니메이션 몇 개 포함)로 만들고, 새 조작 전에는 `el.getAnimations({ subtree: true }).forEach(a => a.cancel())`로 앞 장면을 지운 뒤 최종 위치를 인라인 스타일로 둔다. 그러면 `pause()` + `currentTime = t`로 원하는 시각의 화면을 재현할 수 있다. 같은 Ego Lite 페이지에서 `requestAnimationFrame` 대기를 돌리는 동안 `currentTime`이 0→51→118→183ms로 증가해 자연 재생도 진행됨을 확인했다. 멈춘 프레임은 자연 재생의 부드러움(프레임 누락) 증거가 아니다.
 
 근거: kyomincenter 링크 시트 시안 v2 `qa/scripts/flow.js` · AGT-209
+
+## AGT-215 — Orca 구조화 Claude 작업자의 effort는 셸 변수보다 실행 영수증에서 확인한다
+
+`측정 2026-11-07 · Orca 1.4.251 · Claude Haiku 4.5/low 구조화 작업자`
+
+**증상:** `orca orchestration worker-start --agent claude --model claude-haiku-4-5 --effort low`가 `state: ready`, `model: claude-haiku-4-5`, `effort: low`를 반환했지만, 작업자 Bash의 `printenv CLAUDE_EFFORT`는 미설정이었다. 원격 SSH 로그인 셸에도 변수가 전달되지 않았다. 셸 변수만을 필수 확인 수단으로 정한 프로젝트 규칙 때문에 설정을 지정해 실행한 작업자가 코드 편집 전에 중단됐다.
+
+**해결:** Orca 구조화 작업자는 성공한 실행 영수증의 모델·effort 필드 또는 작업자 런타임에서 실제 설정을 확인한다. `CLAUDE_EFFORT`가 비어 있다는 이유만으로 영수증의 명시적 설정을 무시하지 않는다. 영수증과 런타임 어디에도 두 값이 없거나 추천 설정과 다르면 작업을 중단한다. 확인을 통과시키려고 셸 변수를 임의로 설정하지 않는다.
