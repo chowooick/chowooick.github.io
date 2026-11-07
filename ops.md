@@ -13447,3 +13447,11 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** 빌드 작업 폴더를 이미 지워서 `review/asset-hashes.json`의 URL 목록이 없었다. `purge_everything`은 같은 zone의 다른 사이트까지 비운다.
 
 **해결:** `POST /client/v4/zones/<zoneId>/purge_cache`에 본문 `{"hosts":["blabla.mnori.com"]}`를 보내면 그 호스트의 캐시만 퍼지된다. 응답 `success: true`로 확인했다(zone 하나, 토큰은 파일에서 읽어 헤더로만 전달).
+
+## OPS-880 — `ssh host 'zsh -l -s' < 스크립트`로 보낸 배포 스크립트가 `curriculum-release.py stage`에서 조용히 끊긴다: 하위 프로세스가 스크립트의 나머지 줄(표준입력)을 읽어 간다
+
+`측정 2026-11-07 · macOS zsh · busan.mac · deploy/nj1/curriculum-release.py`
+
+**증상:** 배포 명령 여러 줄을 `ssh -A busan.mac 'zsh -l -s' < deploy.sh`로 보내면 `curriculum-release.py stage`의 마지막 출력(`Staged 2430 matching files…`) 뒤에서 아무 오류·종료 코드 없이 끝났다. 이어지는 `echo`, `deploy`, `purge.py`, 폴더 삭제가 실행되지 않았다. 명령 사이에 `echo MARK-n`을 넣어 확인했다: `MARK-1`은 찍히고 `stage` 바로 뒤 `MARK-2`는 없었다. 같은 스크립트에서 모든 명령에 `< /dev/null`을 붙이면 끝까지 실행됐다(2회). 이전 배포 2회에서는 `deploy`나 `purge` 뒤에서 끊긴 적도 있어, 삼켜지는 지점은 스크립트 길이(읽어 가는 버퍼 크기)에 따라 달라진다.
+
+**해결:** 이 방식으로 스크립트를 보낼 때는 모든 명령에 `< /dev/null`을 붙이거나, 스크립트를 파일로 복사해 `zsh -l 파일`로 실행한다. 어느 하위 프로세스(`stage` 안의 ssh/tar)가 입력을 읽는지는 특정하지 못했다. 명령 뒤에 마커를 `echo`해 두면 끊긴 위치를 바로 알 수 있다.
