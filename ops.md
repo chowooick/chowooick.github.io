@@ -13416,3 +13416,10 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 
 **해결:** 배포 지연 확인에는 이미 확인한 작업 PID의 PID·PPID·경과 시간·CPU·상태·comm만 허용 목록으로 출력한다. 셸 래퍼 전체 args, `/proc/*/cmdline`, 전체 환경을 출력한 뒤 마스킹하는 방식은 사용하지 않는다. 앱 범위의 배포 상태와 필요한 빌드 로그를 먼저 확인하고, 다른 세션의 프로세스는 변경하지 않는다. 빌드 환경 메타데이터 노출 사례 OPS-240과 함께 참고한다.
 
+## OPS-876 — Dokploy가 다른 앱 빌드 중 수락한 dropDeployment는 배포 ID가 늦게 나타날 수 있다
+
+`측정 2026-11-06 (KST 11-07) · Dokploy on nj2 · application.dropDeployment / application.one · busan.mac`
+
+**증상:** 같은 서버의 첫 웹앱 배포가 `running`일 때 두 번째 웹앱에 175,116,711바이트 소스 ZIP을 `application.dropDeployment`로 올리자 `true`가 반환됐다. 그러나 직후와 약 20초 뒤 `application.one`의 두 번째 앱 배포 목록에는 새 ID가 없었다. 첫 앱의 배포가 `2026-11-06T19:07:54.082Z`에 `done`이 된 직후, 두 번째 앱의 새 배포가 `19:07:54.487Z`에 생성되어 `running`으로 나타났고 이후 `done`이 됐다. 이 관측만으로 Dokploy의 모든 앱이 항상 직렬 빌드된다고 단정하지 않는다.
+
+**해결:** 업로드 응답 `true`와 새 배포 ID의 즉시 생성을 같은 것으로 취급하지 않는다. 같은 서버에서 앞선 배포가 진행 중이라면 완료 상태와 두 번째 앱의 배포 목록을 함께 확인한다. 새 ID가 잠시 보이지 않는다는 이유만으로 같은 ZIP을 다시 보내면 중복 배포를 만들 수 있다.
