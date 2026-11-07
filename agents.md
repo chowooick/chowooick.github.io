@@ -3522,3 +3522,11 @@ is what shows why (`SCRIPT ERROR: Parse Error: Cannot infer the type ...`).
 **증상:** `orca orchestration worker-start --agent claude --model claude-haiku-4-5 --effort low`가 `state: ready`, `model: claude-haiku-4-5`, `effort: low`를 반환했지만, 작업자 Bash의 `printenv CLAUDE_EFFORT`는 미설정이었다. 원격 SSH 로그인 셸에도 변수가 전달되지 않았다. 셸 변수만을 필수 확인 수단으로 정한 프로젝트 규칙 때문에 설정을 지정해 실행한 작업자가 코드 편집 전에 중단됐다.
 
 **해결:** Orca 구조화 작업자는 성공한 실행 영수증의 모델·effort 필드 또는 작업자 런타임에서 실제 설정을 확인한다. `CLAUDE_EFFORT`가 비어 있다는 이유만으로 영수증의 명시적 설정을 무시하지 않는다. 영수증과 런타임 어디에도 두 값이 없거나 추천 설정과 다르면 작업을 중단한다. 확인을 통과시키려고 셸 변수를 임의로 설정하지 않는다.
+
+## AGT-216 — 인계 문서의 "작업 후 정리" 줄은 임시 파일에만 적용한다: 배포 때마다 읽는 상시 자격증명을 쓰고 지우면 다음 배포가 막힌다
+
+`측정 2026-11-07 · Claude Code 세션 · busan.mac 배포`
+
+**증상:** 인계 문서(`cloudflare.md`)의 "작업이 끝나면 임시 `private/cloudflare.env`를 정리하라"는 줄을 따라 퍼지 직후 토큰 파일을 지웠다. 그 토큰은 `deploy/nj1/purge.py`가 기본 경로 `~/.config/cloudflare/mnori.env`에서 매 배포마다 읽는 상시 설정이다. 다음 배포에서 파일이 없어 퍼지가 `FileNotFoundError`로 실패했고, 소유자가 같은 파일을 두 번 받아 와야 했다. 질문으로 넘길 일(설치 위치)도 스스로 정하지 않았다.
+
+**해결:** 스크립트가 기본 경로로 읽는 자격증명은 그 경로에 권한 600으로 설치해 두고 지우지 않는다(인계 문서 자체는 설치 후 삭제). 일회용 작업 폴더와 상시 자격증명을 구분한다. 파일이 없을 때는 기본 위치와 KB를 먼저 확인하고(OPS-671 같은 선례가 이미 있었다), 판단할 수 있는 일은 질문하지 않고 결정해서 보고한다.
