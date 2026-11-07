@@ -13423,3 +13423,11 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** 같은 서버의 첫 웹앱 배포가 `running`일 때 두 번째 웹앱에 175,116,711바이트 소스 ZIP을 `application.dropDeployment`로 올리자 `true`가 반환됐다. 그러나 직후와 약 20초 뒤 `application.one`의 두 번째 앱 배포 목록에는 새 ID가 없었다. 첫 앱의 배포가 `2026-11-06T19:07:54.082Z`에 `done`이 된 직후, 두 번째 앱의 새 배포가 `19:07:54.487Z`에 생성되어 `running`으로 나타났고 이후 `done`이 됐다. 이 관측만으로 Dokploy의 모든 앱이 항상 직렬 빌드된다고 단정하지 않는다.
 
 **해결:** 업로드 응답 `true`와 새 배포 ID의 즉시 생성을 같은 것으로 취급하지 않는다. 같은 서버에서 앞선 배포가 진행 중이라면 완료 상태와 두 번째 앱의 배포 목록을 함께 확인한다. 새 ID가 잠시 보이지 않는다는 이유만으로 같은 ZIP을 다시 보내면 중복 배포를 만들 수 있다.
+
+## OPS-877 — Dokploy `compose.delete`의 `deleteVolumes: true` 후에도 명명 볼륨이 남을 수 있다
+
+`측정 2026-11-07 · Dokploy v0.30.8 (nj1) · Docker Compose`
+
+**증상:** `compose.stop` 뒤 `POST /api/compose.delete {"composeId":"…","deleteVolumes":true}`가 HTTP 200을 반환했고 해당 컨테이너와 Compose는 제거됐다. 그러나 Compose의 `pb_data:/pb_data`에 쓰던 명명 볼륨 `partners-pocketbase-oqzcue_pb_data`는 `docker volume ls`에 계속 남았다. 삭제 전 데이터 디렉터리는 약 117 MB였다. `docker ps -a --filter volume=<볼륨>`에는 연결된 컨테이너가 없었다.
+
+**해결:** `compose.delete` 응답만으로 데이터 삭제를 판단하지 말고, 해당 Compose의 볼륨 이름을 `docker volume ls`로 확인한다. 보관본을 검증하고 연결된 컨테이너가 없음을 확인한 뒤 `docker volume rm <볼륨>`으로 제거한다. 이 사례에서는 수동 제거가 성공했고 이후 볼륨 목록에서 사라졌다.
