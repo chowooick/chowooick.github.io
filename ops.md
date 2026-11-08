@@ -13488,3 +13488,14 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 - Proof that production runs a commit: `curl https://blabla.mnori.com/release.json` gives `sourceCommit`, and `serverWasmSha256` equals `shasum -a 256` of a fresh build of the same commit (measured: both `e3a48d05…`).
 
 **해결:** before building a release, fetch `release.json` and compare `sourceCommit` with `git rev-parse HEAD`. If equal, do not redeploy: run the read-only checks (`release.py compare <sha>`, `operate.py status`, `probe`, `services`) and write the record commit (compose.yml from the live Dokploy compose via `control.api("compose.one?composeId=…")`, target.json, `qa/releases/<sha>/preservation.json`). Relates to OPS-881.
+
+
+## OPS-883 — blabla release script ran `probe` right after `curriculum-release.py deploy`: every public path answered 502 and `operate.py status` said `running`; wait for `done`, and `release.py compare` already writes `preservation.json`
+
+`측정 2026-11-09 · busan.mac · blabla main 5bca15f · Dokploy compose redeploy on nj1`
+
+**증상:** the OPS-881 sequence run as one script printed `"status": "running"` from `operate.py status`, then `release.py probe` returned 502 for all ten requests (including the allowed `identity GET`) and `services` showed `web-1 Up` for only seconds in the next check. About a minute later `status` was `done`, `probe` gave 200 for the allowed request and 403 for the nine refusals, and all four containers were up. A hand-written step that parsed `compare` output as per-table JSON also crashed (`'int' object is not subscriptable`).
+
+**사실:** `curriculum-release.py deploy` only requests the redeploy; the web container is replaced afterwards. `operate.py status` is the signal, not the end of the deploy command. `release.py compare <sha>` prints a one-line count summary and writes `qa/releases/<sha>/preservation.json` itself (`noRowLost`, per-table before/after, `keysMissing`), so the record commit needs no hand-built file. Also measured: a published unit clip is served at `/audio/<token>.mp3` as `audio/mpeg` right after the purge.
+
+**해결:** after `deploy`, loop `operate.py status` until `done` (10 s steps, 5 min cap) before `purge`, `probe` and `services`; for the record commit run `compare`, then `git add deploy/nj1/compose.yml deploy/nj1/target.json qa/releases/<sha>/preservation.json` and write compose.yml/target.json from `control.api("compose.one?composeId=…")`. Relates to OPS-881, OPS-882.
