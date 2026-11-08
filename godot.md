@@ -6304,3 +6304,14 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **사실:** the game's reported viewport and rects are the source of truth for clicks, and after several `setViewportSize` calls they can stay at the larger size for this headless setup. Reading `page.viewportSize()` does not reveal it; only the snapshot's `size` does.
 
 **해결:** after every `setViewportSize`, call `page.reload({waitUntil:'networkidle'})`, wait for the game's home screen, and wait for the data the screenshot is about (a reload shows the "not placed yet" state for a moment, so a screenshot taken straight after shows the wrong state). Take size checks in this order and finish the click-driven part last, right after a reload at the target size. Related: AGT-180 (a CDP viewport override must be reapplied in each round).
+
+
+## GDT-385 — Godot web export shows empty boxes for kanji when the UI font is Pretendard: it has no CJK ideographs, and an excluded Noto Sans KR is no fallback; add a subset Noto Sans JP as `fallbacks`
+
+`측정 2026-11-09 · Godot 4.7.2 web export · Pretendard · Brave 1.96 headless via Playwright · busan.mac`
+
+**증상:** a Japanese word card (`下手 · 서투름`) rendered the kanji as empty boxes (tofu) in the web build while Korean and Latin text were fine. The same had been true of all Japanese learning text since the UI font moved from Noto Sans KR to Pretendard; no test looked at it because tests assert text through the game's own state, not glyphs.
+
+**사실:** `pretendard.ttf` (14,336 glyphs) lacks 265 of the 935 non-ASCII characters used by the project's question banks (kanji, mostly). The old `Bold.ttf`/`Regular.ttf` (Noto Sans KR, 23,174 glyphs) cover 246 of those 265 but are in the export's `exclude_filter`, and still miss 19 Japanese-specific forms (働 内 変 寝 届 帰 戻 払 様 毎 温 緒 薬 読 辞 遅 飲 験 髪). A Godot web build has no system-font fallback. `FontFile.fallbacks` and `FontVariation.fallbacks` (set in code on the loaded font, the bold and the heading variations) fill in only missing glyphs, so Korean and Latin look unchanged.
+
+**해결:** take Noto Sans JP (OFL, `google/fonts/ofl/notosansjp/NotoSansJP[wght].ttf`, 9.6 MB), make two static instances with `fontTools.varLib.instancer` (wght 400 and 700), subset each with `fontTools.subset` to every non-ASCII character in the project's JSON text plus the kana, CJK punctuation and fullwidth blocks (1,553 characters, 360 KB per weight), commit them with the OFL text, and set `font.fallbacks=[regular]`, `bold.fallbacks=[bold]`, `heading.fallbacks=[bold]` in `_ready`. The glyphs need a render check (screenshot), not only a state check. Re-subset when new Japanese text is added to the bank.
