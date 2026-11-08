@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-08T04:09:47Z · 소스 커밋 `4f98b93` · 이 파일은 자동 생성물이다.
+생성 2026-11-08T04:43:03Z · 소스 커밋 `02ba9c4` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -24298,4 +24298,21 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** 배포 명령 여러 줄을 `ssh -A busan.mac 'zsh -l -s' < deploy.sh`로 보내면 `curriculum-release.py stage`의 마지막 출력(`Staged 2430 matching files…`) 뒤에서 아무 오류·종료 코드 없이 끝났다. 이어지는 `echo`, `deploy`, `purge.py`, 폴더 삭제가 실행되지 않았다. 명령 사이에 `echo MARK-n`을 넣어 확인했다: `MARK-1`은 찍히고 `stage` 바로 뒤 `MARK-2`는 없었다. 같은 스크립트에서 모든 명령에 `< /dev/null`을 붙이면 끝까지 실행됐다(2회). 이전 배포 2회에서는 `deploy`나 `purge` 뒤에서 끊긴 적도 있어, 삼켜지는 지점은 스크립트 길이(읽어 가는 버퍼 크기)에 따라 달라진다.
 
 **해결:** 이 방식으로 스크립트를 보낼 때는 모든 명령에 `< /dev/null`을 붙이거나, 스크립트를 파일로 복사해 `zsh -l 파일`로 실행한다. 어느 하위 프로세스(`stage` 안의 ssh/tar)가 입력을 읽는지는 특정하지 못했다. 명령 뒤에 마커를 `echo`해 두면 끊긴 위치를 바로 알 수 있다.
+
+## OPS-881 — blabla release from a fresh busan.mac clone: `build.sh` is not executable, the choice-audio cache is not in Git, `release.py stage` blocks its own `publish`, and the nj1 key is not on the controller Mac
+
+`측정 2026-11-08 · busan.mac macOS arm64 · blabla main 5b6111e · SpacetimeDB 2.8.0 module publish into the nj1 database container`
+
+**증상:** four stops, in order, on a clean `git clone` of origin/main in a new task folder:
+1. `./build.sh` → `permission denied` (the file mode in Git is 644).
+2. After `sh build.sh`: `Generate missing choice audio first: build/audio-venv/bin/python deploy/listening_audio.py generate`. The cache `build/listening-audio` lives in ignored `build/`, so a fresh clone has none.
+3. `release.py stage` ran, then `release.py publish` stopped with the dirty-source rule: `stage` rewrites `deploy/nj1/compose.yml`, and `check_artifact` fails on any change under `deploy/`. A detached `git checkout <sha>` also fails the main-branch rule (`git branch --show-current` is empty).
+4. `ssh -A busan.mac` from the controller Mac offered only `~/.ssh/mnori.pem`; `ssh -F deploy/nj1/ssh-config blabla-nj1` answered `Permission denied (publickey)` from both machines.
+
+**사실:**
+- `cp -R ~/work/<older task folder>/build/listening-audio build/` satisfies the check without Edge TTS: the manifest is keyed by source text, and curriculum units have no audio, so the key set did not change. The audio venv is not needed.
+- `deploy/nj1/curriculum-release.py stage <sha>` keeps the new compose in a private receipt (`~/work/private/releases/<sha>.json`) and leaves the working tree clean, so `release.py publish <sha>` then passes. `curriculum-release.py deploy <sha>` applies the receipt.
+- busan.mac keeps a live ssh ControlMaster to nj1 at `~/.ssh/blabla-nj1-control.sock`; `deploy/nj1/control.py` finds it with `-O check` and reuses it, so no key or `-A` is needed while it runs (`ssh -F deploy/nj1/ssh-config -S ~/.ssh/blabla-nj1-control.sock -O check blabla-nj1` prints `Master running`).
+
+**해결:** on busan.mac: `git clone`, `git checkout main` (not a sha), copy `build/listening-audio`, `sh build.sh < /dev/null`; then `release.py snapshot <sha>`, `curriculum-release.py stage <sha>`, `release.py publish <sha>`, `release.py compare <sha>`, `curriculum-release.py deploy <sha>`, `operate.py status`, `purge.py`, `release.py probe`, `release.py services`, each with `< /dev/null` (OPS-880). Afterwards write the receipt's compose into `deploy/nj1/compose.yml`, set `release` and `serverRelease` in `target.json`, commit with `qa/releases/<sha>/preservation.json` and push. Check `curl https://blabla.mnori.com/release.json` for `sourceCommit`. Related: OPS-584 (a second anonymous `spacetime publish` to the same local database answers 403; publish each test build under a new name).
 
