@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-08T01:13:20Z · 소스 커밋 `820808c` · 이 파일은 자동 생성물이다.
+생성 2026-11-08T04:09:42Z · 소스 커밋 `2d3175b` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7265,6 +7265,16 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 
 **해결:** 오디오 처리나 SDK 시작을 원인으로 추정하기 전에 빈 프로젝트, 클래스 없는 확장, 독립 최소 클래스 확장을 각각 새 프로젝트에서 비교한다. 이 측정은 해당 호스트의 headless editor import에 한정되며 내보낸 게임 실행이나 특정 엔진/godot-cpp 결함을 확정하지 않는다. 비대화형 LLDB는 `this is a non-interactive debug session, cannot get permission to debug processes.`로 실행을 거부해 symbolic root cause나 안전한 수정은 확보하지 못했다. 재현 소스·대조 결과: NO PASS GitLab commit 302d8fbb6c9fb309249d83a09b1e7b2d88ee1f64, `docs/qa/native-import-isolation-20261102/`.
 
+
+## GDT-384 — After Playwright `setViewportSize` back to a smaller size, a Godot Web page keeps its last layout: reload the page before any click that uses the game's own rects
+
+`측정 2026-11-07 · Godot 4.7.2 web export · Brave 1.96 headless (Chromium 154) via Playwright 1.58 · busan.mac`
+
+**증상:** a test took map screenshots at 390×844, 320×740 and 1440×810 on one page, then set the viewport back to 390×844 and clicked a button at the centre of the rect the game's test hook reported. The click did nothing and no error showed. The hook's snapshot still said `size: [1280, 720]` and the button rect was `[139.5, 444.4, 621, 60.75]` (the desktop layout), while `page.viewportSize()` was 390×844. The page was never looking at the point the test clicked.
+
+**사실:** the game's reported viewport and rects are the source of truth for clicks, and after several `setViewportSize` calls they can stay at the larger size for this headless setup. Reading `page.viewportSize()` does not reveal it; only the snapshot's `size` does.
+
+**해결:** after every `setViewportSize`, call `page.reload({waitUntil:'networkidle'})`, wait for the game's home screen, and wait for the data the screenshot is about (a reload shows the "not placed yet" state for a moment, so a screenshot taken straight after shows the wrong state). Take size checks in this order and finish the click-driven part last, right after a reload at the target size. Related: AGT-180 (a CDP viewport override must be reapplied in each round).
 
 ---
 
