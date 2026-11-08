@@ -13472,3 +13472,19 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 - busan.mac keeps a live ssh ControlMaster to nj1 at `~/.ssh/blabla-nj1-control.sock`; `deploy/nj1/control.py` finds it with `-O check` and reuses it, so no key or `-A` is needed while it runs (`ssh -F deploy/nj1/ssh-config -S ~/.ssh/blabla-nj1-control.sock -O check blabla-nj1` prints `Master running`).
 
 **해결:** on busan.mac: `git clone`, `git checkout main` (not a sha), copy `build/listening-audio`, `sh build.sh < /dev/null`; then `release.py snapshot <sha>`, `curriculum-release.py stage <sha>`, `release.py publish <sha>`, `release.py compare <sha>`, `curriculum-release.py deploy <sha>`, `operate.py status`, `purge.py`, `release.py probe`, `release.py services`, each with `< /dev/null` (OPS-880). Afterwards write the receipt's compose into `deploy/nj1/compose.yml`, set `release` and `serverRelease` in `target.json`, commit with `qa/releases/<sha>/preservation.json` and push. Check `curl https://blabla.mnori.com/release.json` for `sourceCommit`. Related: OPS-584 (a second anonymous `spacetime publish` to the same local database answers 403; publish each test build under a new name).
+
+
+## OPS-882 — nj1 deploy from busan.mac without the old ControlMaster: use the dedicated ssh-agent `~/.ssh/agent/nj1.sock`, and check production before deploying a commit another session may have shipped
+
+`측정 2026-11-09 · busan.mac macOS arm64 · blabla main 447fb96 · OpenSSH agent · deploy/nj1/control.py`
+
+**증상:** two stops.
+1. After the ControlMaster at `~/.ssh/blabla-nj1-control.sock` died, `ssh -F deploy/nj1/ssh-config blabla-nj1` answered `Permission denied (publickey)` from busan.mac and from the controller Mac: the controller Mac's agent had no identity (`The agent has no identities`, `ssh-add --apple-load-keychain` found none), `mnori.pem` was refused, and `ssh-add -l` against the stale default socket on busan.mac hung for over two minutes.
+2. A fresh-clone deploy script stopped at `release.py snapshot 447fb96` with `snapshot exists: 447fb96-before.json`. Another session had already deployed the same commit about ten minutes earlier.
+
+**사실:**
+- The deploy key now lives in a dedicated agent on busan.mac: socket `~/.ssh/agent/nj1.sock` (key file `~/.ssh/nj1_deploy_busan`, comment `busan-nj1-deploy-20261108`). A non-interactive `ssh busan.mac 'zsh -l'` does not have it in `SSH_AUTH_SOCK`; `export SSH_AUTH_SOCK=$HOME/.ssh/agent/nj1.sock` first, then `ssh-add -l` lists it and `ssh -F deploy/nj1/ssh-config blabla-nj1 true` prints success. `control.py` then builds its own ControlMaster from that agent; no `-A` is needed.
+- `release.py snapshot <sha>` refuses to run twice for one sha (`O_EXCL`). That refusal is the signal that the release already exists on nj1.
+- Proof that production runs a commit: `curl https://blabla.mnori.com/release.json` gives `sourceCommit`, and `serverWasmSha256` equals `shasum -a 256` of a fresh build of the same commit (measured: both `e3a48d05…`).
+
+**해결:** before building a release, fetch `release.json` and compare `sourceCommit` with `git rev-parse HEAD`. If equal, do not redeploy: run the read-only checks (`release.py compare <sha>`, `operate.py status`, `probe`, `services`) and write the record commit (compose.yml from the live Dokploy compose via `control.api("compose.one?composeId=…")`, target.json, `qa/releases/<sha>/preservation.json`). Relates to OPS-881.
