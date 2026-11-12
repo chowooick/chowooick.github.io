@@ -1,6 +1,6 @@
 # Wooick Cho — 기술 노트 (전문)
 
-생성 2026-11-12T18:05:01Z · 소스 커밋 `5117d44` · 이 파일은 자동 생성물이다.
+생성 2026-11-12T22:15:38Z · 소스 커밋 `07f4eb5` · 이 파일은 자동 생성물이다.
 원본은 개별 문서이며 이 파일을 직접 고치면 다음 빌드에 덮어써진다.
 
 조우익(Wooick Cho)이 진행하는 프로젝트들에서 실측한 사실만 모은 것.
@@ -7286,6 +7286,16 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **사실:** `pretendard.ttf` (14,336 glyphs) lacks 265 of the 935 non-ASCII characters used by the project's question banks (kanji, mostly). The old `Bold.ttf`/`Regular.ttf` (Noto Sans KR, 23,174 glyphs) cover 246 of those 265 but are in the export's `exclude_filter`, and still miss 19 Japanese-specific forms (働 内 変 寝 届 帰 戻 払 様 毎 温 緒 薬 読 辞 遅 飲 験 髪). A Godot web build has no system-font fallback. `FontFile.fallbacks` and `FontVariation.fallbacks` (set in code on the loaded font, the bold and the heading variations) fill in only missing glyphs, so Korean and Latin look unchanged.
 
 **해결:** take Noto Sans JP (OFL, `google/fonts/ofl/notosansjp/NotoSansJP[wght].ttf`, 9.6 MB), make two static instances with `fontTools.varLib.instancer` (wght 400 and 700), subset each with `fontTools.subset` to every non-ASCII character in the project's JSON text plus the kana, CJK punctuation and fullwidth blocks (1,553 characters, 360 KB per weight), commit them with the OFL text, and set `font.fallbacks=[regular]`, `bold.fallbacks=[bold]`, `heading.fallbacks=[bold]` in `_ready`. The glyphs need a render check (screenshot), not only a state check. Re-subset when new Japanese text is added to the bank.
+
+## GDT-386 — A test that clicks a Godot modal button right after opening the modal can miss: the button rect read during the open tween is not where it lands, and the click falls on the dimmed backdrop
+
+`측정 2026-11-12 · Godot 4.7.2 web export · Brave headless via Playwright · busan.mac`
+
+**증상:** a browser test clicked a card that opens a small modal, then immediately looked up the modal's "친구 초대" button by its text in the game's published button list and clicked the centre of its rect. In one of three full runs the room never opened (`Timed out: friend room`); with an 800 ms pause before the second click, every run passed. Nothing was wrong with the game.
+
+**사실:** the modal scales and fades in. The button exists, is enabled and is listed from the first frame, so a "wait until the button exists" step passes at once, but the rect it reports is the rect mid-animation. Clicking that point can land outside the button's final rect.
+
+**해결:** after an action that opens a modal or a sheet, wait for the open animation to end before clicking inside it (here 700 ms; better, publish a `modal_ready` flag when the tween finishes and wait for that). Do not treat a single timeout right after a modal opens as a product bug before re-running it.
 
 ---
 
@@ -24361,4 +24371,12 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **사실:** `curriculum-release.py deploy` only requests the redeploy; the web container is replaced afterwards. `operate.py status` is the signal, not the end of the deploy command. `release.py compare <sha>` prints a one-line count summary and writes `qa/releases/<sha>/preservation.json` itself (`noRowLost`, per-table before/after, `keysMissing`), so the record commit needs no hand-built file. Also measured: a published unit clip is served at `/audio/<token>.mp3` as `audio/mpeg` right after the purge.
 
 **해결:** after `deploy`, loop `operate.py status` until `done` (10 s steps, 5 min cap) before `purge`, `probe` and `services`; for the record commit run `compare`, then `git add deploy/nj1/compose.yml deploy/nj1/target.json qa/releases/<sha>/preservation.json` and write compose.yml/target.json from `control.api("compose.one?composeId=…")`. Relates to OPS-881, OPS-882.
+
+## OPS-884 — On busan.mac, `godot --headless --single-threaded-scene --path client --import` on a fresh clone can segfault (exit 139) and stop a `set -e` build script; copy an already imported `client/.godot` in first
+
+`측정 2026-11-12 · Godot 4.7.2 · macOS on busan.mac (jupiter.local) · blabla build.sh`
+
+**증상:** in a new working folder the import step printed `ERROR: /root: The caller thread can't call the function propagate_notification() on this node` and then `Segmentation fault: 11` at about 2 % (reimporting fonts). The export step that followed still produced a full `index.pck`, so the crash is easy to miss when the script does not stop on errors; with `set -e` (blabla `build.sh`) the build stops there.
+
+**해결:** for a release folder cloned fresh from GitLab, copy `client/.godot` from a folder where the same project already imported (and `server/target` to skip a full cargo build) before running the build; with the cache present the import step finishes. The export itself reimports anything stale, so the copied cache does not ship old assets. A listening-audio cache (`build/listening-audio`) is also required by blabla's packaging and must be copied from a folder that generated it.
 
