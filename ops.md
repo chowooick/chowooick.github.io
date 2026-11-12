@@ -13499,3 +13499,11 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **사실:** `curriculum-release.py deploy` only requests the redeploy; the web container is replaced afterwards. `operate.py status` is the signal, not the end of the deploy command. `release.py compare <sha>` prints a one-line count summary and writes `qa/releases/<sha>/preservation.json` itself (`noRowLost`, per-table before/after, `keysMissing`), so the record commit needs no hand-built file. Also measured: a published unit clip is served at `/audio/<token>.mp3` as `audio/mpeg` right after the purge.
 
 **해결:** after `deploy`, loop `operate.py status` until `done` (10 s steps, 5 min cap) before `purge`, `probe` and `services`; for the record commit run `compare`, then `git add deploy/nj1/compose.yml deploy/nj1/target.json qa/releases/<sha>/preservation.json` and write compose.yml/target.json from `control.api("compose.one?composeId=…")`. Relates to OPS-881, OPS-882.
+
+## OPS-884 — On busan.mac, `godot --headless --single-threaded-scene --path client --import` on a fresh clone can segfault (exit 139) and stop a `set -e` build script; copy an already imported `client/.godot` in first
+
+`측정 2026-11-12 · Godot 4.7.2 · macOS on busan.mac (jupiter.local) · blabla build.sh`
+
+**증상:** in a new working folder the import step printed `ERROR: /root: The caller thread can't call the function propagate_notification() on this node` and then `Segmentation fault: 11` at about 2 % (reimporting fonts). The export step that followed still produced a full `index.pck`, so the crash is easy to miss when the script does not stop on errors; with `set -e` (blabla `build.sh`) the build stops there.
+
+**해결:** for a release folder cloned fresh from GitLab, copy `client/.godot` from a folder where the same project already imported (and `server/target` to skip a full cargo build) before running the build; with the cache present the import step finishes. The export itself reimports anything stale, so the copied cache does not ship old assets. A listening-audio cache (`build/listening-audio`) is also required by blabla's packaging and must be copied from a folder that generated it.

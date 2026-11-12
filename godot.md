@@ -6315,3 +6315,13 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **사실:** `pretendard.ttf` (14,336 glyphs) lacks 265 of the 935 non-ASCII characters used by the project's question banks (kanji, mostly). The old `Bold.ttf`/`Regular.ttf` (Noto Sans KR, 23,174 glyphs) cover 246 of those 265 but are in the export's `exclude_filter`, and still miss 19 Japanese-specific forms (働 内 変 寝 届 帰 戻 払 様 毎 温 緒 薬 読 辞 遅 飲 験 髪). A Godot web build has no system-font fallback. `FontFile.fallbacks` and `FontVariation.fallbacks` (set in code on the loaded font, the bold and the heading variations) fill in only missing glyphs, so Korean and Latin look unchanged.
 
 **해결:** take Noto Sans JP (OFL, `google/fonts/ofl/notosansjp/NotoSansJP[wght].ttf`, 9.6 MB), make two static instances with `fontTools.varLib.instancer` (wght 400 and 700), subset each with `fontTools.subset` to every non-ASCII character in the project's JSON text plus the kana, CJK punctuation and fullwidth blocks (1,553 characters, 360 KB per weight), commit them with the OFL text, and set `font.fallbacks=[regular]`, `bold.fallbacks=[bold]`, `heading.fallbacks=[bold]` in `_ready`. The glyphs need a render check (screenshot), not only a state check. Re-subset when new Japanese text is added to the bank.
+
+## GDT-386 — A test that clicks a Godot modal button right after opening the modal can miss: the button rect read during the open tween is not where it lands, and the click falls on the dimmed backdrop
+
+`측정 2026-11-12 · Godot 4.7.2 web export · Brave headless via Playwright · busan.mac`
+
+**증상:** a browser test clicked a card that opens a small modal, then immediately looked up the modal's "친구 초대" button by its text in the game's published button list and clicked the centre of its rect. In one of three full runs the room never opened (`Timed out: friend room`); with an 800 ms pause before the second click, every run passed. Nothing was wrong with the game.
+
+**사실:** the modal scales and fades in. The button exists, is enabled and is listed from the first frame, so a "wait until the button exists" step passes at once, but the rect it reports is the rect mid-animation. Clicking that point can land outside the button's final rect.
+
+**해결:** after an action that opens a modal or a sheet, wait for the open animation to end before clicking inside it (here 700 ms; better, publish a `modal_ready` flag when the tween finishes and wait for that). Do not treat a single timeout right after a modal opens as a product bug before re-running it.
