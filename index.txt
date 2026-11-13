@@ -1,4 +1,4 @@
-# 사실 색인 — ID 측정일 문서 제목 (자동 생성, 소스 커밋 a7fc13b)
+# 사실 색인 — ID 측정일 문서 제목 (자동 생성, 소스 커밋 d2bc36a)
 # 제목으로 찾고 https://chowooick.github.io/<문서> 에서 '## <ID>' 절만 읽는다. llms-full.txt 전체를 받지 않는다.
 NKM-001 2026-09-06 nakama.md Go 플러그인 버전 불일치는 오류 없이 실패한다
 NKM-002 2026-09-06 nakama.md nakama-common은 서버와 버전 체계가 다르다
@@ -15,7 +15,7 @@ NKM-012 2026-09-06 nakama.md 스트림 인원 상한은 원자적으로 지킬 �
 NKM-013 2026-09-07 nakama.md 스트림 가입은 소켓 RPC 처리 중에만 된다. HTTP만 부르는 재접속 클라이언트는 스트림 밖이다
 NKM-014 2026-09-07 nakama.md presence로 "온라인"을 판정하는 지연 스윕은 재접속이 무력화한다. 스트림 재가입과 정산을 같은 경로에 두면 안 된다
 NKM-015 2026-09-07 nakama.md UNIQUE 제약을 부분 유니크 인덱스로 바꾸면 기존 `ON CONFLICT (col)`이 전부 42P10으로 죽는다. 배경 틱은 경고 한 줄만 남기고 조용히 멈춘다
-NKM-016 2026-09-07 nakama.md 멱등 래퍼 **앞**의 상태 검사는 같은 키 재시도를 다른 응답으로 만든다. 순차 재시도 테스트로는 절대 안 잡힌다
+NKM-016 2026-09-07 nakama.md (일부 정정 — 테스트 방법은 NKM-020) 멱등 래퍼 **앞**의 상태 검사는 같은 키 재시도를 다른 응답으로 만든다. 순차 재시도 테스트로는 절대 안 잡힌다
 NKM-017 2026-09-07 nakama.md Nakama가 postgres 커넥션을 다 먹으면 락 대기 0인데 지연만 4배가 된다
 NKM-018 2026-09-07 nakama.md pg_stat_statements의 mean_exec_time은 플래닝을 빼고 센다
 NKM-019 2026-09-07 nakama.md Nakama 커넥션 풀은 래칫이다: 기본값이 postgres 슬롯을 전부 먹을 수 있다
@@ -688,7 +688,7 @@ OPS-040 2026-09-07 ops.md 부하 봇이 자기 타이머를 놓치면 그 지각
 OPS-041 2026-09-07 ops.md Apple Silicon에는 열 지표가 없다: 고정 연산 시간으로 대신 잰다
 OPS-038 2026-09-08 ops.md Docker Desktop(macOS)은 루프백보다 LAN 바인딩을 늦게 연다 — `/healthcheck` 200을 믿고 다른 기계에서 접속하면 5초를 진다
 OPS-039 2026-09-08 ops.md macOS에서 창 모드 GPU 앱을 ssh로 띄울 수 있다 — ssh 사용자가 콘솔 사용자와 같으면 `launchctl asuser`가 필요 없다
-OPS-042 2026-09-08 ops.md 단일 프로세스 asyncio 부하 봇은 CPU 42%에서 이미 포화다. 인터프리터를 올려도 안 풀린다
+OPS-042 2026-09-08 ops.md (대부분 OPS-047에 포함) 단일 프로세스 asyncio 부하 봇은 CPU 42%에서 이미 포화다. 인터프리터를 올려도 안 풀린다
 OPS-043 2026-09-08 ops.md `exec > >(tee ...)` makes a bare `wait` hang forever on bash 5.2
 OPS-044 2026-09-08 ops.md `ssh` reports a signal-killed remote command as exit 255, with no message
 OPS-045 2026-09-08 ops.md uv가 관리하는 파이썬에는 pip install이 거부된다
