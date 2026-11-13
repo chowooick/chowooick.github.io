@@ -2758,6 +2758,8 @@ new poses, for example arms aimed along a model-space direction with
 
 ## GDT-128 — Depth-of-field substitute in `gl_compatibility`: `hint_screen_texture, filter_linear_mipmap` + `textureLod` gives a real mip blur, native and in the Web export
 
+> **같은 기법의 다른 실측 (2026-11-12):** 일시정지 화면 프로스트 블러는 GDT-130.
+
 `측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility · Apple M1 Max (native) and Chrome 1243 WebGL2 (Web export)`
 
 **증상:** GDT-015 lists DOF blur as unsupported in Compatibility (the warning is printed and the image is unchanged), so a tilt-shift "miniature" look seems out of reach without Forward+.
@@ -2808,6 +2810,8 @@ Then `fetch http://127.0.0.1:<port>/json/list`, open the page's `webSocketDebugg
 **해결:** keep a ~100-line CDP script in the repo (here `tests/web_smoke.mjs`): it collects console errors, waits for the loading element to disappear and saves screenshots, and exits non-zero on errors. Serve the export with a server that sends `application/wasm` for `.wasm` (Python 3.9's `http.server` needs an explicit `extensions_map` entry). Related: GDT-086, AGT-069, AGT-070.
 
 ## GDT-130 — In `gl_compatibility`, `hint_screen_texture, filter_linear_mipmap` + `textureLod()` gives a one-pass frosted blur
+
+> **같은 기법의 다른 실측 (2026-11-12):** 틸트시프트·DOF 대체는 GDT-128.
 
 `측정 2026-09-27 · Godot 4.7.2-stable · gl_compatibility (OpenGL 4.1 Metal, M1 Max) · windowed`
 
