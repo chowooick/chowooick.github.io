@@ -6325,3 +6325,13 @@ delta smoothing or a hit-stop does. Keep the delta sum for things that should sl
 **사실:** the modal scales and fades in. The button exists, is enabled and is listed from the first frame, so a "wait until the button exists" step passes at once, but the rect it reports is the rect mid-animation. Clicking that point can land outside the button's final rect.
 
 **해결:** after an action that opens a modal or a sheet, wait for the open animation to end before clicking inside it (here 700 ms; better, publish a `modal_ready` flag when the tween finishes and wait for that). Do not treat a single timeout right after a modal opens as a product bug before re-running it.
+
+## GDT-387 — Leaving a match right after asking to start one: the room's subscription rows (even the new room itself) arrive after leaving and a "finished → show result" handler pulls the player off the home screen
+
+`측정 2026-11-12 · Godot 4.7.2 web export · SpacetimeDB 2.8.0 · Brave headless via Playwright · busan.mac`
+
+**증상:** a browser test started a CPU fight and immediately left with the game's "back to home" action. In 3 of 6 runs the home appeared, then the result screen replaced it. A first fix (ignore states whose room code equals the code we left) changed nothing.
+
+**사실:** a log at the moment of leaving showed both the client's current state and the network layer's room code still empty. The start reducer had not come back yet, so the client did not know the room it was leaving. The server created the room, applied the leave and expired it, and the client received `playing` → `expired` for a room it had never seen. Its handler showed the result for any `finished`/`expired` row of the player's room. The race is wider when the screen just built something heavy (here a 3D world), so it showed up more in full-size runs than with `SKIP_SIZES`.
+
+**해결:** remember the time of leaving, and for a few seconds (6 s here) drop room rows unless the player is again on a waiting or fight screen (a new start shows the waiting screen before any row arrives). Do not key the guard on the room code: the code may not be known yet. Check by logging the client's own state at the moment of leaving, not the test's socket mirror, which had already seen `playing`.
