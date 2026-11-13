@@ -2919,6 +2919,8 @@ then `git remote add origin git@gitlab.com:<ns>/<name>.git && git push -u origin
 `glab repo create --private --defaultBranch main` with no name argument from inside the repo names the project after the
 top-level directory and adds `origin` to the current repo. That path was read in the source, not run.
 
+**Merged (2026-11-12, from OPS-172):** the stray `./<name>/` is untracked, so a later `git add -A` adds it as an embedded repository. Check visibility with `glab api projects/<ns>%2F<name>`.
+
 ## OPS-130 — 외교부 재외공관 사이트(overseas.mofa.go.kr)는 붐비면 모든 주소에 F5 대기실 페이지를 HTTP 200으로 준다. RSS 파서는 이것을 DOCTYPE 오류로 보고한다
 
 `측정 2026-09-27 · overseas.mofa.go.kr 공관 RSS(rss.do?brdId=…) · 가정 회선과 Cloudflare Workers 발신 양쪽`
@@ -3873,7 +3875,7 @@ from then on IPv4 loopback traffic went to Node, not to the other project's Naka
 projects run in Docker (7350 for Nakama) and pick from the OPS-006 slots instead, printing the chosen address so
 clients can be pointed at it.
 
-## OPS-172 — `glab repo create <name>` inside an existing Git repository creates an empty nested clone `./<name>/` and does not add `origin` to the current repository
+## OPS-172 — (무효 — OPS-129와 중복) `glab repo create <name>` inside an existing Git repository creates an empty nested clone `./<name>/` and does not add `origin` to the current repository
 
 `측정 2026-09-27 · glab 1.82.0 · gitlab.com`
 
@@ -4481,7 +4483,7 @@ text is only in the log (`~/Library/Preferences/.wrangler/logs/`), not on stdout
 it was created. Do not re-login or rotate tokens over a single failure. Right after a create, see OPS-201 before the
 first `migrations apply --remote`.
 
-## OPS-203 — PocketBase JSVM migration: collection rules are Go `*string` (`typeof` "object"), and a migration that throws takes the server down in a restart loop
+## OPS-203 — (무효 — OPS-205와 중복) PocketBase JSVM migration: collection rules are Go `*string` (`typeof` "object"), and a migration that throws takes the server down in a restart loop
 
 `측정 2026-09-29 · PocketBase 0.40.4, systemd `Restart=always`, migrations applied at `serve` start`
 
@@ -4535,6 +4537,8 @@ boxed value, which is why older migrations that call `rule.replace(…)` directl
 **해결:** check `v === null || v === undefined`, then use `'' + v`. Run a rule-rewriting migration first with
 `pocketbase migrate up --dir=<copy of pb_data> --migrationsDir=<dir with only that file>` against a `sqlite3 .backup` copy;
 only then drop it into the live `pb_migrations` and restart.
+
+**Merged (2026-11-12, from OPS-203):** if a live start fails, move the migration file out of `pb_migrations` first; that restores service. The failed migration rolls back, so nothing is half-applied.
 
 ## OPS-206 — Google Fonts CSS2: listing weights (`wght@400;500;600;700;800`) returns 5× the `@font-face` blocks of a range (`wght@400..800`) for the same font files
 
@@ -5031,7 +5035,7 @@ visible on the site.
 
 ---
 
-## OPS-231 — Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
+## OPS-231 — (일부 대체 — 멀티터치는 GDT-210) Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
 
 `측정 2026-09-29 · Pixel 7 Pro (Android 17, not rooted) · adb over USB`
 
@@ -5312,6 +5316,8 @@ Godot writes `<asset>.import` (and `<script>.gd.uid`) next to the source files, 
 **해결:** after the first import on the test host, copy the generated files back and commit them: `rsync -az --include='*/' --include='*.import' --include='*.uid' --exclude='*' host:project/godot/ godot/`. Or re-run `--import` after every sync. The same applies to any generator that writes beside its sources.
 
 **Follow-up (2026-10-09, Godot 4.7.2):** a third way that needs no copy-back: protect the host's generated files from `--delete` with rsync filters, `rsync -az --delete --filter='P *.import' --filter='P *.uid' ./ host:copy/`. The host keeps its own sidecars across syncs; sidecars that exist on the dev machine are still sent. A different message for the same cause: a font loaded with `load()` returned `null`, and the first use printed `Invalid assignment of property or key 'fallbacks' with value of type 'Array[Font]' on a base object of type 'null instance'`. Also exclude the folders a running test writes into (`--exclude=/shots`), or `--delete` removes its captures mid-run.
+
+**Merged (2026-11-12, from OPS-389, rsync 3.x):** the same failure can look like an import crash because the import log ends mid-way. When copying sidecars back, add `--ignore-existing`.
 
 ## OPS-248 — zsh: a glob with no match aborts the whole command line, so `rm -f /tmp/x-*.log; nohup …` starts nothing
 
@@ -5615,7 +5621,7 @@ The 522s were on the origin's side: the same URLs answered 200 from home, from A
 
 **해결:** count subrequests yourself and stop optional work at a reserve kept for the closing writes. After N connection failures to an origin (errors, timeouts, HTTP 52x), skip that origin for the rest of the invocation. Treat a scheduled delivery whose same-slot run started more than about 60 s ago as a redelivery and take that run over. At the start of each run, close older records left `running`. Workers Paid raises the limit to 10,000. Moving the job to a host that is not limited per invocation also avoids it; Workers AI can stay behind a small token-protected relay endpoint on the Worker, one model call per request.
 
-## OPS-264 — Homebrew `codex` 0.154.0 fails every `codex exec` with "model is not supported when using Codex with a ChatGPT account" after the config default moves to a newer model; the ChatGPT app's bundled CLI works
+## OPS-264 — (일부 대체 — codex 0.162부터는 OPS-387) Homebrew `codex` 0.154.0 fails every `codex exec` with "model is not supported when using Codex with a ChatGPT account" after the config default moves to a newer model; the ChatGPT app's bundled CLI works
 
 `측정 2026-10-02 · codex-cli 0.154.0 (/opt/homebrew/bin/codex) · codex-cli 0.159.2 (ChatGPT.app) · ~/.codex/config.toml model = "gpt-6-sol"`
 
@@ -5887,7 +5893,7 @@ state and `Input.dispatchTouchEvent` (`touchStart` then `touchEnd`) to tap. Use 
 the WebView for system bars (edge to edge on Android 15+), because the WebView no longer starts at screen y = 0.
 Find the socket name with `adb shell cat /proc/net/unix | grep webview_devtools_remote`.
 
-## OPS-289 — wrangler OAuth 토큰으로 Cloudflare REST API를 직접 부르면 `10000 Authentication error`가 난다. `wrangler whoami`를 한 번 돌리면 풀린다
+## OPS-289 — (대체 — 토큰은 OPS-293의 `wrangler auth token`) wrangler OAuth 토큰으로 Cloudflare REST API를 직접 부르면 `10000 Authentication error`가 난다. `wrangler whoami`를 한 번 돌리면 풀린다
 
 `측정 2026-10-03 · wrangler 4.125 · macOS · ~/Library/Preferences/.wrangler/config/default.toml`
 
@@ -7502,7 +7508,7 @@ After a `brew upgrade` to 0.162.0, the Homebrew binary follows the config's curr
 1. Put the position in the character paragraph as a fraction of the image height ("the belt at three quarters of the image height") when the crop must show it; the third generation then kept the belt above row 1280.
 2. Inside the mask's soft edge, compute alpha from the colour distance to the flat grey background and project the pixel to the nearest solid foreground colour, then remove grey pockets enclosed between wires and the outermost 1-px blended ring. Light details not connected to the outer background (studs, highlights) survive.
 
-## OPS-389 — `rsync --delete` to a test host's Godot copy deletes the `.import` and `.uid` files Godot wrote there: new fonts then fail with "has no resource loaders"
+## OPS-389 — (무효 — OPS-247과 중복) `rsync --delete` to a test host's Godot copy deletes the `.import` and `.uid` files Godot wrote there: new fonts then fail with "has no resource loaders"
 
 `측정 2026-10-10 · rsync 3.x · Godot 4.7.2 · macOS 27 (MacBook Air M1 test host)`
 
@@ -8284,7 +8290,7 @@ A same-document `history.pushState({...}, '')` made by the page (on leaving its 
 
 **해결:** give the page one pushed entry above its root screen and handle `popstate` in JS; no native change is needed for a "Back returns to the title, then exits" flow. Track whether this page load pushed the entry (a flag, not `history.state`, which survives reloads): calling `history.back()` to return to the root when nothing was pushed leaves the site.
 
-## OPS-445 — `codex exec` research run: the model listed sources it never opened in this run, even when told only opened pages count; check the `web_search` record, not the answer
+## OPS-445 — (무효 — 진짜 원인은 OPS-446) `codex exec` research run: the model listed sources it never opened in this run, even when told only opened pages count; check the `web_search` record, not the answer
 
 > **무효 (2026-10-16):** the diagnosis below is most likely wrong. Codex records a page such as `quran.com/36:14/…` as `quran.com/36%3A14/…`, and the runner compared exact strings, so pages the run did open looked unopened. See OPS-446. The advice to check the record still holds; compare URLs in a canonical form.
 
@@ -9472,7 +9478,7 @@ bundled into it.
 
 ---
 
-## OPS-528 — Cloudflare stopped account creation after three additional Free accounts (docs say five): 422 「생성할 수 있는 계정 수의 한도에 도달했습니다」
+## OPS-528 — (일부 대체 — 실제 한도는 다섯 개, OPS-650) Cloudflare stopped account creation after three additional Free accounts (docs say five): 422 「생성할 수 있는 계정 수의 한도에 도달했습니다」
 
 `측정 2026-10-19 · dash.cloudflare.com (ko UI), account switcher → 「+ 계정 만들기」 · one login with four accounts`
 
@@ -11826,7 +11832,7 @@ Sending `{"OneOffQuery":{"message_id":[1],"query_string":"SELECT * FROM progress
 
 **해결:** generate a fresh local-only fixture session with both expiry layers. For a controlled synthetic token against a local HTTP stand-in, renew its claims before sealing the outer cookie; explicitly restrict cookie domains to localhost/127.0.0.1. Never rewrite a real signed PocketBase JWT: obtain a fresh token from its local test database instead. Assert a non-empty rendered member id or the authenticated board state before testing member mutations; HTTP 200 on the protected shell alone does not prove that the inner member identity is valid.
 
-## OPS-719 — macOS Python 3.9.6 rejected a valid UTF-8 script until an encoding header was added
+## OPS-719 — (무효 — OPS-872와 중복) macOS Python 3.9.6 rejected a valid UTF-8 script until an encoding header was added
 
 `측정 2026-10-28 · busan.mac · Python 3.9.6`
 
@@ -12558,6 +12564,8 @@ A four-line reproduction on the designated test host printed Node `v26.12.1`, th
 
 **해결:** 각 QA nodejs 호출에서 device metrics를 다시 적용하고, 창 크기뿐 아니라 Godot `canvas.width`가 의도한 목표값에 도달할 때까지 기다린 뒤 같은 호출 안에서 캡처한다. 이 측정의 캡처 조건은 `innerWidth=1440`과 `canvas.width=1440`이었다. 이전 호출의 설정 성공이나 창 크기 한 값만으로 렌더 크기 검증을 대신하지 않는다.
 
+**합침 (2026-11-12, OPS-873에서):** 390×844와 1440×1060 지정도 다음 라운드에 918×962로 돌아왔고, Page와 탭 내용은 유지됐다(2026-11-05). 320px 검사도 같은 방식으로 한 호출 안에서 했다.
+
 ## OPS-789 — Git 임시 bare 저장소 삭제 ENOTEMPTY는 산출물 쓰기 성공과 별개로 추적해야 한다
 
 `측정 2026-10-31 · macOS · Git 2.54.0 (Apple Git-157) · Node.js 26.12.1`
@@ -13168,7 +13176,7 @@ account the job should spend. If they differ, stop and ask the owner, or switch 
 **해결:** 다른 빌드가 돌고 있지 않은지 먼저 확인하고 `container builder stop`을 실행한다(상태 `stopped`). 그러면 다음 `container build --cpus 4 --memory 4G`가 builder를 새로 띄우고, 이미지 빌드와 `container image save`, Skopeo 변환까지 끝난다. 다른 세션이 builder를 쓰는 중이면 멈추지 말고, 잡 전용 BuildKit VM을 띄운다(OPS-798).
 
 
-## OPS-847 — busan.mac의 GitLab 전용 deploy key가 전달된 사용자 키보다 먼저 선택됐다
+## OPS-847 — (무효 — OPS-878과 중복) busan.mac의 GitLab 전용 deploy key가 전달된 사용자 키보다 먼저 선택됐다
 
 `측정 2026-11-02 · OpenSSH / GitLab.com · busan.mac`
 
@@ -13388,8 +13396,10 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 
 **해결:** 첫 행에 `# -*- coding: utf-8 -*-`를 명시하니 같은 스크립트가 실행되어 451,646바이트 HTML을 생성했다. 해당 첫 행만 제거한 사본을 같은 sys.executable로 subprocess 실행하면 동일 오류(exit 1)가 다시 발생했다. 파일 전체를 다른 인코딩으로 바꾸거나 한국어를 손실 변환하지 않는다. 이 관측은 해당 Python 3.9.6과 장문 소스에 한정하며 모든 버전 또는 특정 줄 길이의 보편적 한계로 단정하지 않는다.
 
+**합침 (2026-11-12, OPS-719에서):** 40,912바이트 스크립트 83행(`'\xec'`)에서도 같은 오류가 났고 같은 헤더로 풀렸다(2026-10-28).
 
-## OPS-873 — Ego Lite의 CDP 화면 크기는 다음 nodejs 라운드에 유지되지 않았다
+
+## OPS-873 — (무효 — OPS-788과 중복) Ego Lite의 CDP 화면 크기는 다음 nodejs 라운드에 유지되지 않았다
 
 `측정 2026-11-05 (KST 11-06) · Ego Lite macOS · ego-browser skill v2.2.0 · busan.mac`
 
@@ -13439,6 +13449,8 @@ user 메시지의 `content` 배열에 `{type:'image_url', image_url:{url:'data:i
 **증상:** `ssh busan.mac 'git clone git@gitlab.com:chowooick/blabla.git …'`이 `remote: ERROR: The project you were looking for could not be found or you don't have permission to view it.`로 끝났다. 같은 호스트에서 `ssh -T git@gitlab.com`은 `Welcome to GitLab, @chowooick!`를 돌려줘 인증은 된 것처럼 보였다. `~/.ssh/config`의 `Host gitlab.com`이 `IdentityFile ~/.ssh/gitlab_kyomincenter_deploy` + `IdentitiesOnly yes`로 고정돼 있어 그 키가 다른 프로젝트 전용이었다. 호스트의 키 3개(`id_ed25519_verif`, `gitlab_joker_deploy`, `gitlab_kyomincenter_deploy`)는 모두 이 저장소를 읽지 못했다. 메시지가 `Permission denied (publickey)`가 아니라 "project not found"인 점이 OPS-671과 다르다.
 
 **해결:** 컨트롤러 Mac의 에이전트를 전달하고 호스트의 ssh config를 우회한다: `ssh -A busan.mac`으로 접속해 `GIT_SSH_COMMAND="ssh -F /dev/null -o BatchMode=yes"`를 export한 뒤 git을 실행한다. 이렇게 `git ls-remote origin main`이 읽혔고 `build.sh` 안의 `git fetch`(릴리스 가드)도 통과했다. 키 파일을 호스트에 복사하지 않는다. 막히면 키를 하나씩 돌려 보기 전에 OPS-671을 먼저 grep한다.
+
+**합침 (2026-11-12, OPS-847에서):** `-o IdentityFile=none`만으로는 설정의 키 선택을 막지 못했다. 우회를 명령 하나로 좁히려면 `git -c core.sshCommand="ssh -F /dev/null" …`을 쓴다(2026-11-02, 다른 저장소 fetch·push 성공).
 
 ## OPS-879 — Cloudflare 캐시를 호스트 단위로 퍼지하려면 `{"hosts":["<호스트>"]}`를 쓴다: URL 목록이 없어도 되고 같은 zone의 다른 사이트는 건드리지 않는다
 

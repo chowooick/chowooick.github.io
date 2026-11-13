@@ -305,7 +305,7 @@ WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX")" && pwd -P)"
 
 ---
 
-## GDT-018 — `gui/theme/default_font_size`는 Godot 4에 없다. 써도 조용히 무시된다
+## GDT-018 — (무효 — GDT-064와 중복) `gui/theme/default_font_size`는 Godot 4에 없다. 써도 조용히 무시된다
 
 `측정 2026-09-06 · Godot 4.7.2`
 
@@ -1289,6 +1289,8 @@ func _init() -> void:
 읽는 쪽(`ThemeDB`·`ProjectSettings`)을 직접 찍어 확인한다 — export 결과물에 값이 박혀 있다는 사실이
 엔진이 그 값을 실제로 쓴다는 증거는 아니다.
 
+**합침 (2026-11-12, GDT-018에서):** 폰트만 따로 키우려면 `Theme` 리소스를 만들어 `gui/theme/custom`에 물린다. 엔진에 실제로 있는 키 목록은 `strings <Godot 바이너리> | grep -x 'gui/theme/[a-z_/]*'`로 본다.
+
 ## GDT-065 — (무효 — 전제가 틀렸다) `adb`로 화면을 못 돌린다고 봤던 원인은 사실 GDT-066이다
 
 `측정 2026-09-14 · Godot 4.7.2-stable, Android 17(Pixel 7 Pro)`
@@ -1548,7 +1550,7 @@ T-110).
 
 ---
 
-## GDT-072 — `gradle_build/use_gradle_build=true`로 전환해도 Android `screenOrientation`은 여전히 project.godot과 무관하다 — GDT-066의 "진짜 해결" 가설은 틀렸다
+## GDT-072 — (무효 — GDT-080·GDT-238이 반증) `gradle_build/use_gradle_build=true`로 전환해도 Android `screenOrientation`은 여전히 project.godot과 무관하다 — GDT-066의 "진짜 해결" 가설은 틀렸다
 
 `측정 2026-09-14 · Godot 4.7.2-stable, Android(gradle custom build)`
 

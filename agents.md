@@ -1929,7 +1929,7 @@ take, splice in the other half from another take at matched speech loudness (12 
 
 With Supertonic-synthesized test sentences: correct sentences scored 88-100; "rum" for "room" 1-6, "frog" for "front" 21-27, "cat" for "car" 0; an unrelated word gave 0 on every word. About 0.06 s per sentence on an M1 including the model run. Leave digits unscored: the model writes spoken numbers as Chinese numerals (`二百零`) as often as English words.
 
-## AGT-094 — The Busan llama-server (EXAONE 4.0 32B, no `--jinja`) drops the system message and ignores `json_object`; put instructions in the user turn and send a `json_schema`
+## AGT-094 — (일부 대체 — 원인 정정은 AGT-096) The Busan llama-server (EXAONE 4.0 32B, no `--jinja`) drops the system message and ignores `json_object`; put instructions in the user turn and send a `json_schema`
 
 `측정 2026-10-04 · llama.cpp b10766 · EXAONE-4.0-32B-Q4_K_M · busan.mac 192.168.139.3:8081 (--parallel 2 --cache-reuse 256, no --jinja) · Speak Out`
 

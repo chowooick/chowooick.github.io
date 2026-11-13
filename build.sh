@@ -91,7 +91,7 @@ for f in docs:
     text = open(f, encoding="utf-8").read()
     for part in re.split(r"(?m)^(?=## [A-Z]{3}-\d{3}\b)", text)[1:]:
         m = re.match(r"## ([A-Z]{3}-\d{3})\b ?—? ?(.*)", part)
-        d = re.search(r"`측정 (\d{4}-\d{2}-\d{2})", part)
+        d = re.search(r"`(?:측정|measured) (\d{4}-\d{2}-\d{2})", part)
         rows.append(f"{m.group(1)} {d.group(1) if d else '----------'} {f} {m.group(2).strip()}")
 print("# 사실 색인 — ID 측정일 문서 제목 (자동 생성, 소스 커밋 %s)" % commit)
 print("# 제목으로 찾고 https://chowooick.github.io/<문서> 에서 '## <ID>' 절만 읽는다. llms-full.txt 전체를 받지 않는다.")
