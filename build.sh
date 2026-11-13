@@ -80,6 +80,24 @@ PY
   done
 } > "$OUT"
 
+# index.txt — 사실마다 한 줄(ID · 측정일 · 문서 · 제목). 전문을 받지 않고 제목으로 찾은 뒤
+# 개별 문서에서 그 ID 절만 읽게 하려는 색인이다. 자동 생성물이므로 손으로 고치지 않는다.
+python3 - "$COMMIT" "${DOCS[@]}" > index.txt <<'PY'
+import re, sys
+
+commit, docs = sys.argv[1], sys.argv[2:]
+rows = []
+for f in docs:
+    text = open(f, encoding="utf-8").read()
+    for part in re.split(r"(?m)^(?=## [A-Z]{3}-\d{3}\b)", text)[1:]:
+        m = re.match(r"## ([A-Z]{3}-\d{3})\b ?—? ?(.*)", part)
+        d = re.search(r"`측정 (\d{4}-\d{2}-\d{2})", part)
+        rows.append(f"{m.group(1)} {d.group(1) if d else '----------'} {f} {m.group(2).strip()}")
+print("# 사실 색인 — ID 측정일 문서 제목 (자동 생성, 소스 커밋 %s)" % commit)
+print("# 제목으로 찾고 https://chowooick.github.io/<문서> 에서 '## <ID>' 절만 읽는다. llms-full.txt 전체를 받지 않는다.")
+print("\n".join(rows))
+PY
+
 n=$(grep -cE '^## [A-Z]{3}-[0-9]{3} ' "${DOCS[@]}" | awk -F: '{s+=$2} END{print s}')
 echo "생성: $OUT ($(wc -c < "$OUT" | tr -d ' ')B, 사실 ${n}건, 커밋 $COMMIT)"
 

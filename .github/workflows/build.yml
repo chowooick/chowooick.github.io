@@ -39,12 +39,12 @@ jobs:
             git fetch origin main
             git checkout -B main origin/main
             ./build.sh
-            if git diff --quiet nakama.md godot.md agents.md ops.md llms-full.txt; then
+            if git diff --quiet nakama.md godot.md agents.md ops.md llms-full.txt index.txt; then
               echo "변경 없음"
               exit 0
             fi
-            git add nakama.md godot.md agents.md ops.md llms-full.txt
-            git commit -m "build: llms-full.txt 재생성 (ID 중복은 자동 재번호) [skip ci]"
+            git add nakama.md godot.md agents.md ops.md llms-full.txt index.txt
+            git commit -m "build: llms-full.txt·index.txt 재생성 (ID 중복은 자동 재번호) [skip ci]"
             if git push origin main; then
               echo "푸시 성공 (시도 ${attempt})"
               exit 0
