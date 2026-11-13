@@ -1,4 +1,4 @@
-# 사실 색인 — ID 측정일 문서 제목 (자동 생성, 소스 커밋 e7416ea)
+# 사실 색인 — ID 측정일 문서 제목 (자동 생성, 소스 커밋 a7fc13b)
 # 제목으로 찾고 https://chowooick.github.io/<문서> 에서 '## <ID>' 절만 읽는다. llms-full.txt 전체를 받지 않는다.
 NKM-001 2026-09-06 nakama.md Go 플러그인 버전 불일치는 오류 없이 실패한다
 NKM-002 2026-09-06 nakama.md nakama-common은 서버와 버전 체계가 다르다
@@ -60,7 +60,7 @@ GDT-014 2026-09-06 godot.md Godot 4.7.2에서 FCM 푸시는 된다. 자체 Kotli
 GDT-015 2026-09-06 godot.md `gl_compatibility`에서 되는 것과 안 되는 것 (실측표)
 GDT-016 2026-09-06 godot.md `user://` 경로에 슬래시가 겹치면 GLES3 셰이더 캐시가 실패한다
 GDT-017 2026-09-06 godot.md `--quit-after`는 초가 아니라 프레임이고, 가려진 창은 스로틀된다
-GDT-018 2026-09-06 godot.md `gui/theme/default_font_size`는 Godot 4에 없다. 써도 조용히 무시된다
+GDT-018 2026-09-06 godot.md (무효 — GDT-064와 중복) `gui/theme/default_font_size`는 Godot 4에 없다. 써도 조용히 무시된다
 GDT-019 2026-09-06 godot.md `display/window/handheld/orientation`은 문자열이 아니라 정수다
 GDT-020 2026-09-06 godot.md Android 익스포트가 자기 출력을 리소스로 다시 담아, 8번째 실행에서 죽는다
 GDT-021 2026-09-06 godot.md ScrollContainer의 가로 스크롤을 끄면 컨테이너가 자식 크기로 커진다
@@ -112,7 +112,7 @@ GDT-068 2026-09-14 godot.md `DisplayServer.get_display_safe_area()`는 데스크
 GDT-069 2026-09-14 godot.md macOS export의 `codesign/codesign=0`(무서명)이 "손상됨" 원인이었다. zip 왕복 자체는 서명을 안 깨뜨린다
 GDT-070 2026-09-14 godot.md `Label3D.fixed_size=true`는 화면 픽셀 크기 하한 테스트를 가능하게 하지만, 먼 거리에서 "하늘에 붕 뜬 거대한 글자"로 보이는 대가가 있다
 GDT-071 2026-09-14 godot.md 헤드리스 `godot --install-android-build-template`을 단독 호출하면 CPU를 거의 안 쓰며 영원히 멈춘다. export 플래그와 같은 호출에 묶으면 10초 안에 끝난다
-GDT-072 2026-09-14 godot.md `gradle_build/use_gradle_build=true`로 전환해도 Android `screenOrientation`은 여전히 project.godot과 무관하다 — GDT-066의 "진짜 해결" 가설은 틀렸다
+GDT-072 2026-09-14 godot.md (무효 — GDT-080·GDT-238이 반증) `gradle_build/use_gradle_build=true`로 전환해도 Android `screenOrientation`은 여전히 project.godot과 무관하다 — GDT-066의 "진짜 해결" 가설은 틀렸다
 GDT-073 2026-09-14 godot.md `Label3D.get_aabb()`와 `Camera3D.unproject_position()`은 `--headless`에서도 실제 값을 준다 — `fixed_size` 없이 3D 라벨의 화면 겹침을 유닛 테스트로 고정할 수 있다
 GDT-075 2026-09-14 godot.md `export_presets.cfg`에 `#` 주석을 넣으면 바로 뒤의 키가 조용히 무시된다
 GDT-076 2026-09-14 godot.md LiveKit Android SDK는 jitpack에만 있는 전이 의존성을 끌고 온다. Godot 플러그인은 `.gdap`에도 저장소를 적어야 한다
@@ -197,8 +197,8 @@ GDT-154 2026-09-27 godot.md `HFlowContainer` and autowrapping `Label` report the
 GDT-155 2026-09-27 godot.md A Godot 4.7 `.pck` (pack format 4) can be listed in 30 lines of Python; in one Web export imported textures were 24.1 of 28.5 MB, 1.66× their WebP sources
 GDT-156 2026-09-27 godot.md Web export: a focused `LineEdit` takes text through a hidden `div.ime`. IME composition reaches it, but Playwright's `keyboard.type('한글')` and `insertText()` never do
 GDT-157 2026-09-27 godot.md `ext_resource`에 `uid=`가 없는 손으로 쓴 `.tscn`은 Web 빌드 콘솔에 invalid UID 경고를 매 부팅 찍는다
-GDT-158 ---------- godot.md A method Callable does not keep its RefCounted alive: `Obj.new().method` is invalid before it is called, and code that falls back on `is_valid()` silently changes behaviour
-GDT-159 ---------- godot.md JSON cannot carry a float exactly in Godot: `stringify` rounds to ~15 digits, and even `full_precision=true` does not survive `parse_string`
+GDT-158 2026-09-27 godot.md A method Callable does not keep its RefCounted alive: `Obj.new().method` is invalid before it is called, and code that falls back on `is_valid()` silently changes behaviour
+GDT-159 2026-09-27 godot.md JSON cannot carry a float exactly in Godot: `stringify` rounds to ~15 digits, and even `full_precision=true` does not survive `parse_string`
 GDT-160 2026-09-27 godot.md A Godot web export refuses to start on any `http://` origin but localhost, even single-threaded: `getMissingFeatures()` requires a Secure Context unconditionally
 GDT-161 2026-09-27 godot.md Compatibility renderer: unshadowed `OmniLight3D`/`SpotLight3D` add no draw calls; six shadowed spots added 5
 GDT-162 2026-09-27 godot.md Web export: `RenderingServer.render_loop_enabled = false` stops WebGL work completely (0 draw calls in 1.2 s) for a 3D iframe hidden behind an HTML UI
@@ -491,7 +491,7 @@ AGT-061 2026-09-27 agents.md zsh에서 `for path in …`은 PATH를 덮어쓴다
 AGT-062 2026-09-27 agents.md gstack browse `js`는 Promise를 기다리지 않는다. 비동기 결과는 `window`에 넣고 다음 호출에서 읽는다
 AGT-063 2026-09-27 agents.md gstack browse headed 데몬은 테스트 도중 조용히 headless로 다시 뜬다. 로그인과 페이지에서 보낸 긴 요청이 함께 사라진다
 AGT-064 2026-09-27 agents.md WebSearch's 200-call cap is shared by the whole session, subagents included: parallel research agents run dry mid-task
-AGT-065 ---------- agents.md The account usage limit kills every running workflow agent at the same instant, and the script then launches its downstream agents into the same wall
+AGT-065 2026-09-27 agents.md The account usage limit kills every running workflow agent at the same instant, and the script then launches its downstream agents into the same wall
 AGT-066 2026-09-27 agents.md A "wait until the other agents stop editing" watcher built on `ls --full-time` never sees a change on macOS: BSD `ls` rejects the flag and the hash is of empty output
 AGT-067 2026-09-27 agents.md Pace parallel subagents from the VS Code usage tracker's cache, not the rate-limited API; a stopped `Agent` subagent resumes with `SendMessage`
 AGT-068 2026-09-27 agents.md Format-character escapes such as `\u200b` and `\u202e` written with the Write tool can land as the real invisible characters, and the AGT-057 `[[:cntrl:]]` check does not see them
@@ -519,7 +519,7 @@ AGT-090 2026-10-04 agents.md Qwen3-Omni as an audio judge: it infers gender from
 AGT-091 2026-10-04 agents.md Qwen3-TTS Base voice cloning: the reference transcript's last word leaks into every take
 AGT-092 2026-10-04 agents.md Synthetic speech that a listener calls "robotic" passes every automatic judge; long pauses at full stops are one measurable cause
 AGT-093 2026-10-04 agents.md Word-level pronunciation scores from SenseVoice: sherpa-onnx gives no token probabilities, so run the ONNX file yourself and force-align the reference to its CTC posteriors
-AGT-094 2026-10-04 agents.md The Busan llama-server (EXAONE 4.0 32B, no `--jinja`) drops the system message and ignores `json_object`; put instructions in the user turn and send a `json_schema`
+AGT-094 2026-10-04 agents.md (일부 대체 — 원인 정정은 AGT-096) The Busan llama-server (EXAONE 4.0 32B, no `--jinja`) drops the system message and ignores `json_object`; put instructions in the user turn and send a `json_schema`
 AGT-095 2026-10-04 agents.md `codex exec --full-auto` is rejected by codex-cli 0.154 ("unexpected argument '--full-auto'"); use `-s workspace-write`
 AGT-096 2026-10-05 agents.md llama.cpp drops the EXAONE 4.0 system message because of `{%- continue %}` in the GGUF template; load a copy without it via `--chat-template-file`
 AGT-097 2026-10-05 agents.md llama-server never reuses a shared prompt prefix on EXAONE 4.0 (sliding-window attention) unless started with `--swa-full`
@@ -772,10 +772,10 @@ OPS-122 2026-09-26 ops.md macOS Vision `VNGeneratePersonSegmentationRequest`로 
 OPS-123 2026-09-27 ops.md tsconfig `types`에 `@cloudflare/workers-types`가 있으면 브라우저 스크립트의 DOM `append`·`ParentNode` 타입이 깨진다
 OPS-124 2026-09-27 ops.md PocketBase 규칙에 관리자 절을 OR로 붙이면 impersonate 토큰으로 "역할 × 비공개 헤더" 조합을 실측한다. 거절은 목록 0건과 쓰기 404로 조용히 온다
 OPS-125 2026-09-27 ops.md Workers 서비스 바인딩 호출은 대상 Worker가 2분 넘게 걸려도 끝까지 기다린다. `wrangler secret put`은 로컬 코드를 올리지 않는다
-OPS-126 ---------- ops.md Selected-file overlay images keep stale test files: in-image regression then reports failures that are not regressions
-OPS-127 ---------- ops.md macOS Vision on anime illustrations: the foreground instance mask holds, person segmentation and face detection fail silently on some images, and a white sticker border on light grey is missed
-OPS-128 ---------- ops.md `codex exec` image generation for character key art: shot words set the frame fill, capes overshoot, outfits drift to garter straps
-OPS-129 ---------- ops.md `glab repo create <name>` inside an existing repo adds no remote to it: it `git init`s a new `./<name>/` subdirectory instead, and `--skipGitInit` does not stop that
+OPS-126 2026-09-27 ops.md Selected-file overlay images keep stale test files: in-image regression then reports failures that are not regressions
+OPS-127 2026-09-27 ops.md macOS Vision on anime illustrations: the foreground instance mask holds, person segmentation and face detection fail silently on some images, and a white sticker border on light grey is missed
+OPS-128 2026-09-27 ops.md `codex exec` image generation for character key art: shot words set the frame fill, capes overshoot, outfits drift to garter straps
+OPS-129 2026-09-27 ops.md `glab repo create <name>` inside an existing repo adds no remote to it: it `git init`s a new `./<name>/` subdirectory instead, and `--skipGitInit` does not stop that
 OPS-130 2026-09-27 ops.md 외교부 재외공관 사이트(overseas.mofa.go.kr)는 붐비면 모든 주소에 F5 대기실 페이지를 HTTP 200으로 준다. RSS 파서는 이것을 DOCTYPE 오류로 보고한다
 OPS-131 2026-09-27 ops.md Workers 무료 플랜에서 CPU 232ms, 벽시계 148초 실행이 `outcome: ok`로 끝났다. 문서의 10ms를 즉시 끊는 한도로 보지 않는다
 OPS-132 2026-09-27 ops.md `oggenc` (vorbis-tools) for game assets: decoded peaks move up to +1.6 dB, every run gets a random stream serial, and the written files over-allocate on APFS
@@ -818,7 +818,7 @@ OPS-168 2026-09-27 ops.md Web Audio CPU: a-rate LFO into oscillator `detune` cos
 OPS-169 2026-09-27 ops.md SpacetimeDB 2.8 TypeScript module: appending columns with `.default(...)` migrates a live database under `--delete-data=never`; `init` does not run again, so new scheduled tables start empty
 OPS-170 2026-09-27 ops.md SpacetimeDB 2.8 CLI: a schema change that disconnects clients aborts a non-interactive publish unless `--yes` includes `break-clients`
 OPS-171 2026-09-27 ops.md macOS: a test bind on `0.0.0.0` or `::` succeeds next to another process's `127.0.0.1` listener. Probe all four addresses before claiming a port
-OPS-172 2026-09-27 ops.md `glab repo create <name>` inside an existing Git repository creates an empty nested clone `./<name>/` and does not add `origin` to the current repository
+OPS-172 2026-09-27 ops.md (무효 — OPS-129와 중복) `glab repo create <name>` inside an existing Git repository creates an empty nested clone `./<name>/` and does not add `origin` to the current repository
 OPS-173 2026-09-27 ops.md A result cache in a Worker's module memory served 1 of 3 repeats seconds apart; `caches.default` in the page Worker served every repeat
 OPS-174 2026-09-27 ops.md ffmpeg `loudnorm` second pass with `linear=true` falls back to dynamic mode without an error when the measured LRA exceeds the target `LRA` (default 7) or is exactly 0; only the JSON `normalization_type` shows it
 OPS-175 2026-09-27 ops.md Google Fonts CSS2 API: only 1 of 88 `@font-face` blocks for a Korean face carried a `/* subset */` comment; picking subsets by comment silently drops the rest
@@ -849,7 +849,7 @@ OPS-199 2026-09-28 ops.md A placed Worker with no route can use `caches.default`
 OPS-200 2026-09-29 ops.md PocketBase invite-only sign-in without superusers: an admin clause in the auth collection's `createRule`, and the `authRule` email list can go
 OPS-201 2026-09-29 ops.md `wrangler d1 migrations apply --remote` right after `wrangler d1 create` answers 7403 "The given account is not valid or is not authorized"
 OPS-202 2026-09-29 ops.md `wrangler d1 create` can fail once with `Authentication error [code: 10000]` while `d1 list` works with the same login
-OPS-203 2026-09-29 ops.md PocketBase JSVM migration: collection rules are Go `*string` (`typeof` "object"), and a migration that throws takes the server down in a restart loop
+OPS-203 2026-09-29 ops.md (무효 — OPS-205와 중복) PocketBase JSVM migration: collection rules are Go `*string` (`typeof` "object"), and a migration that throws takes the server down in a restart loop
 OPS-204 2026-09-29 ops.md Changing an auth collection's `authRule` makes PocketBase issue a new token secret: every existing token turns into "no auth", silently
 OPS-205 2026-09-29 ops.md PocketBase JSVM migrations: a set collection rule is a boxed `String` (`typeof` is `"object"`), so a `typeof v === 'string'` guard skips every rule; a migration that throws at startup makes `pocketbase serve` exit
 OPS-206 2026-09-29 ops.md Google Fonts CSS2: listing weights (`wght@400;500;600;700;800`) returns 5× the `@font-face` blocks of a range (`wght@400..800`) for the same font files
@@ -877,7 +877,7 @@ OPS-227 2026-09-29 ops.md Docker on a Mac with no brew and no sudo: colima + lim
 OPS-228 2026-09-29 ops.md Empty-cache "first load MB" of a web game: count CDP `Network.loadingFinished.encodedDataLength`, not resource sizes; `~/kc-test` has no `playwright` package
 OPS-229 2026-09-30 ops.md Dokploy raw-compose redeploy returns Traefik 404 for seconds; roll a second container with the same config hash and drain the old one by health check
 OPS-230 2026-09-30 ops.md `add_header` in an nginx location drops every inherited header, so a `/mnori.json` block must repeat the ones it needs
-OPS-231 2026-09-29 ops.md Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
+OPS-231 2026-09-29 ops.md (일부 대체 — 멀티터치는 GDT-210) Driving a phone game from adb: `input motionevent` holds one finger; `sendevent` multi-touch is denied without root
 OPS-232 2026-09-29 ops.md nginx `default_type` plus `add_header Content-Type` sends the header twice; and a build host whose clock runs a day ahead dates generated files wrong
 OPS-233 2026-09-29 ops.md Serving a per-game `/mnori.json` from nginx: it needs its own `location`, because `add_header` there replaces the site's inherited headers
 OPS-234 2026-09-29 ops.md Chrome DevTools Protocol byte counts miss everything a service worker fetches
@@ -910,7 +910,7 @@ OPS-260 2026-10-01 ops.md GitHub Actions storage on a free account (0.5GB) is fi
 OPS-261 2026-10-01 ops.md Korean banking agent WizIn-Delfino G3 keeps asking to be installed on Apple Silicon: x86_64-only binary, no Rosetta, and a non-traversable install folder
 OPS-262 2026-10-02 ops.md The MacBook Air test host has the `docker` CLI on `PATH` but no daemon: image builds cannot be tested there
 OPS-263 2026-10-03 ops.md Workers Free: 50 subrequests per invocation with Workers AI calls counted, and the 51st throws; a cut-off cron run is delivered again 4-6 s later
-OPS-264 2026-10-02 ops.md Homebrew `codex` 0.154.0 fails every `codex exec` with "model is not supported when using Codex with a ChatGPT account" after the config default moves to a newer model; the ChatGPT app's bundled CLI works
+OPS-264 2026-10-02 ops.md (일부 대체 — codex 0.162부터는 OPS-387) Homebrew `codex` 0.154.0 fails every `codex exec` with "model is not supported when using Codex with a ChatGPT account" after the config default moves to a newer model; the ChatGPT app's bundled CLI works
 OPS-265 2026-10-03 ops.md PocketBase 0.40 JSVM migration: `field.type` is a Go method, so `field.type === 'select'` is silently false and the migration "applies" while changing nothing
 OPS-266 2026-10-03 ops.md three.js `renderer.dispose()` does not free the WebGL context: an SPA that mounts a new renderer per view hits Chrome's "Too many active WebGL contexts" and evicts the oldest scene
 OPS-267 2026-10-03 ops.md `.gitignore` treats `[backup]/` as a character class: it ignores `b/`, `a/`, `k/`… and not the folder literally named `[backup]`
@@ -935,7 +935,7 @@ OPS-285 2026-10-03 ops.md Web Speech API in Chrome on macOS: the first utterance
 OPS-286 2026-10-03 ops.md A cross-document view transition on `root` moves the sticky header too; to test a CSS fix on production without `page.route`, inject it with `addInitScript`
 OPS-287 2026-10-03 ops.md Chrome on the MacBook Air test host: a real-time `AudioContext` reports `running` but its clock never moves; `--disable-audio-output` fixes it
 OPS-288 2026-10-03 ops.md Android WebView debugging: Playwright `connectOverCDP` refuses a WebView; raw CDP over the forwarded socket works
-OPS-289 2026-10-03 ops.md wrangler OAuth 토큰으로 Cloudflare REST API를 직접 부르면 `10000 Authentication error`가 난다. `wrangler whoami`를 한 번 돌리면 풀린다
+OPS-289 2026-10-03 ops.md (대체 — 토큰은 OPS-293의 `wrangler auth token`) wrangler OAuth 토큰으로 Cloudflare REST API를 직접 부르면 `10000 Authentication error`가 난다. `wrangler whoami`를 한 번 돌리면 풀린다
 OPS-290 2026-10-03 ops.md A `zsh -c 'while pgrep -f "X"; do sleep …; done; …'` waiter waits forever: `pgrep -f` matches the waiter's own command line
 OPS-291 2026-10-04 ops.md Android emulator 37.2.12 on macOS: gRPC `injectAudio` (microphone injection) kills the headless emulator
 OPS-292 2026-10-04 ops.md Chrome launched over ssh on the Air gets an all-zero microphone; test the real capture pipeline with Chrome's fake device file
@@ -1024,7 +1024,7 @@ OPS-374 2026-10-08 ops.md 실기기 iPad의 XCUITest는 xcodebuild를 돌릴 때
 OPS-375 2026-10-08 ops.md Cloudflare: an origin that sends no `Cache-Control` gets its .js/.css held at the edge for the zone's browser TTL (4 h) after a deploy; `no-cache` fixes the edge, but browsers still receive `max-age=14400`. POST to `/api/v4` from the dashboard session is blocked, the 「사용자 지정 제거」 dialog is not
 OPS-376 2026-10-08 ops.md Android WebView app on `WebViewAssetLoader`: a link to `/` shows an error page, and `dumpsys vibrator_manager` shows whether a `performHapticFeedback` from the JS bridge actually played
 OPS-377 2026-10-08 ops.md macOS Safari WebDriver over ssh: writing `AllowRemoteAutomation` to the plist does not enable it, and a locked console leaves GUI scripting with no windows
-OPS-378 ---------- ops.md `codex exec` as an unattended text and research worker on a ChatGPT login: old CLIs reject newer models, `--output-schema` must be strict, and opened pages show up as `view` results
+OPS-378 2026-10-08 ops.md `codex exec` as an unattended text and research worker on a ChatGPT login: old CLIs reject newer models, `--output-schema` must be strict, and opened pages show up as `view` results
 OPS-379 2026-10-09 ops.md Putting a large binary on Google Drive with a public link, unattended: Drive's web UI in Brave on the Air, the new-file button is `신규`, and the share dialog lives in a frame
 OPS-380 2026-10-09 ops.md SpacetimeDB 2.8 Rust module: `#[default(-1i32)]` does not compile; a named constant does, and migrates existing rows to -1
 OPS-381 2026-10-09 ops.md `rsync -a` to a build host keeps old source mtimes, cargo skips the rebuild, and `spacetime publish` reports "Updated database" with the old module
@@ -1035,7 +1035,7 @@ OPS-385 2026-10-10 ops.md AdMob "스토어 추가" finds a newly published Play 
 OPS-386 2026-10-10 ops.md The Air test host cleans itself under 32 GB free: idle folders lose `node_modules`/`target`/`.godot`, week-idle `~/work` copies are deleted; protect one with `.air-keep`
 OPS-387 2026-10-10 ops.md Homebrew `codex` 0.162.0 runs `codex exec` image generation again with a ChatGPT login (OPS-264 no longer applies to it)
 OPS-388 2026-10-10 ops.md Waist-up portraits from image generation: a "belt at the bottom edge" lands near 85 % of a 1536-px canvas, and Vision's foreground mask breaks thin wire props into dashes
-OPS-389 2026-10-10 ops.md `rsync --delete` to a test host's Godot copy deletes the `.import` and `.uid` files Godot wrote there: new fonts then fail with "has no resource loaders"
+OPS-389 2026-10-10 ops.md (무효 — OPS-247과 중복) `rsync --delete` to a test host's Godot copy deletes the `.import` and `.uid` files Godot wrote there: new fonts then fail with "has no resource loaders"
 OPS-390 2026-10-10 ops.md Frame-time A/B on a shared test host: whole runs swing 14 → 35 ms; alternate the switch in 0.4 s windows and compare the fastest window of each side
 OPS-391 2026-10-10 ops.md `dd` to a USB stick from an agent session fails with "Operation not permitted" even as root; run it from a Terminal `.command` file
 OPS-392 2026-10-10 ops.md Main Mac off the home network: the MacBook Air test host has no route at all — not by IP, not by `air.local`, not through Tailscale
@@ -1091,7 +1091,7 @@ OPS-441 2026-10-14 ops.md Portrait cut-outs: clearing "enclosed grey pockets" (O
 OPS-442 2026-10-14 ops.md GitLab push webhook silently not sent for some pushes; check `hooks/:id/events`, re-fire with the test endpoint
 OPS-443 2026-10-14 ops.md CSS `color-mix()`의 두 비율 합이 100%보다 작으면 결과 색이 반투명해진다. 원 버튼 뒤의 선이 비쳐 보인다
 OPS-444 2026-10-14 ops.md Android WebView app: a web page can own the system Back button with `history.pushState`, because the activity's `canGoBack()` counts same-document entries
-OPS-445 2026-10-16 ops.md `codex exec` research run: the model listed sources it never opened in this run, even when told only opened pages count; check the `web_search` record, not the answer
+OPS-445 2026-10-16 ops.md (무효 — 진짜 원인은 OPS-446) `codex exec` research run: the model listed sources it never opened in this run, even when told only opened pages count; check the `web_search` record, not the answer
 OPS-446 2026-10-16 ops.md `codex exec --json` `web_search` records percent-encode `:` in a URL path: `quran.com/36:14/…` comes back as `quran.com/36%3A14/…`, so an exact-string check calls a page you opened "never opened"
 OPS-447 2026-10-16 ops.md wrangler's OAuth login died (refresh failed) and the Air's Google profile wanted a passkey: a headed browser on the main Mac with a copy of the gstack profile, placed off-screen, approved it in one pass
 OPS-448 2026-10-16 ops.md A Workers custom domain moved to another Worker by deploying that Worker with the same `custom_domain` route; no prompt, no DNS change
@@ -1174,7 +1174,7 @@ OPS-524 2026-10-19 ops.md Workers static assets are served before the Worker run
 OPS-525 2026-10-19 ops.md LuLu on the Air: `MINIFLARE_WORKERD_PATH` also fixes `astro preview`; a symlink to an allowed `workerd` does not
 OPS-526 2026-10-19 ops.md glab OAuth refresh can time out on DNS while Node reaches the same GitLab endpoint
 OPS-527 2026-10-19 ops.md Astro on Workers: wrap the adapter's handler with `"main": "src/worker.ts"` to rewrite a request before Astro sees it (a cross-account relay that keeps `Astro.url` on the public host)
-OPS-528 2026-10-19 ops.md Cloudflare stopped account creation after three additional Free accounts (docs say five): 422 「생성할 수 있는 계정 수의 한도에 도달했습니다」
+OPS-528 2026-10-19 ops.md (일부 대체 — 실제 한도는 다섯 개, OPS-650) Cloudflare stopped account creation after three additional Free accounts (docs say five): 422 「생성할 수 있는 계정 수의 한도에 도달했습니다」
 OPS-529 2026-10-19 ops.md Moving a Cloudflare Registrar domain to another account: the clicks, where the gaining account accepts, and how fast it switched
 OPS-530 2026-10-19 ops.md Reading a Worker's secret values back for an account move: an undeployed version on a preview URL that returns them encrypted to an offline key
 OPS-531 2026-10-19 ops.md `wrangler d1 execute --file` of a `d1 export` dump fails with `SQLITE_TOOBIG` on rows above ~100 KB
@@ -1365,7 +1365,7 @@ OPS-715 2026-10-28 ops.md A frozen application clock does not freeze SQLite unix
 OPS-716 2026-10-28 ops.md Duplicating Astro's --host flag made the dev server bind IPv6 localhost
 OPS-717 2026-10-28 ops.md Miniflare 5 beta rejects V4 constructor options; its converter still needs the assets user-worker flag
 OPS-718 2026-10-28 ops.md Renewing a local signed site cookie leaves its embedded fake PocketBase token expired; member pages open but the board composer has no member
-OPS-719 2026-10-28 ops.md macOS Python 3.9.6 rejected a valid UTF-8 script until an encoding header was added
+OPS-719 2026-10-28 ops.md (무효 — OPS-872와 중복) macOS Python 3.9.6 rejected a valid UTF-8 script until an encoding header was added
 OPS-720 2026-10-29 ops.md Dokploy accepts a 148 MiB drop archive through an authenticated SSH loopback forward
 OPS-721 2026-10-29 ops.md MissyUSA 제목 검색은 부분 문자열이라 LA는 fireplace, OC는 HELOC까지 잡는다
 OPS-722 2026-10-29 ops.md 과거 SIGNED_IN 로그와 현재 Google 인증은 다르며, 유효한 사이트 storageState는 별도로 살아 있을 수 있다
@@ -1493,7 +1493,7 @@ OPS-843 2026-11-02 ops.md The SpacetimeDB SQL CLI adds its own client_connected 
 OPS-844 2026-11-02 ops.md 같은 Cargo target을 공유한 이전 소스 비교 빌드가 최신 WASM을 그대로 재사용했다
 OPS-845 2026-11-02 ops.md - Godot JSON loses precision in SpacetimeDB u128 connection IDs
 OPS-846 2026-11-03 ops.md Apple Container의 공유 builder가 `running`인데 응답하지 않으면 `container build`가 멈춘다
-OPS-847 2026-11-02 ops.md busan.mac의 GitLab 전용 deploy key가 전달된 사용자 키보다 먼저 선택됐다
+OPS-847 2026-11-02 ops.md (무효 — OPS-878과 중복) busan.mac의 GitLab 전용 deploy key가 전달된 사용자 키보다 먼저 선택됐다
 OPS-848 2026-11-03 ops.md SpacetimeDB 2.8의 V2 WebSocket에서 confirmed 생략은 true이며, false 게임 클라이언트와 부하 조건이 달라진다
 OPS-849 2026-11-02 ops.md Godot Web의 터치 HUD는 두 번째 손가락과 합성 마우스 중복 입력을 따로 처리해야 한다
 OPS-850 2026-11-02 ops.md Godot Web의 disabled stretch는 DPR2에서 390 CSS px를 780 UI 좌표로 만든다
@@ -1518,7 +1518,7 @@ OPS-869 2026-11-03 ops.md Workers AI `mistral-small-3.1-24b-instruct`는 한 메
 OPS-870 2026-11-04 ops.md `astro check` with Cloudflare Workers types: `querySelector<HTMLSelectElement>` fails the `Element` constraint, and a browser script without `import`/`export` collides with other scripts' top-level names
 OPS-871 2026-11-05 ops.md nginx 디렉터리 자동 이동이 터널 내부 포트를 공개 주소에 붙일 수 있다
 OPS-872 2026-11-05 ops.md macOS Python 3.9.6은 유효한 긴 한국어 소스도 인코딩 선언 없이는 Non-UTF-8 오류를 낼 수 있다
-OPS-873 2026-11-05 ops.md Ego Lite의 CDP 화면 크기는 다음 nodejs 라운드에 유지되지 않았다
+OPS-873 2026-11-05 ops.md (무효 — OPS-788과 중복) Ego Lite의 CDP 화면 크기는 다음 nodejs 라운드에 유지되지 않았다
 OPS-874 2026-11-05 ops.md 운영 대시보드 비교: Google Workspace 한국어 상태 화면은 갱신 시각과 상태 범례를 함께 제공한다
 OPS-875 2026-11-06 ops.md Dokploy 배포 셸의 ps args에는 인코딩된 환경값이 포함될 수 있다
 OPS-876 2026-11-06 ops.md Dokploy가 다른 앱 빌드 중 수락한 dropDeployment는 배포 ID가 늦게 나타날 수 있다
